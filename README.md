@@ -21,6 +21,8 @@ Turn your Android TV (or Fire TV) into a game console and use smartphones as con
 
 ## 🚀 Quick Start
 
+> **Run the Example App:** Check out the complete "Buzzer" game reference implementation in [`apps/README.md`](./apps/README.md) to see the code in action!
+
 ### 1. Create a Project
 
 ```bash
