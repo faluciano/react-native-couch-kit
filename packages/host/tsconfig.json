@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "jsx": "react",
+    "paths": {
+      "@party-kit/core": ["../core/src"]
+    }
+  },
+  "include": ["src/**/*"]
+}
