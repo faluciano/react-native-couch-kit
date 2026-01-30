@@ -14,13 +14,14 @@
     "expo": "~50.0.6",
     "expo-status-bar": "~1.11.1",
     "react": "18.2.0",
-    "react-native": "0.73.4",
+    "react-native": "npm:react-native-tvos@0.73.6-0",
     "react-native-tcp-socket": "^6.2.0",
     "react-native-network-info": "^5.2.1",
     "react-native-svg": "^14.1.0",
     "react-native-qrcode-svg": "^6.3.0"
   },
   "devDependencies": {
+    "@react-native-tvos/config-tv": "^0.1.4",
     "@babel/core": "^7.20.0",
     "@types/react": "~18.2.45",
     "typescript": "^5.1.3"
