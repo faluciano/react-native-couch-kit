@@ -6,6 +6,20 @@ interface TimeSyncState {
   rtt: number;     // Round Trip Time
 }
 
+// Pure logic for testing
+export function calculateTimeSync(
+  clientSendTime: number, 
+  clientReceiveTime: number, 
+  serverTime: number
+) {
+  const rtt = clientReceiveTime - clientSendTime;
+  const latency = rtt / 2;
+  const expectedServerTime = serverTime + latency;
+  const offset = expectedServerTime - clientReceiveTime;
+  
+  return { offset, rtt };
+}
+
 export function useServerTime(socket: WebSocket | null) {
   const [timeSync, setTimeSync] = useState<TimeSyncState>({ offset: 0, rtt: 0 });
   
@@ -23,16 +37,7 @@ export function useServerTime(socket: WebSocket | null) {
     const sentTime = pings.current.get(payload.id);
     
     if (sentTime) {
-      const rtt = now - sentTime;
-      const latency = rtt / 2;
-      
-      // Calculate offset: ServerTime = ClientTime + Offset
-      // Offset = ServerTime - ClientTime
-      // We approximate ServerTime as payload.serverTime + latency
-      const expectedServerTime = payload.serverTime + latency;
-      const offset = expectedServerTime - now;
-
-      // Simple smoothing could go here, but direct update is fine for MVP
+      const { offset, rtt } = calculateTimeSync(sentTime, now, payload.serverTime);
       setTimeSync({ offset, rtt });
       pings.current.delete(payload.id);
     }

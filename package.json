@@ -18,11 +18,17 @@
   "devDependencies": {
     "@changesets/cli": "^2.27.1",
     "@types/bun": "latest",
+    "@types/events": "^3.0.3",
+    "@types/react": "^19.2.10",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
     "eslint": "^8.57.0",
     "prettier": "^3.2.0",
     "typescript": "^5.4.0"
   },
-  "packageManager": "bun@1.2.19"
+  "packageManager": "bun@1.2.19",
+  "dependencies": {
+    "buffer": "^6.0.3",
+    "events": "^3.3.0"
+  }
 }
