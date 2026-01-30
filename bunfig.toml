@@ -1,0 +1,7 @@
+[install]
+# Fall back to Node for problematic postinstall scripts
+auto = "fallback"
+
+[install.lockfile]
+# Generate lockfile for reproducible builds
+save = true
