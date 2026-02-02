@@ -7,7 +7,6 @@
       "dependencies": {
         "@react-native/assets-registry": "^0.83.1",
         "buffer": "^6.0.3",
-        "events": "^3.3.0",
         "expo-build-properties": "^1.0.10",
         "expo-modules-autolinking": "1.10.3",
         "expo-modules-core": "~1.11.12",
@@ -16,7 +15,6 @@
       "devDependencies": {
         "@changesets/cli": "^2.27.1",
         "@types/bun": "latest",
-        "@types/events": "^3.0.3",
         "@types/react": "^19.2.10",
         "@typescript-eslint/eslint-plugin": "^7.0.0",
         "@typescript-eslint/parser": "^7.0.0",
@@ -27,7 +25,7 @@
     },
     "packages/cli": {
       "name": "@party-kit/cli",
-      "version": "0.0.3",
+      "version": "0.0.4",
       "bin": {
         "party-kit": "./dist/index.js",
       },
@@ -48,7 +46,7 @@
     },
     "packages/client": {
       "name": "@party-kit/client",
-      "version": "0.0.3",
+      "version": "0.0.4",
       "dependencies": {
         "@party-kit/core": "workspace:*",
       },
@@ -74,7 +72,7 @@
     },
     "packages/host": {
       "name": "@party-kit/host",
-      "version": "0.0.3",
+      "version": "0.0.4",
       "dependencies": {
         "@party-kit/core": "workspace:*",
         "js-sha1": "^0.7.0",
@@ -619,8 +617,6 @@
 
     "@types/bun": ["@types/bun@1.3.8", "", { "dependencies": { "bun-types": "1.3.8" } }, "sha512-3LvWJ2q5GerAXYxO2mffLTqOzEu5qnhEAlh48Vnu8WQfnmSwbgagjGZV6BoHKJztENYEDn6QmVd949W4uESRJA=="],
 
-    "@types/events": ["@types/events@3.0.3", "", {}, "sha512-trOc4AAUThEz9hapPtSd7wf5tiQKvTtu5b371UxXdTuqzIh0ArcRspRP0i0Viu+LXstIQ1z96t1nsPxT9ol01g=="],
-
     "@types/fs-extra": ["@types/fs-extra@11.0.4", "", { "dependencies": { "@types/jsonfile": "*", "@types/node": "*" } }, "sha512-yTbItCNreRooED33qjunPthRcSjERP1r4MqCZc7wv0u2sUkzTFp45tgUfS5+r7FrZPdmCCNflLhVSP/o+SemsQ=="],
 
     "@types/graceful-fs": ["@types/graceful-fs@4.1.9", "", { "dependencies": { "@types/node": "*" } }, "sha512-olP3sd1qOEe5dXTSaFvQG+02VdRXcdytWLAZsAq1PecU8uqQAhkrnbli7DagjtXKW/Bl7YJbUsa8MPcuc8LHEQ=="],
@@ -986,8 +982,6 @@
     "event-target-shim": ["event-target-shim@5.0.1", "", {}, "sha512-i/2XbnSz/uxRCU6+NdVJgKWDTM427+MqYbkQzD321DuCQJUqOuJKIA0IM2+W2xtYHdKOmZ4dR6fExsd4SXL+WQ=="],
 
     "eventemitter3": ["eventemitter3@5.0.4", "", {}, "sha512-mlsTRyGaPBjPedk6Bvw+aqbsXDtoAyAzm5MO7JgU+yVRyMQ5O8bD4Kcci7BS85f93veegeCPkL8R4GLClnjLFw=="],
-
-    "events": ["events@3.3.0", "", {}, "sha512-mQw+2fkQbALzQ7V0MY0IqdnXNOeTtP4r0lN9z7AAawCXgqea7bDii20AYrIBrFd/Hx0M2Ocz6S111CaFkUcb0Q=="],
 
     "exec-async": ["exec-async@2.2.0", "", {}, "sha512-87OpwcEiMia/DeiKFzaQNBNFeN3XkkpYIh9FyOqq5mS2oKv3CBE67PXoEKcr6nodWdXNogTiQ0jE2NGuoffXPw=="],
 

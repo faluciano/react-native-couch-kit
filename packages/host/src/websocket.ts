@@ -4,7 +4,7 @@
  */
 
 import TcpSocket from "react-native-tcp-socket";
-import { EventEmitter } from "events";
+import { EventEmitter } from "./event-emitter";
 import { Buffer } from "buffer";
 import { sha1 } from "js-sha1";
 

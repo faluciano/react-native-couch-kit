@@ -17,7 +17,6 @@
   "devDependencies": {
     "@changesets/cli": "^2.27.1",
     "@types/bun": "latest",
-    "@types/events": "^3.0.3",
     "@types/react": "^19.2.10",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
@@ -29,7 +28,6 @@
   "dependencies": {
     "@react-native/assets-registry": "^0.83.1",
     "buffer": "^6.0.3",
-    "events": "^3.3.0",
     "expo-build-properties": "^1.0.10",
     "expo-modules-autolinking": "1.10.3",
     "expo-modules-core": "~1.11.12",

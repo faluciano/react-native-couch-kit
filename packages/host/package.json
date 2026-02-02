@@ -1,6 +1,6 @@
 {
   "name": "@party-kit/host",
-  "version": "0.0.4",
+  "version": "0.0.6",
   "main": "src/index.tsx",
   "react-native": "src/index.tsx",
   "source": "src/index.tsx",

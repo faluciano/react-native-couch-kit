@@ -1,5 +1,25 @@
 # @party-kit/host
 
+## 0.0.6
+
+### Patch Changes
+
+- Fix React Native bundling error by replacing Node.js `events` module with custom EventEmitter implementation
+  - Replaced `import { EventEmitter } from "events"` with a custom lightweight EventEmitter implementation
+  - Removed `events` and `@types/events` dependencies from package.json
+  - Library now works out-of-the-box in React Native/Expo without Metro configuration
+  - Custom EventEmitter supports: on(), once(), off(), emit(), removeAllListeners(), listenerCount()
+
+## 0.0.5
+
+### Patch Changes
+
+- Fix React Native bundling error by replacing Node.js `events` module with custom EventEmitter implementation
+  - Replaced `import { EventEmitter } from "events"` with a custom lightweight EventEmitter implementation
+  - Removed `events` and `@types/events` dependencies from package.json
+  - Library now works out-of-the-box in React Native/Expo without Metro configuration
+  - Custom EventEmitter supports: on(), once(), off(), emit(), removeAllListeners(), listenerCount()
+
 ## 0.0.4
 
 ### Patch Changes
