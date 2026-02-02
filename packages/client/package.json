@@ -1,6 +1,6 @@
 {
   "name": "@party-kit/client",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "main": "./src/index.ts",
   "module": "./src/index.ts",
   "types": "./src/index.ts",

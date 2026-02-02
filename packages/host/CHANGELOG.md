@@ -1,5 +1,11 @@
 # @party-kit/host
 
+## 0.0.4
+
+### Patch Changes
+
+- Fix dependency resolution for @party-kit/core
+
 ## 0.0.3
 
 ### Patch Changes

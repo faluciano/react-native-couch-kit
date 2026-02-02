@@ -12,7 +12,7 @@
     "clean": "bun run --filter '*' clean",
     "changeset": "changeset",
     "version": "changeset version",
-    "release": "changeset publish"
+    "release": "bun run scripts/publish.ts"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.1",
