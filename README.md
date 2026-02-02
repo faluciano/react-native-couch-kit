@@ -33,8 +33,15 @@ mkdir my-party-game
 cd my-party-game
 bun init
 
-# Install the kit
-bun add react-native-party-kit
+# For the TV App (Host)
+bun add @party-kit/host @party-kit/core
+```
+
+If you are setting up the Web Controller manually (instead of using the CLI in Step 4):
+
+```bash
+# For the Web Controller (Client)
+bun add @party-kit/client @party-kit/core
 ```
 
 ### 2. The Game Logic (Shared)
