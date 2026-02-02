@@ -12,32 +12,20 @@ bun add -d @party-kit/cli
 
 ### `init`
 
-Scaffolds a new web controller project (Vite + React + TypeScript).
+Scaffolds a new web controller project (Vite + React + TypeScript) configured to work with Party Kit.
 
 ```bash
-bunx party-kit init my-controller
+bunx party-kit init web-controller
 ```
 
 ### `bundle`
 
-Builds the web controller and copies the assets into your Android project's `assets/www` folder.
+Builds the web controller and copies the assets into your Android project's `assets/www` folder. This is used when preparing your TV app for release.
 
 ```bash
-# Default (looks for ./web-controller)
+# Default (looks for ./web-controller and copies to android/app/src/main/assets/www)
 bunx party-kit bundle
 
 # Custom paths
 bunx party-kit bundle --source ./my-web-app --output ./android/app/src/main/assets/www
-```
-
-### `simulate`
-
-Spawns headless "bot" players to stress-test your game logic or test multiplayer scenarios without multiple devices.
-
-```bash
-# Spawn 4 bots
-bunx party-kit simulate --count 4
-
-# Spawn 50 bots connecting to a specific IP
-bunx party-kit simulate --count 50 --url ws://192.168.1.5:8081
 ```
