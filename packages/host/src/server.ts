@@ -7,6 +7,7 @@ interface PartyKitHostConfig {
   port?: number;
   devMode?: boolean;
   devServerUrl?: string; // e.g. "http://localhost:5173"
+  staticDir?: string; // Override the default www directory path (required on Android)
 }
 
 export const useStaticServer = (config: PartyKitHostConfig) => {
@@ -33,7 +34,9 @@ export const useStaticServer = (config: PartyKitHostConfig) => {
 
       // Production Mode: Serve assets from bundle
       try {
-        const path = `${RNFS.MainBundlePath}/www`;
+        // Use staticDir if provided (required on Android where MainBundlePath is undefined),
+        // otherwise fall back to iOS MainBundlePath
+        const path = config.staticDir || `${RNFS.MainBundlePath}/www`;
         const port = config.port || 8080;
 
         server = new StaticServer();
@@ -61,7 +64,7 @@ export const useStaticServer = (config: PartyKitHostConfig) => {
         server.stop();
       }
     };
-  }, [config.port, config.devMode, config.devServerUrl]);
+  }, [config.port, config.devMode, config.devServerUrl, config.staticDir]);
 
   return { url, error };
 };

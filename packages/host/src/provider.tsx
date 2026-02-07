@@ -21,6 +21,7 @@ interface GameHostConfig<S extends IGameState, A extends IAction> {
   wsPort?: number; // WebSocket port (default 8081)
   devMode?: boolean;
   devServerUrl?: string;
+  staticDir?: string; // Override the default www directory path (required on Android)
   debug?: boolean;
 }
 
@@ -57,6 +58,7 @@ export function GameHostProvider<S extends IGameState, A extends IAction>({
     port: config.port || 8080,
     devMode: config.devMode,
     devServerUrl: config.devServerUrl,
+    staticDir: config.staticDir,
   });
 
   // 2. Start WebSocket Server (Port 8081)
