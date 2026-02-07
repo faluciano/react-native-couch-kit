@@ -1,5 +1,11 @@
 # @party-kit/host
 
+## 0.1.1
+
+### Patch Changes
+
+- 9c2c0f5: Add `staticDir` config option to `GameHostProvider` and `useStaticServer` for overriding the default www directory path. This is required on Android where `RNFS.MainBundlePath` is undefined, so apps must extract bundled assets to the filesystem and pass the path via `staticDir`.
+
 ## 0.1.0
 
 ### Minor Changes
