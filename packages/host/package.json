@@ -1,6 +1,24 @@
 {
   "name": "@couch-kit/host",
   "version": "0.3.0",
+  "description": "React Native host for local multiplayer party games on Android TV — WebSocket server, state management, and static file serving",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/faluciano/react-native-couch-kit.git",
+    "directory": "packages/host"
+  },
+  "homepage": "https://github.com/faluciano/react-native-couch-kit#readme",
+  "keywords": [
+    "react-native",
+    "android-tv",
+    "fire-tv",
+    "party-game",
+    "websocket",
+    "couch-kit",
+    "local-multiplayer",
+    "game-host"
+  ],
   "main": "src/index.tsx",
   "react-native": "src/index.tsx",
   "source": "src/index.tsx",

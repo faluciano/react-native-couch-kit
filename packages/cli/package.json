@@ -1,6 +1,21 @@
 {
   "name": "@couch-kit/cli",
   "version": "0.0.6",
+  "description": "CLI tools for Couch Kit party games — bundle web controllers, simulate clients, and scaffold projects",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/faluciano/react-native-couch-kit.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/faluciano/react-native-couch-kit#readme",
+  "keywords": [
+    "couch-kit",
+    "cli",
+    "party-game",
+    "bundler",
+    "react-native"
+  ],
   "files": [
     "dist",
     "README.md"

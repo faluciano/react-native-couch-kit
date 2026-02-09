@@ -1,6 +1,21 @@
 {
   "name": "@couch-kit/core",
   "version": "0.2.0",
+  "description": "Shared types, protocol, and game reducer for Couch Kit party games",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/faluciano/react-native-couch-kit.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/faluciano/react-native-couch-kit#readme",
+  "keywords": [
+    "react-native",
+    "couch-kit",
+    "party-game",
+    "game-state",
+    "reducer"
+  ],
   "main": "./src/index.ts",
   "scripts": {
     "build": "bun build ./src/index.ts --outdir ./dist --target node",

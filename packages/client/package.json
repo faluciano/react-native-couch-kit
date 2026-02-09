@@ -1,6 +1,22 @@
 {
   "name": "@couch-kit/client",
   "version": "0.3.0",
+  "description": "React hooks for phone controllers in Couch Kit party games — WebSocket client and action dispatch",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/faluciano/react-native-couch-kit.git",
+    "directory": "packages/client"
+  },
+  "homepage": "https://github.com/faluciano/react-native-couch-kit#readme",
+  "keywords": [
+    "react",
+    "couch-kit",
+    "party-game",
+    "websocket",
+    "game-client",
+    "controller"
+  ],
   "main": "./src/index.ts",
   "module": "./src/index.ts",
   "types": "./src/index.ts",
