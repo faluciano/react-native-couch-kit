@@ -1,5 +1,11 @@
 # @couch-kit/core
 
+## 0.3.2
+
+### Patch Changes
+
+- Comprehensive documentation improvements: fix inaccurate reducer examples, add TSDoc to all public APIs, expand core README with utility/constant docs, fix CLI hardcoded version and scaffold dependency, update host devDependencies.
+
 ## 0.3.1
 
 ### Patch Changes

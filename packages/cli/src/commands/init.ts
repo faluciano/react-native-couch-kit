@@ -32,7 +32,7 @@ export const initCommand = new Command("init")
         dependencies: {
           react: "^18.2.0",
           "react-dom": "^18.2.0",
-          "@couch-kit/client": "^0.4.2",
+          "@couch-kit/client": "^0.4.3",
         },
         devDependencies: {
           "@types/react": "^18.2.66",
