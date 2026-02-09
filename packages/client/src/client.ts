@@ -13,17 +13,17 @@ const BASE_DELAY = 1000;
 
 interface ClientConfig<S extends IGameState, A extends IAction> {
   url?: string; // Full WebSocket URL (overrides auto-detection)
-  wsPort?: number; // WebSocket port (default: auto-detected as HTTP port + 1)
+  wsPort?: number; // WebSocket port (default: auto-detected as HTTP port + 2)
   reducer: (state: S, action: A) => S;
   initialState: S;
+  name?: string; // Player display name (default: "Player")
+  avatar?: string; // Player avatar emoji (default: "😀")
   onConnect?: () => void;
   onDisconnect?: () => void;
   debug?: boolean;
 }
 
 import { createGameReducer } from "@party-kit/core";
-
-// ... existing code ...
 
 export function useGameClient<S extends IGameState, A extends IAction>(
   config: ClientConfig<S, A>,
@@ -78,10 +78,16 @@ export function useGameClient<S extends IGameState, A extends IAction>(
       config.onConnect?.();
 
       // Session Recovery Logic
-      let secret = localStorage.getItem("pk_secret");
-      if (!secret) {
+      let secret: string | null = null;
+      try {
+        secret = localStorage.getItem("pk_secret");
+        if (!secret) {
+          secret = Math.random().toString(36).substring(2, 15);
+          localStorage.setItem("pk_secret", secret);
+        }
+      } catch {
+        // localStorage unavailable (Safari private browsing, restrictive WebViews, etc.)
         secret = Math.random().toString(36).substring(2, 15);
-        localStorage.setItem("pk_secret", secret);
       }
 
       // Join with secret
@@ -89,8 +95,8 @@ export function useGameClient<S extends IGameState, A extends IAction>(
         JSON.stringify({
           type: MessageTypes.JOIN,
           payload: {
-            name: "Player",
-            avatar: "😀",
+            name: config.name || "Player",
+            avatar: config.avatar || "\u{1F600}",
             secret,
           },
         }),
@@ -105,29 +111,15 @@ export function useGameClient<S extends IGameState, A extends IAction>(
           case MessageTypes.WELCOME:
             setPlayerId(msg.payload.playerId);
             // Hydrate state from server (Single Source of Truth)
-            // We bypass the reducer here and force-update if possible,
-            // or dispatch a special hydrate action if the reducer supports it.
-            // For this hook, we'll assume the reducer handles "HYDRATE" or we just warn.
+            // The WELCOME payload contains the full authoritative game state.
+            // Dispatch HYDRATE which is handled by createGameReducer in @party-kit/core.
+            // @ts-expect-error - HYDRATE is an internal action managed by createGameReducer
+            dispatchLocal({ type: "HYDRATE", payload: msg.payload.state });
             break;
 
           case MessageTypes.STATE_UPDATE:
-            // TODO: Handle delta updates if we implement them
-            // For now, assuming full state replacement or action replay
-            // This is a HACK for the MVP: we need a way to replace the entire state
-            // from the hook. Since useReducer doesn't expose a "replaceState" action
-            // by default, we rely on the reducer handling a special action or we
-            // just assume the user provided reducer can handle it.
-            //
-            // BETTER FIX: The reducer passed to useGameClient should probably be wrapped
-            // internally to handle a __HYDRATE__ action.
-
-            // For now, let's try to dispatch a hydrate action if it conforms to convention
-            // or just accept that we need a "set state" mechanism.
-
-            // Let's assume the reducer might handle a "HYDRATE" or "STATE_UPDATE" action
-            // Or we can try to cast it.
-
-            // @ts-expect-error - Dynamic dispatch
+            // Full state replacement from the host's authoritative state.
+            // @ts-expect-error - HYDRATE is an internal action managed by createGameReducer
             dispatchLocal({ type: "HYDRATE", payload: msg.payload.newState });
             break;
 

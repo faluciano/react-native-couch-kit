@@ -2,11 +2,13 @@
 
 The server-side library for React Native TV applications. This package turns your TV app into a local game server.
 
+> **Looking for a working example?** Check out the [Buzz](https://github.com/faluciano/buzz-tv-party-game) starter project for a complete host setup including asset extraction, QR code display, and player tracking.
+
 ## Features
 
 - **Dual-Port Architecture:**
   - **Port 8080:** Static File Server (serves the web controller).
-  - **Port 8081:** WebSocket Game Server (handles real-time logic).
+  - **Port 8082:** WebSocket Game Server (handles real-time logic).
 - **Session Recovery:** Tracks user secrets to support reconnection (handling page refreshes).
 - **Large Message Support:** Capable of sending game states larger than 64KB (64-bit frame lengths).
 - **Smart Network Discovery:** Uses the device IPv4 address for LAN URLs.
@@ -33,7 +35,8 @@ Config:
 - `initialState`: initial host state
 - `reducer`: `(state, action) => state` (shared reducer)
 - `port?`: HTTP static server port (default `8080`)
-- `wsPort?`: WebSocket game server port (default `8081`)
+- `wsPort?`: WebSocket game server port (default `8082`)
+- `staticDir?`: absolute path to the directory of static files to serve. On Android, APK assets live inside a zip archive and cannot be served directly — use this to point to a writable filesystem path where you've extracted the `www/` assets at runtime. Defaults to `${RNFS.MainBundlePath}/www`.
 - `devMode?`: if true, do not start the TV static file server; instead point phones at `devServerUrl`
 - `devServerUrl?`: URL of your laptop dev server (e.g. `http://192.168.1.50:5173`)
 - `debug?`: enable verbose logs
@@ -71,7 +74,7 @@ export default function App() {
         reducer: gameReducer,
         initialState: initialState,
         port: 8080, // Optional: HTTP port (default 8080)
-        wsPort: 8081, // Optional: WebSocket port (default 8081)
+        wsPort: 8082, // Optional: WebSocket port (default 8082)
         debug: true, // Optional: Enable detailed logs
       }}
     >
@@ -135,7 +138,7 @@ To iterate on your web controller without rebuilding the Android app constantly:
 
 The TV will now tell phones to load the controller from your laptop.
 
-Important: when the controller is served from the laptop, the client-side hook cannot infer the TV WebSocket host from `window.location.hostname`. In dev mode, pass `url: "ws://TV_IP:8081"` to `useGameClient()`.
+Important: when the controller is served from the laptop, the client-side hook cannot infer the TV WebSocket host from `window.location.hostname`. In dev mode, pass `url: "ws://TV_IP:8082"` to `useGameClient()`.
 
 ## Bundling / Assets
 

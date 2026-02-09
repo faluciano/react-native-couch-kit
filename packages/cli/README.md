@@ -2,6 +2,8 @@
 
 Developer tooling for React Native Party Kit.
 
+> **Starter Project:** See [Buzz](https://github.com/faluciano/buzz-tv-party-game) for a complete example that uses the CLI to bundle its web controller.
+
 ## Installation
 
 ```bash
@@ -35,11 +37,11 @@ bunx party-kit bundle --source ./my-web-app --output ./android/app/src/main/asse
 Spawns headless WebSocket bots to simulate players (useful for load testing and quick iteration).
 
 ```bash
-# Default: 4 bots, ws://localhost:8081
+# Default: 4 bots, ws://localhost:8082
 bunx party-kit simulate
 
 # Custom host + count
-bunx party-kit simulate --url ws://192.168.1.99:8081 --count 8
+bunx party-kit simulate --url ws://192.168.1.99:8082 --count 8
 
 # Action interval (ms)
 bunx party-kit simulate --interval 250

@@ -7,7 +7,7 @@ export interface IPlayer {
 }
 
 export interface IGameState {
-  status: "lobby" | "playing" | "ended";
+  status: string;
   players: Record<string, IPlayer>;
 }
 

@@ -4,7 +4,7 @@ The client-side library for the web controller. Designed to be lightweight and f
 
 ## Features
 
-- **Default connection:** By default, connects to `ws(s)://{window.location.hostname}:8081`.
+- **Default connection:** By default, connects to `ws(s)://{window.location.hostname}:8082`.
 - **Time synchronization:** `useServerTime()` helps estimate server time using periodic ping/pong.
 - **Asset preloading:** `usePreload()` is a small helper for preloading images and fetching other URLs.
 - **Optimistic UI:** State updates apply locally immediately while being sent to the server.
@@ -27,7 +27,7 @@ Config:
 
 - `reducer`: `(state, action) => state` (your shared reducer)
 - `initialState`: initial state used until the host hydrates
-- `url?`: explicit WebSocket URL. If omitted, the hook uses `ws(s)://{window.location.hostname}:8081`.
+- `url?`: explicit WebSocket URL. If omitted, the hook uses `ws(s)://{window.location.hostname}:8082`.
 - `debug?`: enable console logs
 - `onConnect?`, `onDisconnect?`: lifecycle callbacks
 
@@ -68,7 +68,7 @@ In dev, pass the TV WebSocket URL explicitly:
 useGameClient({
   reducer,
   initialState,
-  url: "ws://TV_IP:8081",
+  url: "ws://TV_IP:8082",
 });
 ```
 

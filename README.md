@@ -17,14 +17,14 @@ Turn an Android TV / Fire TV into a local party-game console and use phones as w
 
 ## How It Works
 
-- TV runs a static file server (default `:8080`) and a WebSocket game server (default `:8081`).
+- TV runs a static file server (default `:8080`) and a WebSocket game server (default `:8082`).
 - Phones open the controller page, connect via WebSocket, send actions, and receive state updates.
 
 ## Prerequisites / Supported
 
 - **Devices:** Android TV / Fire TV (host). Phones run any modern mobile browser (client).
 - **Network:** TV + phones on the same LAN/Wi-Fi. This is not an internet relay.
-- **Ports:** `8080` (HTTP) and `8081` (WebSocket) reachable on the LAN (configurable).
+- **Ports:** `8080` (HTTP) and `8082` (WebSocket) reachable on the LAN (configurable).
 - **Native deps:** `@party-kit/host` uses React Native native modules; it is not a pure-JS package.
 
 ## Non-goals
@@ -36,6 +36,8 @@ Turn an Android TV / Fire TV into a local party-game console and use phones as w
 ---
 
 ## 🚀 Usage Guide (Published Library)
+
+> **Starter Project:** The fastest way to get started is to clone the [Buzz](https://github.com/faluciano/buzz-tv-party-game) starter project — a fully working buzzer game that demonstrates the complete `@party-kit` setup (shared reducer, TV host, phone controller, build pipeline). Use it as a starting point for your own game.
 
 This guide assumes you are using the published `@party-kit/*` packages from npm.
 
@@ -141,6 +143,9 @@ export default function App() {
     </GameHostProvider>
   );
 }
+```
+
+> **Tip:** On Android, APK-bundled assets live inside a zip archive and cannot be served directly. Use the `staticDir` config option to point to a writable filesystem path where you've extracted the `www/` assets at runtime. See the [Buzz starter](https://github.com/faluciano/buzz-tv-party-game) for a working example with `useExtractAssets()`.
 
 function GameScreen() {
   const { state, serverUrl, serverError } = useGameHost();
@@ -187,7 +192,7 @@ export default function Controller() {
 
 - **System action types:** the runtime currently uses `HYDRATE`, `PLAYER_JOINED`, and `PLAYER_LEFT` as action types. Treat them as reserved and handle them in your reducer.
 - **State updates:** the host broadcasts full state; the client applies it by dispatching `{ type: "HYDRATE", payload: newState }`.
-- **Dev-mode WebSocket:** if the controller is served from your laptop (Vite), `useGameClient()` will try to connect WS to the laptop by default. In dev, pass `url: "ws://TV_IP:8081"`.
+- **Dev-mode WebSocket:** if the controller is served from your laptop (Vite), `useGameClient()` will try to connect WS to the laptop by default. In dev, pass `url: "ws://TV_IP:8082"`.
 
 ## Dev Workflow (Controller on Laptop)
 
@@ -212,7 +217,7 @@ On the controller (served from the laptop), explicitly point WS to the TV:
 useGameClient({
   reducer: gameReducer,
   initialState,
-  url: "ws://192.168.1.99:8081", // TV IP
+  url: "ws://192.168.1.99:8082", // TV IP
 });
 ```
 
@@ -311,7 +316,7 @@ When you make changes to the library:
 
 - Phone can’t open the controller page: confirm TV and phone are on the same Wi‑Fi; verify `serverUrl` is not null.
 - Phone opens page but actions do nothing: ensure your reducer handles `HYDRATE` (state sync) and the host isn’t erroring.
-- Dev mode WS fails: pass `url: "ws://TV_IP:8081"` to `useGameClient()`.
+- Dev mode WS fails: pass `url: "ws://TV_IP:8082"` to `useGameClient()`.
 - Connection is flaky: enable `debug` in host/client and watch logs; keep the TV from sleeping.
 
 ## Security Notes

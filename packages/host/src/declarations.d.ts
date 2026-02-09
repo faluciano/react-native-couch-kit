@@ -1,8 +1,6 @@
-declare module 'react-native-static-server' {
-    export default class StaticServer {
-        constructor(port: number, root?: string, opts?: { localOnly?: boolean; keepAlive?: boolean });
-        start(): Promise<string>;
-        stop(): void;
-        isRunning(): boolean;
-    }
+declare module "react-native-nitro-http-server" {
+  export class StaticServer {
+    start(port: number, path: string, host?: string): Promise<void>;
+    stop(): void;
+  }
 }
