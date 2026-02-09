@@ -1,14 +1,13 @@
 import { Command } from "commander";
-import fs from "fs-extra";
-import path from "path";
-import ora from "ora";
+import fs from "node:fs";
+import path from "node:path";
 import { toErrorMessage } from "@couch-kit/core";
 
 export const initCommand = new Command("init")
   .description("Scaffolds a new web controller project")
   .argument("[name]", "Project name", "web-controller")
   .action(async (name) => {
-    const spinner = ora(`Creating ${name}...`).start();
+    console.log(`Creating ${name}...`);
 
     try {
       const targetDir = path.resolve(process.cwd(), name);
@@ -17,7 +16,7 @@ export const initCommand = new Command("init")
         throw new Error(`Directory ${name} already exists`);
       }
 
-      await fs.ensureDir(targetDir);
+      fs.mkdirSync(targetDir, { recursive: true });
 
       // Create minimal Vite + React + TS scaffold
       const packageJson = {
@@ -44,55 +43,62 @@ export const initCommand = new Command("init")
         },
       };
 
-      await fs.writeJson(path.join(targetDir, "package.json"), packageJson, {
-        spaces: 2,
-      });
+      fs.writeFileSync(
+        path.join(targetDir, "package.json"),
+        JSON.stringify(packageJson, null, 2) + "\n",
+      );
 
       // Create basic tsconfig
-      await fs.writeJson(
+      fs.writeFileSync(
         path.join(targetDir, "tsconfig.json"),
-        {
-          compilerOptions: {
-            target: "ES2020",
-            useDefineForClassFields: true,
-            lib: ["ES2020", "DOM", "DOM.Iterable"],
-            module: "ESNext",
-            skipLibCheck: true,
-            moduleResolution: "bundler",
-            allowImportingTsExtensions: true,
-            resolveJsonModule: true,
-            isolatedModules: true,
-            noEmit: true,
-            jsx: "react-jsx",
-            strict: true,
-            noUnusedLocals: true,
-            noUnusedParameters: true,
-            noFallthroughCasesInSwitch: true,
+        JSON.stringify(
+          {
+            compilerOptions: {
+              target: "ES2020",
+              useDefineForClassFields: true,
+              lib: ["ES2020", "DOM", "DOM.Iterable"],
+              module: "ESNext",
+              skipLibCheck: true,
+              moduleResolution: "bundler",
+              allowImportingTsExtensions: true,
+              resolveJsonModule: true,
+              isolatedModules: true,
+              noEmit: true,
+              jsx: "react-jsx",
+              strict: true,
+              noUnusedLocals: true,
+              noUnusedParameters: true,
+              noFallthroughCasesInSwitch: true,
+            },
+            include: ["src"],
+            references: [{ path: "./tsconfig.node.json" }],
           },
-          include: ["src"],
-          references: [{ path: "./tsconfig.node.json" }],
-        },
-        { spaces: 2 },
+          null,
+          2,
+        ) + "\n",
       );
 
       // Create tsconfig.node.json
-      await fs.writeJson(
+      fs.writeFileSync(
         path.join(targetDir, "tsconfig.node.json"),
-        {
-          compilerOptions: {
-            composite: true,
-            skipLibCheck: true,
-            module: "ESNext",
-            moduleResolution: "bundler",
-            allowSyntheticDefaultImports: true,
+        JSON.stringify(
+          {
+            compilerOptions: {
+              composite: true,
+              skipLibCheck: true,
+              module: "ESNext",
+              moduleResolution: "bundler",
+              allowSyntheticDefaultImports: true,
+            },
+            include: ["vite.config.ts"],
           },
-          include: ["vite.config.ts"],
-        },
-        { spaces: 2 },
+          null,
+          2,
+        ) + "\n",
       );
 
       // Create vite.config.ts
-      await fs.writeFile(
+      fs.writeFileSync(
         path.join(targetDir, "vite.config.ts"),
         `
 import { defineConfig } from 'vite'
@@ -107,10 +113,10 @@ export default defineConfig({
       );
 
       // Create src directory
-      await fs.ensureDir(path.join(targetDir, "src"));
+      fs.mkdirSync(path.join(targetDir, "src"), { recursive: true });
 
       // Create index.html
-      await fs.writeFile(
+      fs.writeFileSync(
         path.join(targetDir, "index.html"),
         `
 <!doctype html>
@@ -129,7 +135,7 @@ export default defineConfig({
       );
 
       // Create main.tsx
-      await fs.writeFile(
+      fs.writeFileSync(
         path.join(targetDir, "src/main.tsx"),
         `
 import React from 'react'
@@ -146,7 +152,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       );
 
       // Create App.tsx
-      await fs.writeFile(
+      fs.writeFileSync(
         path.join(targetDir, "src/App.tsx"),
         `
 import { useGameClient } from '@couch-kit/client';
@@ -174,19 +180,19 @@ export default App
 `,
       );
 
-      await fs.writeFile(
+      fs.writeFileSync(
         path.join(targetDir, "src/index.css"),
         `
 body { margin: 0; background: #111; color: #fff; }
 `,
       );
 
-      spinner.succeed(`Created new project in ${name}`);
+      console.log(`Done! Created new project in ${name}`);
       console.log(
         `\nNext steps:\n  cd ${name}\n  bun install\n  bun run dev\n`,
       );
     } catch (e) {
-      spinner.fail(`Init failed: ${toErrorMessage(e)}`);
+      console.error(`Init failed: ${toErrorMessage(e)}`);
       process.exit(1);
     }
   });

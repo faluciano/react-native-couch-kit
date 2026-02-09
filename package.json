@@ -24,17 +24,5 @@
     "prettier": "^3.2.0",
     "typescript": "^5.4.0"
   },
-  "packageManager": "bun@1.2.19",
-  "dependencies": {
-    "@react-native/assets-registry": "^0.83.1",
-    "buffer": "^6.0.3",
-    "expo-build-properties": "^1.0.10",
-    "expo-modules-autolinking": "1.10.3",
-    "expo-modules-core": "~1.11.12",
-    "js-sha1": "^0.7.0"
-  },
-  "resolutions": {
-    "expo-asset": "9.0.2",
-    "expo-modules-autolinking": "1.10.3"
-  }
+  "packageManager": "bun@1.2.19"
 }

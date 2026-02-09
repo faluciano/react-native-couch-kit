@@ -1,8 +1,7 @@
 import { Command } from "commander";
-import fs from "fs-extra";
-import path from "path";
-import ora from "ora";
-import { execSync } from "child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { execSync } from "node:child_process";
 import { toErrorMessage } from "@couch-kit/core";
 
 export const bundleCommand = new Command("bundle")
@@ -19,7 +18,7 @@ export const bundleCommand = new Command("bundle")
   )
   .option("--no-build", "Skip build step (just copy)")
   .action(async (options) => {
-    const spinner = ora("Bundling controller...").start();
+    console.log("Bundling controller...");
 
     try {
       const sourceDir = path.resolve(process.cwd(), options.source);
@@ -28,13 +27,13 @@ export const bundleCommand = new Command("bundle")
 
       // 1. Build
       if (options.build) {
-        spinner.text = "Running build command...";
+        console.log("  Running build command...");
         // Auto-detect package manager/script
         if (fs.existsSync(path.join(sourceDir, "package.json"))) {
           // For now assume standard 'build' script
           execSync("bun run build", { cwd: sourceDir, stdio: "ignore" });
         } else {
-          spinner.warn("No package.json found, skipping build");
+          console.warn("  No package.json found, skipping build");
         }
       }
 
@@ -44,16 +43,17 @@ export const bundleCommand = new Command("bundle")
       }
 
       // 3. Clean Target
-      spinner.text = "Cleaning target directory...";
-      await fs.emptyDir(targetDir);
+      console.log("  Cleaning target directory...");
+      fs.rmSync(targetDir, { recursive: true, force: true });
+      fs.mkdirSync(targetDir, { recursive: true });
 
       // 4. Copy
-      spinner.text = "Copying assets...";
-      await fs.copy(distDir, targetDir);
+      console.log("  Copying assets...");
+      fs.cpSync(distDir, targetDir, { recursive: true });
 
-      spinner.succeed(`Controller bundled to ${options.output}`);
+      console.log(`Done! Controller bundled to ${options.output}`);
     } catch (e) {
-      spinner.fail(`Bundle failed: ${toErrorMessage(e)}`);
+      console.error(`Bundle failed: ${toErrorMessage(e)}`);
       process.exit(1);
     }
   });

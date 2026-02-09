@@ -5,6 +5,7 @@ import React, {
   useMemo,
   useReducer,
   useRef,
+  useCallback,
 } from "react";
 import { GameWebSocketServer } from "./websocket";
 import { useStaticServer } from "./server";
@@ -264,19 +265,38 @@ export function GameHostProvider<S extends IGameState, A extends IAction>({
     };
   }, []); // Run once on mount
 
-  // 3. Broadcast State Updates
-  // Whenever React state changes, send it to all clients that have been welcomed
-  useEffect(() => {
+  // 3. Throttled State Broadcasts (~30fps)
+  // Batches rapid state changes so at most one broadcast is sent per ~33ms frame,
+  // reducing serialization overhead and network traffic for fast-updating games.
+  const broadcastPending = useRef(false);
+  const broadcastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const broadcastState = useCallback(() => {
     if (wsServer.current) {
       wsServer.current.broadcast({
         type: MessageTypes.STATE_UPDATE,
         payload: {
-          newState: state,
+          newState: stateRef.current,
           timestamp: Date.now(),
         },
       });
     }
-  }, [state]);
+    broadcastPending.current = false;
+  }, []);
+
+  useEffect(() => {
+    if (!broadcastPending.current) {
+      broadcastPending.current = true;
+      broadcastTimer.current = setTimeout(broadcastState, 33); // ~30fps
+    }
+
+    return () => {
+      if (broadcastTimer.current) {
+        clearTimeout(broadcastTimer.current);
+        broadcastTimer.current = null;
+      }
+    };
+  }, [state, broadcastState]);
 
   // Memoize context value to prevent unnecessary re-renders of consumers
   // that only use stable references like dispatch

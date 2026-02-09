@@ -22,6 +22,14 @@
   "main": "src/index.tsx",
   "react-native": "src/index.tsx",
   "source": "src/index.tsx",
+  "exports": {
+    ".": {
+      "react-native": "./src/index.tsx",
+      "types": "./src/index.tsx",
+      "default": "./src/index.tsx"
+    }
+  },
+  "sideEffects": false,
   "files": [
     "src",
     "lib",
@@ -44,11 +52,11 @@
   },
   "dependencies": {
     "@couch-kit/core": "workspace:*",
+    "buffer": "^6.0.3",
     "js-sha1": "^0.7.0",
     "react-native-fs": "^2.20.0",
     "react-native-network-info": "^5.2.1",
     "react-native-nitro-http-server": "^1.5.4",
-    "react-native-nitro-modules": "^0.33.2",
     "react-native-tcp-socket": "^6.0.6"
   },
   "devDependencies": {
@@ -61,6 +69,7 @@
   },
   "peerDependencies": {
     "react": "*",
-    "react-native": "*"
+    "react-native": "*",
+    "react-native-nitro-modules": ">=0.33.0"
   }
 }

@@ -50,6 +50,43 @@ const OPCODE = {
 // Simple WebSocket Frame Parser/Builder
 const GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
+/** Initial capacity for per-client receive buffers. */
+const INITIAL_BUFFER_CAPACITY = 4096;
+
+/**
+ * Append data to a managed socket's buffer, growing capacity geometrically
+ * to avoid re-allocation on every TCP data event.
+ */
+function appendToBuffer(managed: ManagedSocket, data: Buffer): void {
+  const needed = managed.bufferLength + data.length;
+
+  if (needed > managed.buffer.length) {
+    // Grow by at least 2x or to fit the new data, whichever is larger
+    const newCapacity = Math.max(managed.buffer.length * 2, needed);
+    const grown = Buffer.alloc(newCapacity);
+    managed.buffer.copy(grown, 0, 0, managed.bufferLength);
+    managed.buffer = grown;
+  }
+
+  data.copy(managed.buffer, managed.bufferLength);
+  managed.bufferLength = needed;
+}
+
+/**
+ * Compact the buffer by discarding consumed bytes from the front.
+ * If all data has been consumed, reset the length to 0 without re-allocating.
+ */
+function compactBuffer(managed: ManagedSocket, consumed: number): void {
+  const remaining = managed.bufferLength - consumed;
+  if (remaining <= 0) {
+    managed.bufferLength = 0;
+    return;
+  }
+  // Shift remaining bytes to the front of the existing buffer
+  managed.buffer.copy(managed.buffer, 0, consumed, managed.bufferLength);
+  managed.bufferLength = remaining;
+}
+
 interface DecodedFrame {
   opcode: number;
   payload: Buffer;
@@ -64,6 +101,8 @@ interface ManagedSocket {
   id: string;
   isHandshakeComplete: boolean;
   buffer: Buffer;
+  /** Number of valid bytes currently in `buffer` (may be less than buffer.length). */
+  bufferLength: number;
   lastPong: number;
 }
 
@@ -105,7 +144,8 @@ export class GameWebSocketServer extends EventEmitter<WebSocketServerEvents> {
         socket: rawSocket,
         id: "",
         isHandshakeComplete: false,
-        buffer: Buffer.alloc(0),
+        buffer: Buffer.alloc(INITIAL_BUFFER_CAPACITY),
+        bufferLength: 0,
         lastPong: Date.now(),
       };
 
@@ -113,24 +153,26 @@ export class GameWebSocketServer extends EventEmitter<WebSocketServerEvents> {
         this.log(
           `[WebSocket] Received data chunk: ${typeof data === "string" ? data.length : data.length} bytes`,
         );
-        // Concatenate new data
-        managed.buffer = Buffer.concat([
-          managed.buffer,
-          typeof data === "string" ? Buffer.from(data) : data,
-        ]);
+        // Append new data using growing buffer strategy (avoids Buffer.concat per event)
+        const incoming = typeof data === "string" ? Buffer.from(data) : data;
+        appendToBuffer(managed, incoming);
 
         // Handshake not yet performed?
         if (!managed.isHandshakeComplete) {
-          const header = managed.buffer.toString("utf8");
+          const header = managed.buffer.toString(
+            "utf8",
+            0,
+            managed.bufferLength,
+          );
           const endOfHeader = header.indexOf("\r\n\r\n");
           if (endOfHeader !== -1) {
             this.handleHandshake(managed, header);
-            // Retain any bytes after the handshake (could be the first WS frame)
+            // Compact buffer past the handshake header
             const headerByteLength = Buffer.byteLength(
               header.substring(0, endOfHeader + 4),
               "utf8",
             );
-            managed.buffer = managed.buffer.slice(headerByteLength);
+            compactBuffer(managed, headerByteLength);
             managed.isHandshakeComplete = true;
             // Fall through to process any remaining frames below
           } else {
@@ -139,9 +181,7 @@ export class GameWebSocketServer extends EventEmitter<WebSocketServerEvents> {
         }
 
         // Process all complete frames in the buffer
-        this.processFrames(managed, (remaining) => {
-          managed.buffer = remaining;
-        });
+        this.processFrames(managed);
       });
 
       rawSocket.on("error", (error: Error) => {
@@ -204,16 +244,15 @@ export class GameWebSocketServer extends EventEmitter<WebSocketServerEvents> {
     }, this.keepaliveInterval);
   }
 
-  private processFrames(
-    managed: ManagedSocket,
-    setBuffer: (b: Buffer) => void,
-  ) {
-    let { buffer } = managed;
+  private processFrames(managed: ManagedSocket) {
+    let offset = 0;
 
-    while (buffer.length > 0) {
+    while (offset < managed.bufferLength) {
+      // Create a view of the unconsumed portion for decoding
+      const view = managed.buffer.subarray(offset, managed.bufferLength);
       let frame: DecodedFrame | null;
       try {
-        frame = this.decodeFrame(buffer);
+        frame = this.decodeFrame(view);
       } catch (error) {
         // Frame too large or malformed -- disconnect the client
         this.log(`[WebSocket] Frame error from ${managed.id}:`, error);
@@ -226,12 +265,12 @@ export class GameWebSocketServer extends EventEmitter<WebSocketServerEvents> {
       }
 
       if (!frame) {
-        // Incomplete frame -- keep buffer, wait for more data
+        // Incomplete frame -- keep remaining bytes, wait for more data
         break;
       }
 
-      // Advance buffer past the consumed frame
-      buffer = buffer.slice(frame.bytesConsumed);
+      // Advance past the consumed frame
+      offset += frame.bytesConsumed;
 
       // Handle frame by opcode
       switch (frame.opcode) {
@@ -302,7 +341,8 @@ export class GameWebSocketServer extends EventEmitter<WebSocketServerEvents> {
       if (managed.socket.destroyed) break;
     }
 
-    setBuffer(buffer);
+    // Compact buffer: shift unconsumed bytes to the front
+    compactBuffer(managed, offset);
   }
 
   /**
@@ -486,8 +526,8 @@ export class GameWebSocketServer extends EventEmitter<WebSocketServerEvents> {
 
     let payload: Buffer;
     if (isMasked) {
-      const mask = buffer.slice(headerLength, headerLength + 4);
-      const maskedPayload = buffer.slice(
+      const mask = buffer.subarray(headerLength, headerLength + 4);
+      const maskedPayload = buffer.subarray(
         headerLength + 4,
         headerLength + 4 + payloadLength,
       );
@@ -497,7 +537,7 @@ export class GameWebSocketServer extends EventEmitter<WebSocketServerEvents> {
       }
     } else {
       payload = Buffer.from(
-        buffer.slice(headerLength, headerLength + payloadLength),
+        buffer.subarray(headerLength, headerLength + payloadLength),
       );
     }
 

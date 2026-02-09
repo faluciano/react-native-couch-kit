@@ -17,8 +17,16 @@
     "reducer"
   ],
   "main": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "sideEffects": false,
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir ./dist --target node",
+    "build": "bun build ./src/index.ts --outdir ./dist --target browser",
     "test": "bun test",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",

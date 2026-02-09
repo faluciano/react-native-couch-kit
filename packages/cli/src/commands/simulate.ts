@@ -1,5 +1,4 @@
 import { Command } from "commander";
-import WebSocket from "ws";
 import { MessageTypes } from "@couch-kit/core";
 
 export const simulateCommand = new Command("simulate")
@@ -20,7 +19,7 @@ export const simulateCommand = new Command("simulate")
     for (let i = 0; i < count; i++) {
       const ws = new WebSocket(url);
 
-      ws.on("open", () => {
+      ws.addEventListener("open", () => {
         console.log(`[Bot ${i}] Connected`);
 
         // Join
@@ -49,12 +48,12 @@ export const simulateCommand = new Command("simulate")
         intervals.push(id);
       });
 
-      ws.on("close", () => {
+      ws.addEventListener("close", () => {
         console.log(`[Bot ${i}] Disconnected`);
       });
 
-      ws.on("error", (e) => {
-        console.error(`[Bot ${i}] Error:`, e.message);
+      ws.addEventListener("error", (e) => {
+        console.error(`[Bot ${i}] Error:`, e);
       });
 
       bots.push(ws);
