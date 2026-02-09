@@ -136,7 +136,7 @@ import { usePreload } from "@couch-kit/client";
 const ASSETS = ["/images/avatar_1.png", "/sounds/buzz.mp3"];
 
 function App() {
-  const { loaded, progress } = usePreload(ASSETS);
+  const { loaded, progress, failedAssets } = usePreload(ASSETS);
 
   if (!loaded) {
     return <div>Loading... {Math.round(progress)}%</div>;
@@ -148,4 +148,4 @@ function App() {
 
 ## Notes / Limitations
 
-- `usePreload()` preloads images via `Image()` and uses `fetch()` for other URLs; it does not currently send the protocol `ASSETS_LOADED` message.
+- `usePreload()` preloads images via `Image()` and uses `fetch()` for other URLs; it does not currently send the protocol `ASSETS_LOADED` message. Failed assets are available via `failedAssets`.

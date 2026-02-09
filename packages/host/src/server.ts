@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { StaticServer } from "react-native-nitro-http-server";
 import RNFS from "react-native-fs";
 import { getBestIpAddress } from "./network";
+import { DEFAULT_HTTP_PORT, toErrorMessage } from "@couch-kit/core";
 
-interface CouchKitHostConfig {
+export interface CouchKitHostConfig {
   port?: number;
   devMode?: boolean;
   devServerUrl?: string; // e.g. "http://localhost:5173"
@@ -13,9 +14,11 @@ interface CouchKitHostConfig {
 export const useStaticServer = (config: CouchKitHostConfig) => {
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<Error | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let server: StaticServer | null = null;
+    setLoading(true);
 
     const startServer = async () => {
       // In Dev Mode, we don't start the static server.
@@ -29,6 +32,7 @@ export const useStaticServer = (config: CouchKitHostConfig) => {
         } else {
           setError(new Error("Could not detect TV IP address"));
         }
+        setLoading(false);
         return;
       }
 
@@ -37,7 +41,7 @@ export const useStaticServer = (config: CouchKitHostConfig) => {
         // Use staticDir if provided (required on Android where MainBundlePath is undefined),
         // otherwise fall back to iOS MainBundlePath
         const path = config.staticDir || `${RNFS.MainBundlePath}/www`;
-        const port = config.port || 8080;
+        const port = config.port || DEFAULT_HTTP_PORT;
 
         server = new StaticServer();
 
@@ -49,11 +53,13 @@ export const useStaticServer = (config: CouchKitHostConfig) => {
         if (ip) {
           setUrl(`http://${ip}:${port}`);
         } else {
-          // Fallback if we can't detect IP (though HttpServer doesn't return the URL directly like the old lib)
+          // Fallback if we can't detect IP
           setUrl(`http://localhost:${port}`);
         }
       } catch (e) {
-        setError(e as Error);
+        setError(new Error(toErrorMessage(e)));
+      } finally {
+        setLoading(false);
       }
     };
 
@@ -66,5 +72,5 @@ export const useStaticServer = (config: CouchKitHostConfig) => {
     };
   }, [config.port, config.devMode, config.devServerUrl, config.staticDir]);
 
-  return { url, error };
+  return { url, error, loading };
 };

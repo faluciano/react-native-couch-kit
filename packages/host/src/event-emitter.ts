@@ -1,15 +1,32 @@
 /**
- * Lightweight EventEmitter implementation for cross-platform compatibility.
+ * Lightweight, type-safe EventEmitter implementation for cross-platform compatibility.
  * Works in browser, React Native, and Node.js environments.
+ *
+ * @typeParam EventMap - A record mapping event names to their listener argument tuples.
+ *
+ * @example
+ * ```ts
+ * type MyEvents = {
+ *   data: [payload: string];
+ *   error: [err: Error];
+ *   close: [];
+ * };
+ * const emitter = new EventEmitter<MyEvents>();
+ * emitter.on("data", (payload) => { ... }); // payload is typed as string
+ * ```
  */
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Listener = (...args: any[]) => void;
+export class EventEmitter<
+  EventMap extends Record<string, any[]> = Record<string, any[]>,
+> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private listeners: Map<string, Array<(...args: any[]) => void>> = new Map();
 
-export class EventEmitter {
-  private listeners: Map<string, Listener[]> = new Map();
-
-  on(event: string, listener: Listener): this {
+  on<K extends string & keyof EventMap>(
+    event: K,
+    listener: (...args: EventMap[K]) => void,
+  ): this {
     if (!this.listeners.has(event)) {
       this.listeners.set(event, []);
     }
@@ -17,15 +34,22 @@ export class EventEmitter {
     return this;
   }
 
-  once(event: string, listener: Listener): this {
-    const onceWrapper: Listener = (...args: any[]) => {
-      this.off(event, onceWrapper);
-      listener(...args);
+  once<K extends string & keyof EventMap>(
+    event: K,
+    listener: (...args: EventMap[K]) => void,
+  ): this {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const onceWrapper = (...args: any[]) => {
+      this.off(event, onceWrapper as (...a: EventMap[K]) => void);
+      listener(...(args as EventMap[K]));
     };
-    return this.on(event, onceWrapper);
+    return this.on(event, onceWrapper as (...a: EventMap[K]) => void);
   }
 
-  off(event: string, listener: Listener): this {
+  off<K extends string & keyof EventMap>(
+    event: K,
+    listener: (...args: EventMap[K]) => void,
+  ): this {
     const listeners = this.listeners.get(event);
     if (listeners) {
       const index = listeners.indexOf(listener);
@@ -36,7 +60,10 @@ export class EventEmitter {
     return this;
   }
 
-  emit(event: string, ...args: any[]): boolean {
+  emit<K extends string & keyof EventMap>(
+    event: K,
+    ...args: EventMap[K]
+  ): boolean {
     const listeners = this.listeners.get(event);
     if (!listeners || listeners.length === 0) {
       return false;
@@ -54,7 +81,7 @@ export class EventEmitter {
     return true;
   }
 
-  removeAllListeners(event?: string): this {
+  removeAllListeners<K extends string & keyof EventMap>(event?: K): this {
     if (event) {
       this.listeners.delete(event);
     } else {
@@ -63,7 +90,7 @@ export class EventEmitter {
     return this;
   }
 
-  listenerCount(event: string): number {
+  listenerCount<K extends string & keyof EventMap>(event: K): number {
     return this.listeners.get(event)?.length ?? 0;
   }
 }

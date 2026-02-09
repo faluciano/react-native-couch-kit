@@ -1,5 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { MessageTypes } from "@couch-kit/core";
+import {
+  MessageTypes,
+  generateId,
+  DEFAULT_SYNC_INTERVAL,
+  MAX_PENDING_PINGS,
+} from "@couch-kit/core";
 
 interface TimeSyncState {
   offset: number; // Difference between server time and local time
@@ -58,7 +63,13 @@ export function useServerTime(socket: WebSocket | null) {
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
 
     const sync = () => {
-      const id = Math.random().toString(36).substring(7);
+      // Prevent unbounded growth if PONGs are lost
+      if (pings.current.size >= MAX_PENDING_PINGS) {
+        const oldest = pings.current.keys().next().value;
+        if (oldest !== undefined) pings.current.delete(oldest);
+      }
+
+      const id = generateId();
       const timestamp = Date.now();
       pings.current.set(id, timestamp);
 
@@ -73,8 +84,7 @@ export function useServerTime(socket: WebSocket | null) {
     // Initial sync
     sync();
 
-    // Sync every 5 seconds
-    const interval = setInterval(sync, 5000);
+    const interval = setInterval(sync, DEFAULT_SYNC_INTERVAL);
     return () => clearInterval(interval);
   }, [socket]);
 

@@ -2,6 +2,7 @@ import { Command } from "commander";
 import fs from "fs-extra";
 import path from "path";
 import ora from "ora";
+import { toErrorMessage } from "@couch-kit/core";
 
 export const initCommand = new Command("init")
   .description("Scaffolds a new web controller project")
@@ -185,7 +186,7 @@ body { margin: 0; background: #111; color: #fff; }
         `\nNext steps:\n  cd ${name}\n  bun install\n  bun run dev\n`,
       );
     } catch (e) {
-      spinner.fail(`Init failed: ${(e as Error).message}`);
+      spinner.fail(`Init failed: ${toErrorMessage(e)}`);
       process.exit(1);
     }
   });

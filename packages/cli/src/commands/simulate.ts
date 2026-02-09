@@ -12,9 +12,10 @@ export const simulateCommand = new Command("simulate")
     const url = options.url;
     const interval = parseInt(options.interval);
 
-    console.log(`🤖 Spawning ${count} bots connecting to ${url}...`);
+    console.log(`Spawning ${count} bots connecting to ${url}...`);
 
     const bots: WebSocket[] = [];
+    const intervals: ReturnType<typeof setInterval>[] = [];
 
     for (let i = 0; i < count; i++) {
       const ws = new WebSocket(url);
@@ -26,12 +27,12 @@ export const simulateCommand = new Command("simulate")
         ws.send(
           JSON.stringify({
             type: MessageTypes.JOIN,
-            payload: { name: `Bot ${i}`, avatar: "🤖" },
+            payload: { name: `Bot ${i}`, avatar: "bot" },
           }),
         );
 
         // Random Actions Loop
-        setInterval(
+        const id = setInterval(
           () => {
             if (ws.readyState === WebSocket.OPEN) {
               ws.send(
@@ -44,6 +45,8 @@ export const simulateCommand = new Command("simulate")
           },
           interval + Math.random() * 500,
         ); // Add jitter
+
+        intervals.push(id);
       });
 
       ws.on("close", () => {
@@ -64,6 +67,7 @@ export const simulateCommand = new Command("simulate")
 
     process.on("SIGINT", () => {
       console.log("\nStopping bots...");
+      intervals.forEach((id) => clearInterval(id));
       bots.forEach((b) => b.close());
       process.exit();
     });

@@ -1,29 +1,37 @@
 import { useState, useEffect, useRef, useCallback, useReducer } from "react";
 import {
   MessageTypes,
+  InternalActionTypes,
+  DEFAULT_WS_PORT_OFFSET,
+  DEFAULT_MAX_RETRIES,
+  DEFAULT_BASE_DELAY,
+  DEFAULT_MAX_DELAY,
+  generateId,
+  createGameReducer,
   type HostMessage,
   type IGameState,
   type IAction,
+  type InternalAction,
 } from "@couch-kit/core";
 import { useServerTime } from "./time-sync";
 
-// Reconnection Constants
-const MAX_RETRIES = 5;
-const BASE_DELAY = 1000;
-
-interface ClientConfig<S extends IGameState, A extends IAction> {
+export interface ClientConfig<S extends IGameState, A extends IAction> {
   url?: string; // Full WebSocket URL (overrides auto-detection)
   wsPort?: number; // WebSocket port (default: auto-detected as HTTP port + 2)
-  reducer: (state: S, action: A) => S;
+  reducer: (state: S, action: A | InternalAction<S>) => S;
   initialState: S;
   name?: string; // Player display name (default: "Player")
-  avatar?: string; // Player avatar emoji (default: "😀")
+  avatar?: string; // Player avatar emoji (default: "\u{1F600}")
+  /** Maximum reconnection attempts before giving up (default: 5). */
+  maxRetries?: number;
+  /** Base delay (ms) for exponential backoff reconnection (default: 1000). */
+  baseDelay?: number;
+  /** Maximum delay (ms) cap for reconnection backoff (default: 10000). */
+  maxDelay?: number;
   onConnect?: () => void;
   onDisconnect?: () => void;
   debug?: boolean;
 }
-
-import { createGameReducer } from "@couch-kit/core";
 
 export function useGameClient<S extends IGameState, A extends IAction>(
   config: ClientConfig<S, A>,
@@ -42,65 +50,85 @@ export function useGameClient<S extends IGameState, A extends IAction>(
 
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectAttempts = useRef(0);
-  const reconnectTimer = useRef<Timer | null>(null);
+  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const intentionalClose = useRef(false);
+
+  // Keep refs for values used inside connect() to avoid stale closures
+  const configRef = useRef(config);
+  useEffect(() => {
+    configRef.current = config;
+  });
 
   // Time Sync Hook
-  const { getServerTime, handlePong } = useServerTime(socketRef.current);
+  const { getServerTime, rtt, handlePong } = useServerTime(socketRef.current);
+
+  const maxRetries = config.maxRetries ?? DEFAULT_MAX_RETRIES;
+  const baseDelay = config.baseDelay ?? DEFAULT_BASE_DELAY;
+  const maxDelay = config.maxDelay ?? DEFAULT_MAX_DELAY;
 
   const connect = useCallback(() => {
+    const cfg = configRef.current;
+    intentionalClose.current = false;
+
     // 1. Magic Client: Determine URL
     // If explicit URL provided, use it.
     // Otherwise, assume we are being served by the Host's static server,
     // so derive the WebSocket URL from window.location.
-    // Convention: WS port = HTTP port + 2 (e.g., HTTP 8080 → WS 8082)
+    // Convention: WS port = HTTP port + 2 (e.g., HTTP 8080 -> WS 8082)
     // Port + 1 is skipped to avoid conflicts with Metro bundler (which uses 8081)
-    let wsUrl = config.url;
+    let wsUrl = cfg.url;
 
     if (!wsUrl && typeof window !== "undefined") {
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const host = window.location.hostname;
       const httpPort = parseInt(window.location.port, 10) || 80;
-      const wsPort = config.wsPort || httpPort + 2;
+      const wsPort = cfg.wsPort || httpPort + DEFAULT_WS_PORT_OFFSET;
       wsUrl = `${protocol}//${host}:${wsPort}`;
     }
 
     if (!wsUrl) return;
 
-    if (config.debug) console.log(`[GameClient] Connecting to ${wsUrl}`);
+    if (cfg.debug) console.log(`[GameClient] Connecting to ${wsUrl}`);
     setStatus("connecting");
 
     const ws = new WebSocket(wsUrl);
     socketRef.current = ws;
 
     ws.onopen = () => {
+      const currentCfg = configRef.current;
       setStatus("connected");
       reconnectAttempts.current = 0;
-      config.onConnect?.();
+      currentCfg.onConnect?.();
 
-      // Session Recovery Logic
+      // Session Recovery Logic -- use cryptographically random secrets
       let secret: string | null = null;
       try {
         secret = localStorage.getItem("ck_secret");
         if (!secret) {
-          secret = Math.random().toString(36).substring(2, 15);
+          secret = generateId();
           localStorage.setItem("ck_secret", secret);
         }
       } catch {
         // localStorage unavailable (Safari private browsing, restrictive WebViews, etc.)
-        secret = Math.random().toString(36).substring(2, 15);
+        secret = generateId();
       }
 
       // Join with secret
-      ws.send(
-        JSON.stringify({
-          type: MessageTypes.JOIN,
-          payload: {
-            name: config.name || "Player",
-            avatar: config.avatar || "\u{1F600}",
-            secret,
-          },
-        }),
-      );
+      try {
+        ws.send(
+          JSON.stringify({
+            type: MessageTypes.JOIN,
+            payload: {
+              name: currentCfg.name || "Player",
+              avatar: currentCfg.avatar || "\u{1F600}",
+              secret,
+            },
+          }),
+        );
+      } catch (e) {
+        if (currentCfg.debug)
+          console.error("[GameClient] Failed to send JOIN:", e);
+      }
     };
 
     ws.onmessage = (event) => {
@@ -111,16 +139,18 @@ export function useGameClient<S extends IGameState, A extends IAction>(
           case MessageTypes.WELCOME:
             setPlayerId(msg.payload.playerId);
             // Hydrate state from server (Single Source of Truth)
-            // The WELCOME payload contains the full authoritative game state.
-            // Dispatch HYDRATE which is handled by createGameReducer in @couch-kit/core.
-            // @ts-expect-error - HYDRATE is an internal action managed by createGameReducer
-            dispatchLocal({ type: "HYDRATE", payload: msg.payload.state });
+            dispatchLocal({
+              type: InternalActionTypes.HYDRATE,
+              payload: msg.payload.state as S,
+            } as InternalAction<S>);
             break;
 
           case MessageTypes.STATE_UPDATE:
             // Full state replacement from the host's authoritative state.
-            // @ts-expect-error - HYDRATE is an internal action managed by createGameReducer
-            dispatchLocal({ type: "HYDRATE", payload: msg.payload.newState });
+            dispatchLocal({
+              type: InternalActionTypes.HYDRATE,
+              payload: msg.payload.newState as S,
+            } as InternalAction<S>);
             break;
 
           case MessageTypes.PONG:
@@ -132,19 +162,24 @@ export function useGameClient<S extends IGameState, A extends IAction>(
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       setStatus("disconnected");
-      config.onDisconnect?.();
+      configRef.current.onDisconnect?.();
 
-      // Aggressive Reconnection Logic
-      if (reconnectAttempts.current < MAX_RETRIES) {
+      // Don't reconnect if the close was intentional or if the server
+      // sent a policy/unexpected error close code
+      if (intentionalClose.current) return;
+      if (event.code === 1008 || event.code === 1011) return;
+
+      // Exponential backoff reconnection
+      if (reconnectAttempts.current < maxRetries) {
         const delay = Math.min(
-          BASE_DELAY * Math.pow(2, reconnectAttempts.current),
-          10000,
+          baseDelay * Math.pow(2, reconnectAttempts.current),
+          maxDelay,
         );
         reconnectAttempts.current++;
 
-        if (config.debug)
+        if (configRef.current.debug)
           console.log(`[GameClient] Reconnecting in ${delay}ms...`);
 
         reconnectTimer.current = setTimeout(() => {
@@ -154,19 +189,51 @@ export function useGameClient<S extends IGameState, A extends IAction>(
     };
 
     ws.onerror = (e) => {
-      if (config.debug) console.error("[GameClient] Error", e);
+      if (configRef.current.debug) console.error("[GameClient] Error", e);
       setStatus("error");
     };
-  }, [config.url, config.wsPort, config.debug]);
+    // Only re-create the connect function when URL/port actually changes.
+    // Config values like name, avatar, callbacks are read from configRef.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config.url, config.wsPort, maxRetries, baseDelay, maxDelay]);
 
   // Initial Connection
   useEffect(() => {
     connect();
     return () => {
+      intentionalClose.current = true;
       if (socketRef.current) socketRef.current.close();
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
     };
   }, [connect]);
+
+  /**
+   * Manually disconnect from the host.
+   * Prevents automatic reconnection.
+   */
+  const disconnect = useCallback(() => {
+    intentionalClose.current = true;
+    if (reconnectTimer.current) {
+      clearTimeout(reconnectTimer.current);
+      reconnectTimer.current = null;
+    }
+    if (socketRef.current) {
+      socketRef.current.close();
+      socketRef.current = null;
+    }
+    setStatus("disconnected");
+  }, []);
+
+  /**
+   * Manually reconnect to the host.
+   * Resets the reconnection attempt counter.
+   */
+  const reconnect = useCallback(() => {
+    disconnect();
+    reconnectAttempts.current = 0;
+    // Small delay to let the close complete
+    setTimeout(() => connect(), 50);
+  }, [disconnect, connect]);
 
   // Action Dispatcher
   const sendAction = useCallback((action: A) => {
@@ -190,5 +257,11 @@ export function useGameClient<S extends IGameState, A extends IAction>(
     playerId,
     sendAction,
     getServerTime,
+    /** Round-trip time (ms) to the server. Updated periodically via PING/PONG. */
+    rtt,
+    /** Manually disconnect from the host. Prevents automatic reconnection. */
+    disconnect,
+    /** Manually reconnect to the host. Resets the reconnection attempt counter. */
+    reconnect,
   };
 }

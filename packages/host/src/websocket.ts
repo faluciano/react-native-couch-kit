@@ -3,18 +3,39 @@
  * Built on top of react-native-tcp-socket
  *
  * Supports: text frames, close frames, ping/pong, multi-frame TCP packets,
- * and robust buffer management per RFC 6455.
+ * server-side keepalive, frame size limits, and robust buffer management per RFC 6455.
  */
 
 import TcpSocket from "react-native-tcp-socket";
 import { EventEmitter } from "./event-emitter";
 import { Buffer } from "buffer";
 import { sha1 } from "js-sha1";
+import {
+  generateId,
+  MAX_FRAME_SIZE,
+  KEEPALIVE_INTERVAL,
+  KEEPALIVE_TIMEOUT,
+} from "@couch-kit/core";
 
-interface WebSocketConfig {
+export interface WebSocketConfig {
   port: number;
   debug?: boolean;
+  /** Maximum allowed frame payload size in bytes (default: 1 MB). */
+  maxFrameSize?: number;
+  /** Interval (ms) between server-side keepalive pings (default: 30s). 0 disables. */
+  keepaliveInterval?: number;
+  /** Timeout (ms) to wait for a pong after a keepalive ping (default: 10s). */
+  keepaliveTimeout?: number;
 }
+
+/** Event map for type-safe event emission. */
+export type WebSocketServerEvents = {
+  connection: [socketId: string];
+  message: [socketId: string, message: unknown];
+  disconnect: [socketId: string];
+  listening: [port: number];
+  error: [error: Error];
+};
 
 // WebSocket opcodes (RFC 6455 Section 5.2)
 const OPCODE = {
@@ -35,19 +56,34 @@ interface DecodedFrame {
   bytesConsumed: number;
 }
 
-export class GameWebSocketServer extends EventEmitter {
+// Internal type for a TCP socket with our added management properties.
+// We use `any` for the raw socket since react-native-tcp-socket doesn't export a clean type.
+interface ManagedSocket {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private server: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private clients: Map<string, any>;
+  socket: any;
+  id: string;
+  isHandshakeComplete: boolean;
+  buffer: Buffer;
+  lastPong: number;
+}
+
+export class GameWebSocketServer extends EventEmitter<WebSocketServerEvents> {
+  private server: ReturnType<typeof TcpSocket.createServer> | null = null;
+  private clients: Map<string, ManagedSocket> = new Map();
   private port: number;
   private debug: boolean;
+  private maxFrameSize: number;
+  private keepaliveInterval: number;
+  private keepaliveTimeout: number;
+  private keepaliveTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(config: WebSocketConfig) {
     super();
     this.port = config.port;
     this.debug = !!config.debug;
-    this.clients = new Map();
+    this.maxFrameSize = config.maxFrameSize ?? MAX_FRAME_SIZE;
+    this.keepaliveInterval = config.keepaliveInterval ?? KEEPALIVE_INTERVAL;
+    this.keepaliveTimeout = config.keepaliveTimeout ?? KEEPALIVE_TIMEOUT;
   }
 
   private log(...args: unknown[]) {
@@ -56,46 +92,46 @@ export class GameWebSocketServer extends EventEmitter {
     }
   }
 
-  private generateSocketId(): string {
-    // Generate a 21-character base36 ID for negligible collision probability
-    const a = Math.random().toString(36).substring(2, 15); // 13 chars
-    const b = Math.random().toString(36).substring(2, 10); // 8 chars
-    return a + b;
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   public start() {
     this.log(`[WebSocket] Starting server on port ${this.port}...`);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.server = TcpSocket.createServer((socket: any) => {
-      this.log(
-        `[WebSocket] New connection from ${socket.address?.()?.address}`,
-      );
-      let buffer: Buffer = Buffer.alloc(0);
 
-      socket.on("data", (data: Buffer | string) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    this.server = TcpSocket.createServer((rawSocket: any) => {
+      this.log(
+        `[WebSocket] New connection from ${rawSocket.address?.()?.address}`,
+      );
+
+      const managed: ManagedSocket = {
+        socket: rawSocket,
+        id: "",
+        isHandshakeComplete: false,
+        buffer: Buffer.alloc(0),
+        lastPong: Date.now(),
+      };
+
+      rawSocket.on("data", (data: Buffer | string) => {
         this.log(
           `[WebSocket] Received data chunk: ${typeof data === "string" ? data.length : data.length} bytes`,
         );
         // Concatenate new data
-        buffer = Buffer.concat([
-          buffer,
+        managed.buffer = Buffer.concat([
+          managed.buffer,
           typeof data === "string" ? Buffer.from(data) : data,
         ]);
 
         // Handshake not yet performed?
-        if (!socket.isHandshakeComplete) {
-          const header = buffer.toString("utf8");
+        if (!managed.isHandshakeComplete) {
+          const header = managed.buffer.toString("utf8");
           const endOfHeader = header.indexOf("\r\n\r\n");
           if (endOfHeader !== -1) {
-            this.handleHandshake(socket, header);
+            this.handleHandshake(managed, header);
             // Retain any bytes after the handshake (could be the first WS frame)
             const headerByteLength = Buffer.byteLength(
               header.substring(0, endOfHeader + 4),
               "utf8",
             );
-            buffer = buffer.slice(headerByteLength);
-            socket.isHandshakeComplete = true;
+            managed.buffer = managed.buffer.slice(headerByteLength);
+            managed.isHandshakeComplete = true;
             // Fall through to process any remaining frames below
           } else {
             return;
@@ -103,37 +139,92 @@ export class GameWebSocketServer extends EventEmitter {
         }
 
         // Process all complete frames in the buffer
-        this.processFrames(socket, buffer, (remaining) => {
-          buffer = remaining;
+        this.processFrames(managed, (remaining) => {
+          managed.buffer = remaining;
         });
       });
 
-      socket.on("error", (error: Error) => {
+      rawSocket.on("error", (error: Error) => {
         this.emit("error", error);
       });
 
-      socket.on("close", () => {
-        if (socket.id) {
-          this.clients.delete(socket.id);
-          this.emit("disconnect", socket.id);
+      rawSocket.on("close", () => {
+        if (managed.id) {
+          this.clients.delete(managed.id);
+          this.emit("disconnect", managed.id);
         }
       });
+    });
+
+    // Handle server-level errors (e.g., port already in use)
+    this.server.on("error", (error: Error) => {
+      this.log("[WebSocket] Server error:", error);
+      this.emit("error", error);
     });
 
     this.server.listen({ port: this.port, host: "0.0.0.0" }, () => {
       this.log(`[WebSocket] Server listening on 0.0.0.0:${this.port}`);
       this.emit("listening", this.port);
     });
+
+    // Start keepalive pings if enabled
+    if (this.keepaliveInterval > 0) {
+      this.startKeepalive();
+    }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private startKeepalive() {
+    this.keepaliveTimer = setInterval(() => {
+      const now = Date.now();
+      const pingFrame = this.encodeControlFrame(OPCODE.PING, Buffer.alloc(0));
+
+      for (const [id, managed] of this.clients) {
+        // Check if previous keepalive timed out
+        if (
+          now - managed.lastPong >
+          this.keepaliveInterval + this.keepaliveTimeout
+        ) {
+          this.log(`[WebSocket] Keepalive timeout for ${id}, disconnecting`);
+          try {
+            managed.socket.destroy();
+          } catch {
+            // Already destroyed
+          }
+          this.clients.delete(id);
+          this.emit("disconnect", id);
+          continue;
+        }
+
+        try {
+          managed.socket.write(pingFrame);
+        } catch {
+          // Socket already closing
+        }
+      }
+    }, this.keepaliveInterval);
+  }
+
   private processFrames(
-    socket: any,
-    buffer: Buffer,
+    managed: ManagedSocket,
     setBuffer: (b: Buffer) => void,
   ) {
+    let { buffer } = managed;
+
     while (buffer.length > 0) {
-      const frame = this.decodeFrame(buffer);
+      let frame: DecodedFrame | null;
+      try {
+        frame = this.decodeFrame(buffer);
+      } catch (error) {
+        // Frame too large or malformed -- disconnect the client
+        this.log(`[WebSocket] Frame error from ${managed.id}:`, error);
+        try {
+          managed.socket.destroy();
+        } catch {
+          // Already destroyed
+        }
+        return;
+      }
+
       if (!frame) {
         // Incomplete frame -- keep buffer, wait for more data
         break;
@@ -147,37 +238,37 @@ export class GameWebSocketServer extends EventEmitter {
         case OPCODE.TEXT: {
           try {
             const message = JSON.parse(frame.payload.toString("utf8"));
-            this.emit("message", socket.id, message);
-          } catch (e) {
+            this.emit("message", managed.id, message);
+          } catch {
             // Corrupt JSON in a complete frame -- discard this frame, continue processing
             this.log(
-              `[WebSocket] Invalid JSON from ${socket.id}, discarding frame`,
+              `[WebSocket] Invalid JSON from ${managed.id}, discarding frame`,
             );
           }
           break;
         }
 
         case OPCODE.CLOSE: {
-          this.log(`[WebSocket] Close frame from ${socket.id}`);
+          this.log(`[WebSocket] Close frame from ${managed.id}`);
           // Send close frame back (RFC 6455 Section 5.5.1)
           const closeFrame = Buffer.alloc(2);
           closeFrame[0] = 0x88; // FIN + Close opcode
           closeFrame[1] = 0x00; // No payload
           try {
-            socket.write(closeFrame);
+            managed.socket.write(closeFrame);
           } catch {
             // Socket may already be closing
           }
-          socket.destroy();
+          managed.socket.destroy();
           break;
         }
 
         case OPCODE.PING: {
-          this.log(`[WebSocket] Ping from ${socket.id}`);
+          this.log(`[WebSocket] Ping from ${managed.id}`);
           // Respond with pong containing the same payload (RFC 6455 Section 5.5.3)
           const pongFrame = this.encodeControlFrame(OPCODE.PONG, frame.payload);
           try {
-            socket.write(pongFrame);
+            managed.socket.write(pongFrame);
           } catch {
             // Socket may be closing
           }
@@ -185,68 +276,132 @@ export class GameWebSocketServer extends EventEmitter {
         }
 
         case OPCODE.PONG: {
-          // Unsolicited pong -- safe to ignore (RFC 6455 Section 5.5.3)
-          this.log(`[WebSocket] Pong from ${socket.id}`);
+          // Update last-seen pong time for keepalive tracking
+          managed.lastPong = Date.now();
+          this.log(`[WebSocket] Pong from ${managed.id}`);
           break;
         }
 
         case OPCODE.BINARY: {
           // Binary frames not supported -- log and discard
           this.log(
-            `[WebSocket] Binary frame from ${socket.id}, not supported -- discarding`,
+            `[WebSocket] Binary frame from ${managed.id}, not supported -- discarding`,
           );
           break;
         }
 
         default: {
           this.log(
-            `[WebSocket] Unknown opcode 0x${frame.opcode.toString(16)} from ${socket.id}, discarding`,
+            `[WebSocket] Unknown opcode 0x${frame.opcode.toString(16)} from ${managed.id}, discarding`,
           );
           break;
         }
       }
 
       // If socket was destroyed (e.g., close frame), stop processing
-      if (socket.destroyed) break;
+      if (managed.socket.destroyed) break;
     }
 
     setBuffer(buffer);
   }
 
+  /**
+   * Gracefully stop the server.
+   * Sends close frames to all clients before destroying connections.
+   */
   public stop() {
+    // Stop keepalive timer
+    if (this.keepaliveTimer) {
+      clearInterval(this.keepaliveTimer);
+      this.keepaliveTimer = null;
+    }
+
     if (this.server) {
-      this.server.close();
-      this.clients.forEach((socket) => socket.destroy());
+      // Send close frames to all clients before destroying
+      const closeFrame = Buffer.alloc(2);
+      closeFrame[0] = 0x88; // FIN + Close opcode
+      closeFrame[1] = 0x00; // No payload
+
+      this.clients.forEach((managed) => {
+        try {
+          managed.socket.write(closeFrame);
+        } catch {
+          // Socket may already be closing
+        }
+        try {
+          managed.socket.destroy();
+        } catch {
+          // Already destroyed
+        }
+      });
+
       this.clients.clear();
+      this.server.close();
     }
   }
 
+  /**
+   * Send data to a specific client by socket ID.
+   * Silently ignores unknown socket IDs and write errors.
+   */
   public send(socketId: string, data: unknown) {
-    const socket = this.clients.get(socketId);
-    if (socket) {
-      const frame = this.encodeFrame(JSON.stringify(data));
-      socket.write(frame);
+    const managed = this.clients.get(socketId);
+    if (managed) {
+      try {
+        const frame = this.encodeFrame(JSON.stringify(data));
+        managed.socket.write(frame);
+      } catch (error) {
+        this.log(`[WebSocket] Failed to send to ${socketId}:`, error);
+        this.emit(
+          "error",
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      }
     }
   }
 
+  /**
+   * Broadcast data to all connected clients.
+   * Wraps each write in try/catch so a single dead socket doesn't skip remaining clients.
+   */
   public broadcast(data: unknown, excludeId?: string) {
     const frame = this.encodeFrame(JSON.stringify(data));
-    this.clients.forEach((socket, id) => {
+    this.clients.forEach((managed, id) => {
       if (id !== excludeId) {
-        socket.write(frame);
+        try {
+          managed.socket.write(frame);
+        } catch (error) {
+          this.log(`[WebSocket] Failed to broadcast to ${id}:`, error);
+          // Don't abort -- continue sending to remaining clients
+        }
       }
     });
+  }
+
+  /** Returns the number of currently connected clients. */
+  public get clientCount(): number {
+    return this.clients.size;
   }
 
   // --- Private Helpers ---
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private handleHandshake(socket: any, header: string) {
+  private handleHandshake(managed: ManagedSocket, header: string) {
     this.log("[WebSocket] Handshake request header:", JSON.stringify(header));
     const keyMatch = header.match(/Sec-WebSocket-Key: (.+)/);
     if (!keyMatch) {
       console.error("[WebSocket] Handshake failed: No Sec-WebSocket-Key found");
-      socket.destroy();
+      managed.socket.destroy();
+      return;
+    }
+
+    // Validate Sec-WebSocket-Version (RFC 6455 Section 4.2.1)
+    const versionMatch = header.match(/Sec-WebSocket-Version: (\d+)/);
+    if (versionMatch && versionMatch[1] !== "13") {
+      console.error(
+        `[WebSocket] Unsupported WebSocket version: ${versionMatch[1]}`,
+      );
+      managed.socket.destroy();
       return;
     }
 
@@ -269,15 +424,15 @@ export class GameWebSocketServer extends EventEmitter {
         "[WebSocket] Sending Handshake Response:",
         JSON.stringify(response),
       );
-      socket.write(response);
+      managed.socket.write(response);
 
-      // Assign ID and store
-      socket.id = this.generateSocketId();
-      this.clients.set(socket.id, socket);
-      this.emit("connection", socket.id);
+      // Assign cryptographically random ID and store
+      managed.id = generateId();
+      this.clients.set(managed.id, managed);
+      this.emit("connection", managed.id);
     } catch (error) {
       console.error("[WebSocket] Handshake error:", error);
-      socket.destroy();
+      managed.socket.destroy();
     }
   }
 
@@ -310,11 +465,17 @@ export class GameWebSocketServer extends EventEmitter {
       // Read 64-bit length. For safety, only use the lower 32 bits.
       const highBits = buffer.readUInt32BE(2);
       if (highBits > 0) {
-        // Payload > 4GB -- reject
-        throw new Error("Frame payload too large");
+        throw new Error("Frame payload too large (exceeds 4 GB)");
       }
       payloadLength = buffer.readUInt32BE(6);
       headerLength = 10;
+    }
+
+    // Enforce max frame size to prevent memory exhaustion attacks
+    if (payloadLength > this.maxFrameSize) {
+      throw new Error(
+        `Frame payload (${payloadLength} bytes) exceeds maximum allowed size (${this.maxFrameSize} bytes)`,
+      );
     }
 
     const maskLength = isMasked ? 4 : 0;
