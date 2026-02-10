@@ -24,6 +24,14 @@ bun add @couch-kit/host
 
 > **Note:** This library includes native dependencies (`react-native-tcp-socket`, `react-native-fs`, etc.). React Native's autolinking will handle the setup for Android. Ensure your `android/build.gradle` is configured correctly if you encounter build issues.
 
+## Compatibility
+
+| Dependency                   | Minimum Version |
+| ---------------------------- | --------------- |
+| `react`                      | `>= 18.2.0`     |
+| `react-native`               | `>= 0.72.0`     |
+| `react-native-nitro-modules` | `>= 0.33.0`     |
+
 ## Usage
 
 ## API

@@ -226,7 +226,26 @@ Or individually:
 bun run --filter @couch-kit/host build
 ```
 
-### 3. Testing in a Real App (Yalc)
+### 3. Running Tests
+
+Run all tests across all packages:
+
+```bash
+bun run test
+```
+
+Run linting and type checking:
+
+```bash
+bun run lint
+bun run typecheck
+```
+
+### 4. Code Style
+
+The project uses [Prettier](https://prettier.io/) for formatting (configured in `.prettierrc`) and [ESLint](https://eslint.org/) for linting.
+
+### 5. Testing in a Real App (Yalc)
 
 To test your local changes in a real React Native app, we recommend using `yalc`. It simulates a published package by copying build artifacts directly into your project, avoiding common Metro Bundler symlink issues.
 
