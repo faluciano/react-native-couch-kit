@@ -1,6 +1,6 @@
 {
   "name": "@couch-kit/client",
-  "version": "0.4.4",
+  "version": "0.5.0",
   "description": "React hooks for phone controllers in Couch Kit party games — WebSocket client and action dispatch",
   "license": "MIT",
   "repository": {

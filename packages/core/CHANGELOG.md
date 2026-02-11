@@ -1,5 +1,11 @@
 # @couch-kit/core
 
+## 0.4.0
+
+### Minor Changes
+
+- 81a6d8d: Add compiled build output — packages now ship JS bundles in `dist/` and TypeScript declarations in `lib/` instead of raw `.ts` source. This ensures compatibility with bundlers that don't transpile `node_modules`.
+
 ## 0.3.3
 
 ### Patch Changes

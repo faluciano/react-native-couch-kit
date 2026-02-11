@@ -1,5 +1,12 @@
 # @couch-kit/host
 
+## 1.2.2
+
+### Patch Changes
+
+- Updated dependencies [81a6d8d]
+  - @couch-kit/core@0.4.0
+
 ## 1.1.0
 
 ### Minor Changes

@@ -1,5 +1,16 @@
 # @couch-kit/client
 
+## 0.5.0
+
+### Minor Changes
+
+- 81a6d8d: Add compiled build output — packages now ship JS bundles in `dist/` and TypeScript declarations in `lib/` instead of raw `.ts` source. This ensures compatibility with bundlers that don't transpile `node_modules`.
+
+### Patch Changes
+
+- Updated dependencies [81a6d8d]
+  - @couch-kit/core@0.4.0
+
 ## 0.4.4
 
 ### Patch Changes
