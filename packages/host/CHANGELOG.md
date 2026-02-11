@@ -1,5 +1,11 @@
 # @couch-kit/host
 
+## 1.2.5
+
+### Patch Changes
+
+- Fix Android crash in useStaticServer by checking staticDir before accessing Paths.bundle
+
 ## 1.2.4
 
 ### Patch Changes

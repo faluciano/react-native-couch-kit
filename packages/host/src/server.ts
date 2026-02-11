@@ -51,9 +51,18 @@ export const useStaticServer = (config: CouchKitHostConfig) => {
       try {
         // Use staticDir if provided (required on Android where bundle path is undefined),
         // otherwise fall back to the iOS bundle directory via expo-file-system
-        const bundleUri = Paths.bundle.uri;
-        const path =
-          config.staticDir || `${bundleUri.replace(/^file:\/\//, "")}www`;
+        let path = config.staticDir;
+
+        if (!path) {
+          const bundleUri = Paths.bundle?.uri;
+          if (!bundleUri) {
+            throw new Error(
+              "No staticDir provided and Paths.bundle is unavailable. " +
+              "On Android, you must pass staticDir from useExtractAssets.",
+            );
+          }
+          path = `${bundleUri.replace(/^file:\/\//, "")}www`;
+        }
         const port = config.port || DEFAULT_HTTP_PORT;
 
         server = new StaticServer();
