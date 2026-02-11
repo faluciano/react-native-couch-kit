@@ -1,5 +1,11 @@
 # @couch-kit/host
 
+## 1.2.3
+
+### Patch Changes
+
+- Fix Android asset extraction by removing unsupported arguments from Directory.create() calls for expo-file-system@18 compatibility
+
 ## 1.2.2
 
 ### Patch Changes

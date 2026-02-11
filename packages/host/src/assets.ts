@@ -56,7 +56,7 @@ export function useExtractAssets(manifest: AssetManifest): ExtractAssetsResult {
         }
 
         // Create the root target directory
-        targetDir.create({ intermediates: true });
+        targetDir.create();
 
         // Copy each file from APK assets to filesystem
         for (const filePath of manifest.files) {
@@ -72,7 +72,9 @@ export function useExtractAssets(manifest: AssetManifest): ExtractAssetsResult {
               targetDir,
               filePath.substring(0, lastSlash),
             );
-            subDir.create({ intermediates: true, idempotent: true });
+            if (!subDir.exists) {
+              subDir.create();
+            }
           }
 
           sourceFile.copy(destFile);
