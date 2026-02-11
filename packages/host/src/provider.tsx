@@ -123,6 +123,27 @@ export function GameHostProvider<S extends IGameState, A extends IAction>({
     stateRef.current = state;
   }, [state]);
 
+  // Send WELCOME messages after state has settled (post-render).
+  // This guarantees the joining player is included in the state snapshot.
+  useEffect(() => {
+    if (pendingWelcome.current.size === 0) return;
+    if (!wsServer.current) return;
+
+    const server = wsServer.current;
+    for (const [socketId] of pendingWelcome.current) {
+      welcomedClients.current.add(socketId);
+      server.send(socketId, {
+        type: MessageTypes.WELCOME,
+        payload: {
+          playerId: socketId,
+          state,
+          serverTime: Date.now(),
+        },
+      });
+    }
+    pendingWelcome.current.clear();
+  }, [state]);
+
   // Keep refs for callback props to avoid stale closures
   const configRef = useRef(config);
   useEffect(() => {
@@ -146,6 +167,9 @@ export function GameHostProvider<S extends IGameState, A extends IAction>({
 
   // Track socket IDs that have received their WELCOME message
   const welcomedClients = useRef<Set<string>>(new Set());
+
+  // Track socket IDs that need a WELCOME message after state settles
+  const pendingWelcome = useRef<Map<string, string>>(new Map()); // socketId -> playerId
 
   useEffect(() => {
     const port = config.wsPort || httpPort + DEFAULT_WS_PORT_OFFSET;
@@ -199,20 +223,9 @@ export function GameHostProvider<S extends IGameState, A extends IAction>({
             payload: { id: socketId, ...payload },
           } as InternalAction<S>);
 
-          // Use queueMicrotask to send WELCOME after the reducer has processed
-          // the PLAYER_JOINED action, so the client receives state that includes
-          // themselves in the players list.
-          queueMicrotask(() => {
-            welcomedClients.current.add(socketId);
-            server.send(socketId, {
-              type: MessageTypes.WELCOME,
-              payload: {
-                playerId: socketId,
-                state: stateRef.current,
-                serverTime: Date.now(),
-              },
-            });
-          });
+          // Queue WELCOME to be sent after React re-renders and stateRef is updated.
+          // A useEffect watches for pending welcomes and sends them with fresh state.
+          pendingWelcome.current.set(socketId, socketId);
 
           configRef.current.onPlayerJoined?.(socketId, payload.name);
           break;
@@ -290,7 +303,6 @@ export function GameHostProvider<S extends IGameState, A extends IAction>({
   // 3. Throttled State Broadcasts (~30fps)
   // Batches rapid state changes so at most one broadcast is sent per ~33ms frame,
   // reducing serialization overhead and network traffic for fast-updating games.
-  const broadcastPending = useRef(false);
   const broadcastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const broadcastState = useCallback(() => {
@@ -303,14 +315,15 @@ export function GameHostProvider<S extends IGameState, A extends IAction>({
         },
       });
     }
-    broadcastPending.current = false;
   }, []);
 
   useEffect(() => {
-    if (!broadcastPending.current) {
-      broadcastPending.current = true;
-      broadcastTimer.current = setTimeout(broadcastState, 33); // ~30fps
+    // Cancel any pending broadcast and schedule a fresh one.
+    // This ensures the broadcast always uses the latest stateRef.
+    if (broadcastTimer.current) {
+      clearTimeout(broadcastTimer.current);
     }
+    broadcastTimer.current = setTimeout(broadcastState, 33); // ~30fps
 
     return () => {
       if (broadcastTimer.current) {

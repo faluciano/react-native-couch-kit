@@ -1,5 +1,11 @@
 # @couch-kit/host
 
+## 1.2.7
+
+### Patch Changes
+
+- Fix WELCOME message race condition — send state snapshot after React render settles so joining players see themselves in the state
+
 ## 1.2.6
 
 ### Patch Changes
