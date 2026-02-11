@@ -208,7 +208,11 @@ export class GameWebSocketServer extends EventEmitter<WebSocketServerEvents> {
 
     while (offset < managed.bufferLength) {
       // Create a view of the unconsumed portion for decoding
-      const view = managed.buffer.subarray(offset, managed.bufferLength);
+      const view = Buffer.from(
+        managed.buffer.buffer,
+        managed.buffer.byteOffset + offset,
+        managed.bufferLength - offset,
+      );
       let frame: DecodedFrame | null;
       try {
         frame = this.decodeFrame(view);

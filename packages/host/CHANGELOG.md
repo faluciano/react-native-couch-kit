@@ -1,5 +1,11 @@
 # @couch-kit/host
 
+## 1.2.6
+
+### Patch Changes
+
+- Fix WebSocket frame decoding crash by preserving Buffer methods when creating subarray views
+
 ## 1.2.5
 
 ### Patch Changes
