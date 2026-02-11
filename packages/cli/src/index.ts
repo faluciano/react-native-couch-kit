@@ -57,13 +57,18 @@ program
     await initCommand.parseAsync(["init", name], { from: "user" });
   });
 
-/** Reconstruct CLI args from parsed options for re-parsing by the lazy-loaded command. */
+/**
+ * Reconstruct CLI args from parsed options for re-parsing by the lazy-loaded command.
+ *
+ * NOTE: Boolean options are assumed to use the negation pattern (--no-<x>).
+ * Positive boolean flags (--verbose) will be silently dropped.
+ * If adding positive boolean options, refactor to pass options directly instead.
+ */
 function reconstructArgs(options: Record<string, unknown>): string[] {
   const args: string[] = [];
   for (const [key, value] of Object.entries(options)) {
     if (typeof value === "boolean") {
-      if (value) args.push(`--${key}`);
-      else args.push(`--no-${key}`);
+      if (!value) args.push(`--no-${key}`);
     } else if (value !== undefined) {
       args.push(`--${key}`, String(value));
     }
