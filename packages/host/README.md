@@ -26,10 +26,10 @@ Then install the required peer dependencies:
 
 ```bash
 npx expo install expo-file-system expo-network
-bun add react-native-tcp-socket
+bun add react-native-tcp-socket react-native-nitro-modules
 ```
 
-> **Note:** This library requires Expo modules (`expo-file-system`, `expo-network`) and `react-native-tcp-socket` as peer dependencies. These must be installed in your consumer app. React Native's autolinking will handle native setup automatically.
+> **Note:** This library requires Expo modules (`expo-file-system`, `expo-network`), `react-native-tcp-socket`, and `react-native-nitro-modules` as peer dependencies. These must be installed in your consumer app. React Native's autolinking will handle native setup automatically.
 
 ## Compatibility
 
@@ -44,8 +44,6 @@ bun add react-native-tcp-socket
 | `react-native-tcp-socket`    | `>= 6.0.0`      |
 
 > **New Architecture:** This package supports React Native's New Architecture (Fabric/TurboModules) via React Native 0.83+.
-
-## Usage
 
 ## API
 
@@ -70,6 +68,36 @@ Returns:
 - `dispatch(action)`: dispatches an action into your reducer
 - `serverUrl`: HTTP URL phones should open (or `devServerUrl` in dev mode)
 - `serverError`: static server error (if startup fails)
+
+### `useExtractAssets(manifest)`
+
+Extracts bundled web assets from the APK to a writable directory so the native HTTP server can serve them.
+
+On Android, assets live inside the APK and cannot be served directly. This hook copies each file listed in the manifest from the APK to the device filesystem. On iOS, extraction is skipped since assets are accessible from the bundle directory.
+
+```tsx
+import { useExtractAssets } from "@couch-kit/host";
+import manifest from "./www/manifest.json";
+
+function App() {
+  const { staticDir, loading, error } = useExtractAssets(manifest);
+
+  if (loading) return <Text>Extracting assets...</Text>;
+  if (error) return <Text>Error: {error}</Text>;
+
+  return (
+    <GameHostProvider config={{ staticDir, reducer, initialState }}>
+      ...
+    </GameHostProvider>
+  );
+}
+```
+
+| Property    | Type                  | Description                                       |
+| ----------- | --------------------- | ------------------------------------------------- |
+| `staticDir` | `string \| undefined` | Filesystem path to extracted assets, or undefined |
+| `loading`   | `boolean`             | Whether extraction is in progress                 |
+| `error`     | `string \| null`      | Error message if extraction failed                |
 
 ## System Actions
 
@@ -161,6 +189,8 @@ To iterate on your web controller without rebuilding the Android app constantly:
 ```tsx
 <GameHostProvider
     config={{
+        reducer: gameReducer,
+        initialState,
         devMode: true,
         devServerUrl: 'http://192.168.1.50:5173' // Your laptop's IP
     }}

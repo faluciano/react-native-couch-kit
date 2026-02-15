@@ -117,6 +117,14 @@ try {
 }
 ```
 
+#### `isValidSecret(secret: string): boolean`
+
+Validates that a string is a valid UUID format (32+ hex characters, with or without dashes).
+
+#### `derivePlayerId(secret: string): string`
+
+Derives a stable, public player ID from a secret UUID by stripping dashes and taking the first 16 hex characters.
+
 ### Constants
 
 | Constant                 | Default          | Description                                              |

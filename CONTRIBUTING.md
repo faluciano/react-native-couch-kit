@@ -35,7 +35,7 @@ Four packages under `packages/`:
    - Write a summary of the change
 4. Commit and push
 5. Open a PR to `main`
-6. CI runs: lint, typecheck, test, build, and changeset validation
+6. CI runs: lint (includes typecheck), test, build, and changeset validation
 7. Get review and merge
 
 ## Changesets
@@ -57,6 +57,8 @@ Releases are automated via GitHub Actions:
    - Publishes all changed packages to npm
    - Creates git tags (e.g., `@couch-kit/core@0.6.0`)
    - Creates GitHub Releases
+
+> **Tip:** The release workflow can also be triggered manually from the GitHub Actions tab via `workflow_dispatch`.
 
 ### Release Cadence
 
