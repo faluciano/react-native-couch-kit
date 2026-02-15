@@ -3,9 +3,17 @@ import { readFileSync, writeFileSync } from "fs";
 import { spawnSync } from "child_process";
 
 const PACKAGES_DIR = join(process.cwd(), "packages");
+const IS_CI = Boolean(process.env.CI);
 
 // List of packages to publish (order matters if there are strict dep chains, but parallel is usually fine for npm)
 const PACKAGES = ["core", "client", "host", "cli"];
+
+const ALREADY_PUBLISHED_PATTERN =
+  /you cannot publish over the previously published versions|403 forbidden/i;
+
+function isAlreadyPublishedError(stderr: string): boolean {
+  return ALREADY_PUBLISHED_PATTERN.test(stderr);
+}
 
 function getPackageJsonPath(pkgName: string) {
   return join(PACKAGES_DIR, pkgName, "package.json");
@@ -64,33 +72,44 @@ for (const pkg of PACKAGES) {
 
   try {
     console.log(`   🚀 Publishing ${json.name}...`);
-    // Run bun publish
-    // We use spawnSync to inherit stdio so the user can see prompts (like OTP) if they occur,
-    // though bun publish usually expects env vars or non-interactive for automation.
-    const result = spawnSync("bun", ["publish", "--access", "public"], {
+    const publishArgs = ["publish", "--access", "public"];
+    if (IS_CI) publishArgs.push("--provenance");
+
+    const result = spawnSync("bun", publishArgs, {
       cwd: join(PACKAGES_DIR, pkg),
-      stdio: "inherit",
+      stdio: IS_CI ? "pipe" : "inherit",
     });
 
     if (result.status !== 0) {
-      console.error(`   ❌ Failed to publish ${pkg}`);
-      // Check if it's likely a version conflict (status 1 is generic, but usually 4xx from npm)
-      // Since we can't easily parse stdio:inherit output, we'll assume non-core failures might be safe to continue
-      // but if core fails we should probably stop?
-      // Actually, if a package is already published, 'bun publish' usually errors.
-      // We'll log it but NOT exit, so other packages can try.
-      console.warn(
-        `   ⚠️  Continuing despite error (package might already exist)...`,
-      );
+      const stderr = result.stderr?.toString() ?? "";
+
+      if (IS_CI) {
+        if (isAlreadyPublishedError(stderr)) {
+          console.log(
+            `   ℹ️  ${json.name} already published at this version, skipping.`,
+          );
+        } else {
+          console.error(`   ❌ Failed to publish ${pkg}`);
+          if (stderr) console.error(stderr);
+          if (result.stdout) console.error(result.stdout.toString());
+          process.exit(1);
+        }
+      } else {
+        console.error(`   ❌ Failed to publish ${pkg}`);
+        console.warn(
+          `   ⚠️  Continuing despite error (run with CI=1 for fail-fast behavior)...`,
+        );
+      }
     } else {
       console.log(`   ✅ Published ${pkg}`);
     }
   } catch (e) {
     console.error(`   ❌ Error publishing ${pkg}:`, e);
+    if (IS_CI) process.exit(1);
   } finally {
     // 4. Revert changes
     if (modified) {
-      console.log(`   cY Reverting package.json for ${pkg}`);
+      console.log(`   🔄 Reverting package.json for ${pkg}`);
       writeFileSync(pkgPath, originalContent);
     }
   }

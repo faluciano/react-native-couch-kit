@@ -2,6 +2,8 @@
 
 Turn an Android TV / Fire TV into a local party-game console and use phones as web controllers.
 
+[![CI](https://github.com/faluciano/react-native-couch-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/faluciano/react-native-couch-kit/actions/workflows/ci.yml)
+[![Release](https://github.com/faluciano/react-native-couch-kit/actions/workflows/release.yml/badge.svg)](https://github.com/faluciano/react-native-couch-kit/actions/workflows/release.yml)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![TypeScript](https://img.shields.io/badge/TypeScript-Strict-green.svg)
 
