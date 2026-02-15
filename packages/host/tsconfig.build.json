@@ -2,6 +2,7 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "baseUrl": ".",
+    "skipLibCheck": true,
     "noEmit": false,
     "emitDeclarationOnly": true,
     "declaration": true,

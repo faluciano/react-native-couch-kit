@@ -68,9 +68,14 @@ Releases are automated via GitHub Actions:
 
 ### NPM_TOKEN Setup
 
-1. Create an npm **automation** token at [npmjs.com/settings/tokens](https://www.npmjs.com/settings/tokens) (automation tokens bypass OTP)
-2. Add it as a GitHub repository secret named `NPM_TOKEN`
-3. Enable "Allow GitHub Actions to create and approve pull requests" in repo Settings → Actions → General → Workflow permissions
+1. Go to [npmjs.com](https://www.npmjs.com) → Avatar → **Access Tokens** → **Generate New Token** → **Granular Access Token**
+2. Configure the token:
+   - **Name:** `couch-kit-ci-release`
+   - **Expiration:** 1 year (set a reminder to rotate)
+   - **Packages:** Only select packages — add `@couch-kit/core`, `@couch-kit/client`, `@couch-kit/host`, `@couch-kit/cli`
+   - **Permissions:** Read and write
+3. Add the token as a GitHub repository secret named `NPM_TOKEN` (Settings → Secrets and variables → Actions)
+4. Enable "Allow GitHub Actions to create and approve pull requests" in repo Settings → Actions → General → Workflow permissions
 
 ### Branch Protection
 
