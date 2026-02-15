@@ -5,10 +5,10 @@ Turn an Android TV / Fire TV into a local party-game console and use phones as w
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![TypeScript](https://img.shields.io/badge/TypeScript-Strict-green.svg)
 
-[![npm downloads - @couch-kit/host](https://img.shields.io/npm/dm/@couch-kit/host)](https://www.npmjs.com/package/@couch-kit/host)
-[![npm downloads - @couch-kit/client](https://img.shields.io/npm/dm/@couch-kit/client)](https://www.npmjs.com/package/@couch-kit/client)
-[![npm downloads - @couch-kit/core](https://img.shields.io/npm/dm/@couch-kit/core)](https://www.npmjs.com/package/@couch-kit/core)
-[![npm downloads - @couch-kit/cli](https://img.shields.io/npm/dm/@couch-kit/cli)](https://www.npmjs.com/package/@couch-kit/cli)
+[![npm downloads - @couch-kit/host](https://img.shields.io/npm/dt/@couch-kit/host)](https://www.npmjs.com/package/@couch-kit/host)
+[![npm downloads - @couch-kit/client](https://img.shields.io/npm/dt/@couch-kit/client)](https://www.npmjs.com/package/@couch-kit/client)
+[![npm downloads - @couch-kit/core](https://img.shields.io/npm/dt/@couch-kit/core)](https://www.npmjs.com/package/@couch-kit/core)
+[![npm downloads - @couch-kit/cli](https://img.shields.io/npm/dt/@couch-kit/cli)](https://www.npmjs.com/package/@couch-kit/cli)
 
 ---
 
