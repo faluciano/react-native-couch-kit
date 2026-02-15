@@ -3,6 +3,8 @@
   "compilerOptions": {
     "baseUrl": ".",
     "skipLibCheck": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
     "noEmit": false,
     "emitDeclarationOnly": true,
     "declaration": true,

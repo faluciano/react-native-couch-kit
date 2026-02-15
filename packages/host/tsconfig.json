@@ -3,6 +3,9 @@
   "compilerOptions": {
     "baseUrl": ".",
     "jsx": "react",
+    "skipLibCheck": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
     "paths": {
       "@couch-kit/core": ["../core/src"],
       "expo-file-system/next": [
