@@ -8,6 +8,7 @@
     "noUnusedParameters": false,
     "paths": {
       "@couch-kit/core": ["../core/src"],
+      "expo-file-system": ["./node_modules/expo-file-system/build/index.d.ts"],
       "expo-file-system/next": [
         "./node_modules/expo-file-system/build/index.d.ts"
       ]
