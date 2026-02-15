@@ -38,6 +38,7 @@ jobs:
         run: echo '//registry.npmjs.org/:_authToken=${NPM_TOKEN}' > .npmrc
 
       - uses: changesets/action@v1
+        id: changesets
         with:
           version: bun run version
           publish: bun run release
@@ -45,5 +46,11 @@ jobs:
           title: "chore: version packages"
           commit: "chore: version packages"
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Enable auto-merge
+        if: steps.changesets.outputs.pullRequestNumber
+        run: gh pr merge ${{ steps.changesets.outputs.pullRequestNumber }} --auto --squash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
