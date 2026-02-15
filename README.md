@@ -64,7 +64,7 @@ bun add @couch-kit/host @couch-kit/core
 
 # Install required peer dependencies
 npx expo install expo-file-system expo-network
-bun add react-native-tcp-socket
+bun add react-native-tcp-socket react-native-nitro-modules
 ```
 
 If you are setting up the Web Controller manually (instead of using the CLI in Step 4):
@@ -310,7 +310,7 @@ When you make changes to the library:
 | **`@couch-kit/host`**   | Runs on the TV. Manages WebSocket server, serves static files, and holds the "True" state. |
 | **`@couch-kit/client`** | Runs on the phone browser. Connects to the host and renders the controller UI.             |
 | **`@couch-kit/core`**   | Shared TypeScript types and protocol definitions.                                          |
-| **`@couch-kit/cli`**    | Tools to bundle the web controller into the Android app.                                   |
+| **`@couch-kit/cli`**    | CLI tools to scaffold, bundle, and simulate web controllers                                |
 
 ## 📚 Documentation
 
