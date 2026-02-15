@@ -28,6 +28,7 @@ Config:
 - `reducer`: `(state, action) => state` (your shared reducer)
 - `initialState`: initial state used until the host hydrates
 - `url?`: explicit WebSocket URL. If omitted, the hook uses `ws(s)://{window.location.hostname}:8082`.
+- `wsPort?`: WebSocket port override (default: auto-detected from page URL using HTTP port + 2)
 - `name?`: player display name (default: `"Player"`)
 - `avatar?`: player avatar emoji (default: `"\u{1F600}"`)
 - `maxRetries?`: maximum reconnection attempts before giving up (default: `5`)
