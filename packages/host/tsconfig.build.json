@@ -2,9 +2,6 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "baseUrl": ".",
-    "skipLibCheck": true,
-    "noUnusedLocals": false,
-    "noUnusedParameters": false,
     "noEmit": false,
     "emitDeclarationOnly": true,
     "declaration": true,
@@ -15,16 +12,9 @@
     "allowImportingTsExtensions": false,
     "verbatimModuleSyntax": false,
     "paths": {
-      "expo-file-system": ["./node_modules/expo-file-system/build/index.d.ts"],
-      "expo-file-system/next": [
-        "./node_modules/expo-file-system/build/index.d.ts"
-      ]
+      "@couch-kit/core": ["../core/lib"]
     }
   },
   "include": ["src/**/*"],
-  "exclude": [
-    "src/**/__tests__/**",
-    "src/**/__mocks__/**",
-    "../../node_modules/**"
-  ]
+  "exclude": ["src/**/__tests__/**", "src/**/__mocks__/**"]
 }

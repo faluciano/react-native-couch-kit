@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import * as FileSystem from "expo-file-system";
-import { Paths, Directory } from "expo-file-system/next";
+import { Paths, Directory } from "expo-file-system";
 import { Platform } from "react-native";
 import { toErrorMessage } from "@couch-kit/core";
 
