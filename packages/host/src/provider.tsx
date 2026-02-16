@@ -185,7 +185,13 @@ export function GameHostProvider<S extends IGameState, A extends IAction>({
     const port = config.wsPort || httpPort + DEFAULT_WS_PORT_OFFSET;
     const server = new GameWebSocketServer({ port, debug: config.debug });
 
-    server.start();
+    // Start the WebSocket server asynchronously
+    server.start().catch((error) => {
+      if (configRef.current.debug) {
+        console.error("[GameHost] Failed to start WebSocket server:", error);
+      }
+      configRef.current.onError?.(error);
+    });
     wsServer.current = server;
 
     server.on("listening", (p) => {
