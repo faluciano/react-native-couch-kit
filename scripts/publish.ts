@@ -75,7 +75,7 @@ for (const pkg of PACKAGES) {
     const publishArgs = ["publish", "--access", "public"];
     if (IS_CI) publishArgs.push("--provenance");
 
-    const result = spawnSync("bun", publishArgs, {
+    const result = spawnSync("npm", publishArgs, {
       cwd: join(PACKAGES_DIR, pkg),
       stdio: IS_CI ? ["pipe", "inherit", "pipe"] : "inherit",
       timeout: 120_000,
