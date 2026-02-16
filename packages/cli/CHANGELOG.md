@@ -1,5 +1,14 @@
 # @couch-kit/cli
 
+## 0.2.4
+
+### Patch Changes
+
+- [#9](https://github.com/faluciano/react-native-couch-kit/pull/9) [`db8bbc9`](https://github.com/faluciano/react-native-couch-kit/commit/db8bbc95c3a3334c97da3e000b2c28b9c2959fb1) Thanks [@faluciano](https://github.com/faluciano)! - Add publishConfig with public access and provenance attestation to all packages. Add missing prepublishOnly build script to CLI package.
+
+- Updated dependencies [[`db8bbc9`](https://github.com/faluciano/react-native-couch-kit/commit/db8bbc95c3a3334c97da3e000b2c28b9c2959fb1)]:
+  - @couch-kit/core@0.5.1
+
 ## 0.2.3
 
 ### Patch Changes

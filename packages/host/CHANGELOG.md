@@ -1,5 +1,27 @@
 # @couch-kit/host
 
+## 1.4.0
+
+### Minor Changes
+
+- [#13](https://github.com/faluciano/react-native-couch-kit/pull/13) [`13875e9`](https://github.com/faluciano/react-native-couch-kit/commit/13875e929a37ccde2935dac7891055cec8792d65) Thanks [@copilot-swe-agent](https://github.com/apps/copilot-swe-agent)! - Migrate WebSocket implementation to use react-native-nitro-http-server's built-in WebSocket support. This replaces the custom RFC 6455 WebSocket protocol implementation with a native Rust-based implementation, reducing code complexity by ~320 lines while maintaining API compatibility.
+
+  **Breaking changes:**
+  - Removed `react-native-tcp-socket` peer dependency (no longer required)
+  - `start()` and `stop()` methods are now async (but handled gracefully in existing code)
+
+  **Benefits:**
+  - Simpler, more maintainable codebase
+  - Better performance with native Rust implementation
+  - Fewer dependencies
+
+### Patch Changes
+
+- [#9](https://github.com/faluciano/react-native-couch-kit/pull/9) [`db8bbc9`](https://github.com/faluciano/react-native-couch-kit/commit/db8bbc95c3a3334c97da3e000b2c28b9c2959fb1) Thanks [@faluciano](https://github.com/faluciano)! - Add publishConfig with public access and provenance attestation to all packages. Add missing prepublishOnly build script to CLI package.
+
+- Updated dependencies [[`db8bbc9`](https://github.com/faluciano/react-native-couch-kit/commit/db8bbc95c3a3334c97da3e000b2c28b9c2959fb1)]:
+  - @couch-kit/core@0.5.1
+
 ## 1.3.1
 
 ### Patch Changes
