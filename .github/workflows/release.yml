@@ -88,8 +88,9 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.cross-repo-token.outputs.token }}
         run: |
-          TITLE=$(head -n 1 /tmp/issue-output.txt)
-          BODY=$(tail -n +3 /tmp/issue-output.txt)
+          head -n 1 /tmp/issue-output.txt > /tmp/issue-title.txt
+          TITLE=$(cat /tmp/issue-title.txt)
+          tail -n +3 /tmp/issue-output.txt > /tmp/issue-body.md
 
           HAS_BREAKING=$(jq -r '.hasBreaking' /tmp/changelog.json)
           HAS_SECURITY=$(jq -r '.hasSecurity' /tmp/changelog.json)
@@ -108,14 +109,18 @@ jobs:
             existing=$(gh issue list --repo "$FULL_REPO" --label "couch-kit-update" --state open --json number --jq '.[0].number // empty')
 
             if [ -n "$existing" ]; then
+              gh issue edit "$existing" \
+                --repo "$FULL_REPO" \
+                --title "$TITLE" \
+                --add-label "$LABELS"
               gh issue comment "$existing" \
                 --repo "$FULL_REPO" \
-                --body "$BODY"
+                --body-file /tmp/issue-body.md
             else
               gh issue create \
                 --repo "$FULL_REPO" \
                 --title "$TITLE" \
-                --body "$BODY" \
+                --body-file /tmp/issue-body.md \
                 --label "$LABELS" \
                 --assignee "copilot"
             fi

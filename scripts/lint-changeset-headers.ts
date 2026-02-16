@@ -16,9 +16,10 @@ const BOLD_HEADER_PATTERN = /\*\*([\w\s&-]+):?\*\*/g;
 const CHANGESET_DIR = join(process.cwd(), ".changeset");
 const SKIP_FILES = new Set(["config.json", "README.md"]);
 
-function lintChangesetFile(filePath: string, fileName: string): void {
+function lintChangesetFile(filePath: string, fileName: string): number {
   const content = readFileSync(filePath, "utf-8");
   const matches = content.matchAll(BOLD_HEADER_PATTERN);
+  let fileErrors = 0;
 
   for (const match of matches) {
     const header = match[1].trim().replace(/:$/, "");
@@ -28,8 +29,11 @@ function lintChangesetFile(filePath: string, fileName: string): void {
         `⚠️  ${fileName}: unrecognized bold header "**${header}:**"`,
       );
       console.error(`   Allowed: ${[...ALLOWED_HEADERS].join(", ")}`);
+      fileErrors++;
     }
   }
+
+  return fileErrors;
 }
 
 function main(): void {
@@ -47,8 +51,15 @@ function main(): void {
 
   if (mdFiles.length === 0) return;
 
+  let errorCount = 0;
+
   for (const file of mdFiles) {
-    lintChangesetFile(join(CHANGESET_DIR, file), file);
+    errorCount += lintChangesetFile(join(CHANGESET_DIR, file), file);
+  }
+
+  if (errorCount > 0) {
+    console.error(`\n✗ Found ${errorCount} unrecognized changeset header(s)`);
+    process.exit(1);
   }
 }
 

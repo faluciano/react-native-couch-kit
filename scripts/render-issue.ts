@@ -1,25 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-
-// --- Types ---
-
-interface PackageChangelog {
-  name: string;
-  version: string;
-  bump: "major" | "minor" | "patch";
-  breaking: string[];
-  features: string[];
-  migration: string | null;
-  security: string[];
-  fullChangelog: string;
-}
-
-interface ExtractedChangelog {
-  packages: PackageChangelog[];
-  hasBreaking: boolean;
-  hasSecurity: boolean;
-}
+import type { PackageChangelog, ExtractedChangelog } from "./types.ts";
 
 // --- Constants ---
 
@@ -46,6 +28,12 @@ function readChangelog(filePath: string): ExtractedChangelog {
     !("packages" in parsed)
   ) {
     throw new Error("Invalid changelog JSON: missing 'packages' field");
+  }
+
+  const obj = parsed as Record<string, unknown>;
+
+  if (!Array.isArray(obj.packages)) {
+    throw new Error("Invalid changelog JSON: 'packages' must be an array");
   }
 
   return parsed as ExtractedChangelog;

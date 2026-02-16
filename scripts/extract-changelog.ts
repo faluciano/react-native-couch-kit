@@ -1,28 +1,12 @@
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import type { PackageChangelog, ExtractedChangelog } from "./types.ts";
 
 // --- Types ---
 
 interface PublishedPackage {
   name: string;
   version: string;
-}
-
-interface PackageChangelog {
-  name: string;
-  version: string;
-  bump: "major" | "minor" | "patch";
-  breaking: string[];
-  features: string[];
-  migration: string | null;
-  security: string[];
-  fullChangelog: string;
-}
-
-interface ExtractedChangelog {
-  packages: PackageChangelog[];
-  hasBreaking: boolean;
-  hasSecurity: boolean;
 }
 
 // --- Parsing ---
