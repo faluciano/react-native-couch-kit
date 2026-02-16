@@ -24,8 +24,12 @@ function collectFiles(dir: string, prefix = ""): string[] {
 
 /** Detects the package manager by looking for lock files in the given directory and its parents. */
 function detectPackageManager(dir: string): "bun" | "npm" | "yarn" | "pnpm" {
-  let current = dir;
-  while (true) {
+  for (
+    let current = dir, parent = "";
+    parent !== current;
+    current = path.dirname(current)
+  ) {
+    parent = current;
     if (
       fs.existsSync(path.join(current, "bun.lockb")) ||
       fs.existsSync(path.join(current, "bun.lock"))
@@ -34,10 +38,6 @@ function detectPackageManager(dir: string): "bun" | "npm" | "yarn" | "pnpm" {
     if (fs.existsSync(path.join(current, "pnpm-lock.yaml"))) return "pnpm";
     if (fs.existsSync(path.join(current, "yarn.lock"))) return "yarn";
     if (fs.existsSync(path.join(current, "package-lock.json"))) return "npm";
-
-    const parent = path.dirname(current);
-    if (parent === current) break;
-    current = parent;
   }
   return "npm";
 }
