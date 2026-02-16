@@ -1,5 +1,16 @@
 # @couch-kit/client
 
+## 0.8.0
+
+### Minor Changes
+
+- [#21](https://github.com/faluciano/react-native-couch-kit/pull/21) [`f1e836d`](https://github.com/faluciano/react-native-couch-kit/commit/f1e836d8f17821f0da20db7c3c552552c9b22133) Thanks [@faluciano](https://github.com/faluciano)! - Add `useDebugPanel` hook for capturing debug information (action log, state history, connection status, RTT). Gated behind `debug: true` option.
+
+### Patch Changes
+
+- Updated dependencies [[`f1e836d`](https://github.com/faluciano/react-native-couch-kit/commit/f1e836d8f17821f0da20db7c3c552552c9b22133)]:
+  - @couch-kit/core@0.8.0
+
 ## 0.7.1
 
 ### Patch Changes
