@@ -22,6 +22,26 @@ function collectFiles(dir: string, prefix = ""): string[] {
   return files;
 }
 
+/** Detects the package manager by looking for lock files in the given directory and its parents. */
+function detectPackageManager(dir: string): "bun" | "npm" | "yarn" | "pnpm" {
+  for (
+    let current = dir, parent = "";
+    parent !== current;
+    current = path.dirname(current)
+  ) {
+    parent = current;
+    if (
+      fs.existsSync(path.join(current, "bun.lockb")) ||
+      fs.existsSync(path.join(current, "bun.lock"))
+    )
+      return "bun";
+    if (fs.existsSync(path.join(current, "pnpm-lock.yaml"))) return "pnpm";
+    if (fs.existsSync(path.join(current, "yarn.lock"))) return "yarn";
+    if (fs.existsSync(path.join(current, "package-lock.json"))) return "npm";
+  }
+  return "npm";
+}
+
 export const bundleCommand = new Command("bundle")
   .description("Bundles the web controller into the Android assets directory")
   .option(
@@ -52,8 +72,9 @@ export const bundleCommand = new Command("bundle")
         console.log("  Running build command...");
         // Auto-detect package manager/script
         if (fs.existsSync(path.join(sourceDir, "package.json"))) {
-          // For now assume standard 'build' script
-          execSync("bun run build", { cwd: sourceDir, stdio: "ignore" });
+          const pm = detectPackageManager(sourceDir);
+          console.log(`  Using ${pm} to build...`);
+          execSync(`${pm} run build`, { cwd: sourceDir, stdio: "inherit" });
         } else {
           console.warn("  No package.json found, skipping build");
         }

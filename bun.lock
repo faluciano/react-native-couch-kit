@@ -18,7 +18,7 @@
     },
     "packages/cli": {
       "name": "@couch-kit/cli",
-      "version": "0.2.3",
+      "version": "0.2.4",
       "bin": {
         "couch-kit": "./dist/index.js",
       },
@@ -33,7 +33,7 @@
     },
     "packages/client": {
       "name": "@couch-kit/client",
-      "version": "0.6.0",
+      "version": "0.6.1",
       "dependencies": {
         "@couch-kit/core": "workspace:*",
       },
@@ -48,7 +48,7 @@
     },
     "packages/core": {
       "name": "@couch-kit/core",
-      "version": "0.5.0",
+      "version": "0.5.1",
       "devDependencies": {
         "eslint": "^8.57.0",
         "typescript": "^5.4.0",
@@ -59,7 +59,7 @@
     },
     "packages/host": {
       "name": "@couch-kit/host",
-      "version": "1.3.1",
+      "version": "1.4.0",
       "dependencies": {
         "@couch-kit/core": "workspace:*",
         "buffer": "^6.0.3",
@@ -80,7 +80,6 @@
         "react": ">=18.2.0",
         "react-native": ">=0.72.0",
         "react-native-nitro-modules": ">=0.33.0",
-        "react-native-tcp-socket": ">=6.0.0",
       },
     },
   },
@@ -1328,8 +1327,6 @@
 
     "react-native-nitro-modules": ["react-native-nitro-modules@0.33.2", "", { "peerDependencies": { "react": "*", "react-native": "*" } }, "sha512-ZlfOe6abODeHv/eZf8PxeSkrxIUhEKha6jaAAA9oXy7I6VPr7Ff4dUsAq3cyF3kX0L6qt2Dh9nzD2NdSsDwGpA=="],
 
-    "react-native-tcp-socket": ["react-native-tcp-socket@6.4.1", "", { "dependencies": { "buffer": "^5.4.3", "eventemitter3": "^4.0.7" }, "peerDependencies": { "react-native": ">=0.60.0" } }, "sha512-2+zya9ielB8nWfMYVULB64ZqLzQD32qIzTnDef7NM1BChaJiA1btkJTBL+8WnyBrujjlCBVxBC3gAkXtG5hmvQ=="],
-
     "react-refresh": ["react-refresh@0.14.2", "", {}, "sha512-jCvmsr+1IUSMUyzOkRcvnVbX3ZYC6g9TDrDbFuFmRDq7PD4yaGbLKNQL6k2jnArV8hjYxh7hVhAZB6s9HDGpZA=="],
 
     "read-pkg": ["read-pkg@6.0.0", "", { "dependencies": { "@types/normalize-package-data": "^2.4.0", "normalize-package-data": "^3.0.2", "parse-json": "^5.2.0", "type-fest": "^1.0.1" } }, "sha512-X1Fu3dPuk/8ZLsMhEj5f4wFAF0DWoK7qhGJvgaijocXxBmSToKfbFtqbxMO7bVjNA1dmE5huAzjXj/ey86iw9Q=="],
@@ -1801,10 +1798,6 @@
     "rc/strip-json-comments": ["strip-json-comments@2.0.1", "", {}, "sha512-4gB8na07fecVVkOI6Rs4e7T6NOTki5EmL7TUduTs6bu3EdnSycntVJ4re8kgZA+wx9IueI2Y11bfbgwtzuE0KQ=="],
 
     "react-native/react": ["react@19.0.4", "", {}, "sha512-6RpEg9/n0sThnO+2CaMLWuvL1iyctm9/lcSTwvmyCoJYD5eiIrwxevXtrMqrtUr96HCdQB8/Yf+oK1QGy8kXEQ=="],
-
-    "react-native-tcp-socket/buffer": ["buffer@5.7.1", "", { "dependencies": { "base64-js": "^1.3.1", "ieee754": "^1.1.13" } }, "sha512-EHcyIPBQ4BSGlvjB16k5KgAJ27CIsHY/2JBmCRReo48y9rQ3MaUzWX3KVlBa4U7MyX02HdVj0K7C3WaB3ju7FQ=="],
-
-    "react-native-tcp-socket/eventemitter3": ["eventemitter3@4.0.7", "", {}, "sha512-8guHBZCwKnFhYdHr2ysuRWErTwhoN2X8XELRlrRwpmfeY2jjuUN4taQMsULKUVo1K4DvZl+0pgfyoysHxvmvEw=="],
 
     "read-pkg/type-fest": ["type-fest@1.4.0", "", {}, "sha512-yGSza74xk0UG8k+pLh5oeoYirvIiWo5t0/o3zHHAO2tRDiZcxWP7fywNlXhqb6/r6sWvwi+RsyQMWhVLe4BVuA=="],
 
