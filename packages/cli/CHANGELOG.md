@@ -1,5 +1,16 @@
 # @couch-kit/cli
 
+## 0.3.0
+
+### Minor Changes
+
+- [#21](https://github.com/faluciano/react-native-couch-kit/pull/21) [`f1e836d`](https://github.com/faluciano/react-native-couch-kit/commit/f1e836d8f17821f0da20db7c3c552552c9b22133) Thanks [@faluciano](https://github.com/faluciano)! - Add `replay` command for replaying recorded game sessions against a reducer. Add `dev` command for starting a Vite dev server with LAN URL output. Improve `init` scaffolding with package manager detection, stricter TypeScript config, sample game reducer, and .gitignore generation.
+
+### Patch Changes
+
+- Updated dependencies [[`f1e836d`](https://github.com/faluciano/react-native-couch-kit/commit/f1e836d8f17821f0da20db7c3c552552c9b22133)]:
+  - @couch-kit/core@0.8.0
+
 ## 0.2.6
 
 ### Patch Changes

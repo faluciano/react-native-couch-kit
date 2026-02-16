@@ -1,5 +1,16 @@
 # @couch-kit/host
 
+## 1.6.0
+
+### Minor Changes
+
+- [#21](https://github.com/faluciano/react-native-couch-kit/pull/21) [`f1e836d`](https://github.com/faluciano/react-native-couch-kit/commit/f1e836d8f17821f0da20db7c3c552552c9b22133) Thanks [@faluciano](https://github.com/faluciano)! - Add `useActionRecorder` hook for recording game actions during a session. Supports start/stop recording, action capture, and JSON export for replay.
+
+### Patch Changes
+
+- Updated dependencies [[`f1e836d`](https://github.com/faluciano/react-native-couch-kit/commit/f1e836d8f17821f0da20db7c3c552552c9b22133)]:
+  - @couch-kit/core@0.8.0
+
 ## 1.5.1
 
 ### Patch Changes
