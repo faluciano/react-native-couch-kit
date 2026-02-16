@@ -6,7 +6,7 @@ export const DEFAULT_HTTP_PORT = 8080;
 /** Default WebSocket port offset from the HTTP port (skips Metro on +1). */
 export const DEFAULT_WS_PORT_OFFSET = 2;
 
-/** Maximum allowed WebSocket frame payload size (1 MB). */
+/** @deprecated Not used by Couch Kit internals. Will be removed in the next major version. */
 export const MAX_FRAME_SIZE = 1024 * 1024;
 
 /** Default maximum reconnection attempts for the client. */
@@ -24,10 +24,13 @@ export const DEFAULT_SYNC_INTERVAL = 5000;
 /** Maximum number of outstanding pings before cleanup. */
 export const MAX_PENDING_PINGS = 50;
 
-/** Server-side keepalive ping interval (ms). */
+/** Default timeout (ms) before a disconnected player is removed from state. */
+export const DEFAULT_DISCONNECT_TIMEOUT = 5 * 60 * 1000;
+
+/** @deprecated Not used by Couch Kit internals. Will be removed in the next major version. */
 export const KEEPALIVE_INTERVAL = 30000;
 
-/** Keepalive timeout -- disconnect if no pong received (ms). */
+/** @deprecated Not used by Couch Kit internals. Will be removed in the next major version. */
 export const KEEPALIVE_TIMEOUT = 10000;
 
 /**
@@ -71,13 +74,25 @@ export function isValidSecret(secret: string): boolean {
 }
 
 /**
- * Derives a stable, public player ID from a secret UUID.
+ * Derives a stable, public player ID from a secret UUID using SHA-256.
  *
- * Strips dashes and takes the first 16 hex characters. This is NOT a
- * cryptographic hash — it simply avoids exposing the raw secret in
- * state that gets broadcast to all clients.
+ * Takes the first 16 hex characters of the SHA-256 hash, producing
+ * a deterministic ID that cannot be reversed to recover the secret.
  */
-export function derivePlayerId(secret: string): string {
+export async function derivePlayerId(secret: string): Promise<string> {
+  const data = new TextEncoder().encode(secret);
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hash))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+    .slice(0, 16);
+}
+
+/**
+ * @deprecated Legacy player ID derivation. Insecure — exposes first 16 hex chars of secret.
+ * Kept temporarily for dual-derivation migration in the host. Will be removed in next major.
+ */
+export function derivePlayerIdLegacy(secret: string): string {
   return secret.replace(/-/g, "").slice(0, 16);
 }
 
