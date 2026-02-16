@@ -36,3 +36,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # npm auth (generated in CI)
 .npmrc
+
+# opencode agent config
+.opencode/

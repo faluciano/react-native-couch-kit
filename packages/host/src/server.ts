@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { StaticServer } from "react-native-nitro-http-server";
-import { Paths } from "expo-file-system/next";
+import { Paths } from "expo-file-system";
 import { getBestIpAddress } from "./network";
 import { DEFAULT_HTTP_PORT, toErrorMessage } from "@couch-kit/core";
 
@@ -58,7 +58,7 @@ export const useStaticServer = (config: CouchKitHostConfig) => {
           if (!bundleUri) {
             throw new Error(
               "No staticDir provided and Paths.bundle is unavailable. " +
-              "On Android, you must pass staticDir from useExtractAssets.",
+                "On Android, you must pass staticDir from useExtractAssets.",
             );
           }
           path = `${bundleUri.replace(/^file:\/\//, "")}www`;
