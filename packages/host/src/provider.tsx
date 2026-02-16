@@ -14,14 +14,22 @@ import {
   InternalActionTypes,
   DEFAULT_HTTP_PORT,
   DEFAULT_WS_PORT_OFFSET,
+  DEFAULT_DISCONNECT_TIMEOUT,
   createGameReducer,
   derivePlayerId,
+  derivePlayerIdLegacy,
   isValidSecret,
   type IGameState,
   type IAction,
   type InternalAction,
   type ClientMessage,
 } from "@couch-kit/core";
+
+/** Maximum actions per rate-limit window. */
+const RATE_LIMIT_MAX = 60;
+
+/** Rate-limit window duration (ms). */
+const RATE_LIMIT_WINDOW = 1000;
 
 export interface GameHostConfig<S extends IGameState, A extends IAction> {
   initialState: S;
@@ -32,6 +40,8 @@ export interface GameHostConfig<S extends IGameState, A extends IAction> {
   devServerUrl?: string;
   staticDir?: string; // Override the default www directory path (required on Android)
   debug?: boolean;
+  /** Timeout (ms) before a disconnected player is permanently removed (default: 5 minutes). */
+  disconnectTimeout?: number;
   /** Called when a player successfully joins. */
   onPlayerJoined?: (playerId: string, name: string) => void;
   /** Called when a player disconnects. */
@@ -125,23 +135,36 @@ export function GameHostProvider<S extends IGameState, A extends IAction>({
     stateRef.current = state;
   }, [state]);
 
-  // Send WELCOME messages after state has settled (post-render).
+  // Send WELCOME/RECONNECTED messages after state has settled (post-render).
   // This guarantees the joining player is included in the state snapshot.
   useEffect(() => {
     if (pendingWelcome.current.size === 0) return;
     if (!wsServer.current) return;
 
     const server = wsServer.current;
-    for (const [socketId, playerId] of pendingWelcome.current) {
+    for (const [
+      socketId,
+      { playerId, isReconnect },
+    ] of pendingWelcome.current) {
       welcomedClients.current.add(socketId);
-      server.send(socketId, {
-        type: MessageTypes.WELCOME,
-        payload: {
-          playerId,
-          state,
-          serverTime: Date.now(),
-        },
-      });
+      if (isReconnect) {
+        server.send(socketId, {
+          type: MessageTypes.RECONNECTED,
+          payload: {
+            playerId,
+            state,
+          },
+        });
+      } else {
+        server.send(socketId, {
+          type: MessageTypes.WELCOME,
+          payload: {
+            playerId,
+            state,
+            serverTime: Date.now(),
+          },
+        });
+      }
     }
     pendingWelcome.current.clear();
   }, [state]);
@@ -178,8 +201,24 @@ export function GameHostProvider<S extends IGameState, A extends IAction>({
   // Track socket IDs that have received their WELCOME message
   const welcomedClients = useRef<Set<string>>(new Set());
 
-  // Track socket IDs that need a WELCOME message after state settles
-  const pendingWelcome = useRef<Map<string, string>>(new Map()); // socketId -> playerId
+  // Track socket IDs that need a WELCOME/RECONNECTED message after state settles
+  const pendingWelcome = useRef<
+    Map<string, { playerId: string; isReconnect: boolean }>
+  >(new Map());
+
+  // Cache: socketId -> playerId (avoids async derivation in hot paths)
+  const socketIdToPlayerId = useRef<Map<string, string>>(new Map());
+
+  // Track which players have finished loading assets
+  const assetsLoaded = useRef<Map<string, boolean>>(new Map());
+
+  // Queue of actions dispatched since last broadcast (for STATE_UPDATE.action)
+  const actionQueue = useRef<unknown[]>([]);
+
+  // Rate limiting: track action count per socket
+  const rateLimits = useRef<
+    Map<string, { count: number; windowStart: number }>
+  >(new Map());
 
   useEffect(() => {
     const port = config.wsPort || httpPort + DEFAULT_WS_PORT_OFFSET;
@@ -240,39 +279,69 @@ export function GameHostProvider<S extends IGameState, A extends IAction>({
             return;
           }
 
-          const playerId = derivePlayerId(secret);
+          // Async dual-derivation: try SHA-256 first, fall back to legacy
+          derivePlayerId(secret).then((hashedId) => {
+            let playerId = hashedId;
 
-          // Update session maps
-          sessions.current.set(secret, socketId);
-          reverseMap.current.set(socketId, secret);
+            // Migration: if a player exists under the legacy ID, use that instead
+            const legacyId = derivePlayerIdLegacy(secret);
+            if (
+              !stateRef.current.players[playerId] &&
+              stateRef.current.players[legacyId]
+            ) {
+              playerId = legacyId;
+            }
 
-          // Cancel any pending cleanup timer for this player
-          const existingTimer = cleanupTimers.current.get(playerId);
-          if (existingTimer) {
-            clearTimeout(existingTimer);
-            cleanupTimers.current.delete(playerId);
-          }
+            // Cache the resolved playerId for this socket
+            socketIdToPlayerId.current.set(socketId, playerId);
 
-          // Check if this is a returning player
-          const existingPlayer = stateRef.current.players[playerId];
-          if (existingPlayer) {
-            // Reconnection — restore existing player
-            dispatch({
-              type: InternalActionTypes.PLAYER_RECONNECTED,
-              payload: { playerId },
-            } as InternalAction<S>);
-          } else {
-            // New player
-            dispatch({
-              type: InternalActionTypes.PLAYER_JOINED,
-              payload: { id: playerId, ...payload },
-            } as InternalAction<S>);
-          }
+            // Update session maps
+            sessions.current.set(secret, socketId);
+            reverseMap.current.set(socketId, secret);
 
-          // Queue WELCOME
-          pendingWelcome.current.set(socketId, playerId);
+            // Cancel any pending cleanup timer for this player
+            const existingTimer = cleanupTimers.current.get(playerId);
+            if (existingTimer) {
+              clearTimeout(existingTimer);
+              cleanupTimers.current.delete(playerId);
+            }
 
-          configRef.current.onPlayerJoined?.(playerId, payload.name);
+            // Check if this is a returning player
+            const existingPlayer = stateRef.current.players[playerId];
+            if (existingPlayer) {
+              // Reconnection — restore existing player
+              dispatch({
+                type: InternalActionTypes.PLAYER_RECONNECTED,
+                payload: { playerId },
+              } as InternalAction<S>);
+
+              // Reset assets loaded status on reconnect
+              assetsLoaded.current.set(playerId, false);
+
+              // Queue RECONNECTED message
+              pendingWelcome.current.set(socketId, {
+                playerId,
+                isReconnect: true,
+              });
+            } else {
+              // New player
+              dispatch({
+                type: InternalActionTypes.PLAYER_JOINED,
+                payload: { id: playerId, ...payload },
+              } as InternalAction<S>);
+
+              // Initialize assets loaded status
+              assetsLoaded.current.set(playerId, false);
+
+              // Queue WELCOME message
+              pendingWelcome.current.set(socketId, {
+                playerId,
+                isReconnect: false,
+              });
+            }
+
+            configRef.current.onPlayerJoined?.(playerId, payload.name);
+          });
           break;
         }
 
@@ -302,12 +371,32 @@ export function GameHostProvider<S extends IGameState, A extends IAction>({
             });
             return;
           }
-          // Resolve playerId from socketId
-          const actionSecret = reverseMap.current.get(socketId);
-          const resolvedPlayerId = actionSecret
-            ? derivePlayerId(actionSecret)
-            : undefined;
+
+          // Rate limiting
+          const now = Date.now();
+          let rateInfo = rateLimits.current.get(socketId);
+          if (!rateInfo || now - rateInfo.windowStart > RATE_LIMIT_WINDOW) {
+            rateInfo = { count: 0, windowStart: now };
+            rateLimits.current.set(socketId, rateInfo);
+          }
+          rateInfo.count++;
+          if (rateInfo.count > RATE_LIMIT_MAX) {
+            if (configRef.current.debug)
+              console.warn(`[GameHost] Rate limited ${socketId}`);
+            server.send(socketId, {
+              type: MessageTypes.ERROR,
+              payload: {
+                code: "RATE_LIMITED",
+                message: "Too many actions, slow down",
+              },
+            });
+            return;
+          }
+
+          // Use cached playerId (populated at JOIN time)
+          const resolvedPlayerId = socketIdToPlayerId.current.get(socketId);
           dispatch({ ...actionPayload, playerId: resolvedPlayerId });
+          actionQueue.current.push(actionPayload);
           break;
         }
 
@@ -321,6 +410,16 @@ export function GameHostProvider<S extends IGameState, A extends IAction>({
             },
           });
           break;
+
+        case MessageTypes.ASSETS_LOADED: {
+          const loadedPlayerId = socketIdToPlayerId.current.get(socketId);
+          if (loadedPlayerId) {
+            assetsLoaded.current.set(loadedPlayerId, true);
+            if (configRef.current.debug)
+              console.log(`[GameHost] Assets loaded for ${loadedPlayerId}`);
+          }
+          break;
+        }
       }
     });
 
@@ -330,13 +429,21 @@ export function GameHostProvider<S extends IGameState, A extends IAction>({
 
       welcomedClients.current.delete(socketId);
 
-      // Resolve socketId -> secret -> playerId
+      // Use cached playerId
+      const playerId = socketIdToPlayerId.current.get(socketId);
+      socketIdToPlayerId.current.delete(socketId);
+
+      // Clean up reverse map
       const secret = reverseMap.current.get(socketId);
       reverseMap.current.delete(socketId);
 
-      if (!secret) return; // Unknown socket, nothing to do
+      // Clean up rate limits
+      rateLimits.current.delete(socketId);
 
-      const playerId = derivePlayerId(secret);
+      if (!playerId || !secret) return; // Unknown socket, nothing to do
+
+      // Clean up assets loaded tracking
+      assetsLoaded.current.delete(playerId);
 
       // RACE GUARD: Only mark as left if this socket is still the active one for this secret
       if (sessions.current.get(secret) !== socketId) {
@@ -352,18 +459,17 @@ export function GameHostProvider<S extends IGameState, A extends IAction>({
 
       configRef.current.onPlayerLeft?.(playerId);
 
-      // Start stale player cleanup timer (5 minutes default)
-      const timer = setTimeout(
-        () => {
-          cleanupTimers.current.delete(playerId);
-          sessions.current.delete(secret);
-          dispatch({
-            type: InternalActionTypes.PLAYER_REMOVED,
-            payload: { playerId },
-          } as InternalAction<S>);
-        },
-        5 * 60 * 1000,
-      );
+      // Start stale player cleanup timer
+      const timeout =
+        configRef.current.disconnectTimeout ?? DEFAULT_DISCONNECT_TIMEOUT;
+      const timer = setTimeout(() => {
+        cleanupTimers.current.delete(playerId);
+        sessions.current.delete(secret);
+        dispatch({
+          type: InternalActionTypes.PLAYER_REMOVED,
+          payload: { playerId },
+        } as InternalAction<S>);
+      }, timeout);
       cleanupTimers.current.set(playerId, timer);
     });
 
@@ -389,11 +495,18 @@ export function GameHostProvider<S extends IGameState, A extends IAction>({
 
   const broadcastState = useCallback(() => {
     if (wsServer.current) {
+      const actions = actionQueue.current;
+      actionQueue.current = [];
       wsServer.current.broadcast({
         type: MessageTypes.STATE_UPDATE,
         payload: {
           newState: stateRef.current,
           timestamp: Date.now(),
+          ...(actions.length === 1
+            ? { action: actions[0] }
+            : actions.length > 1
+              ? { action: actions }
+              : {}),
         },
       });
     }

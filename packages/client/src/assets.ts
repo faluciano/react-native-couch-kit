@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { MessageTypes } from "@couch-kit/core";
 
 export interface PreloadResult {
   /** Whether all assets have finished loading (including failures). */
@@ -28,10 +29,18 @@ function arraysEqual(a: string[], b: string[]): boolean {
  * that failed to load). Failed assets still count toward progress so the hook
  * always reaches 100 % — check `failedAssets.length` to decide how to react.
  */
-export function usePreload(assets: string[]): PreloadResult {
+export function usePreload(
+  assets: string[],
+  sendMessage?: (msg: { type: string; payload: unknown }) => void,
+): PreloadResult {
   const [loaded, setLoaded] = useState(false);
   const [progress, setProgress] = useState(0);
   const [failedAssets, setFailedAssets] = useState<string[]>([]);
+
+  // Stable ref for the callback to avoid re-triggering the effect
+  // when the caller passes a new function reference each render.
+  const sendMessageRef = useRef(sendMessage);
+  sendMessageRef.current = sendMessage;
 
   // Stable reference to the last asset list so we don't depend on
   // `JSON.stringify(assets)` — which creates a new string every render.
@@ -49,6 +58,10 @@ export function usePreload(assets: string[]): PreloadResult {
       setLoaded(true);
       setProgress(100);
       setFailedAssets([]);
+      sendMessageRef.current?.({
+        type: MessageTypes.ASSETS_LOADED,
+        payload: true,
+      });
       return;
     }
 
@@ -64,6 +77,10 @@ export function usePreload(assets: string[]): PreloadResult {
       if (loadedCount === total) {
         setFailedAssets([...failed]);
         setLoaded(true);
+        sendMessageRef.current?.({
+          type: MessageTypes.ASSETS_LOADED,
+          payload: true,
+        });
       }
     };
 
