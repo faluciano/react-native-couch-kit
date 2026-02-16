@@ -1,6 +1,10 @@
 {
   "name": "@couch-kit/core",
   "version": "0.5.0",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "description": "Shared types, protocol, and game reducer for Couch Kit party games",
   "license": "MIT",
   "repository": {

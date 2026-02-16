@@ -37,20 +37,26 @@ jobs:
       - name: Create .npmrc
         run: echo '//registry.npmjs.org/:_authToken=${NPM_TOKEN}' > .npmrc
 
-      - uses: changesets/action@v1
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Create Release Pull Request or Publish
         id: changesets
+        uses: changesets/action@v1
         with:
           version: bun run version
           publish: bun run release
           createGithubReleases: true
-          title: "chore: version packages"
-          commit: "chore: version packages"
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Enable auto-merge
         if: steps.changesets.outputs.pullRequestNumber
         run: gh pr merge ${{ steps.changesets.outputs.pullRequestNumber }} --auto --squash
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
