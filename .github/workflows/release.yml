@@ -79,15 +79,28 @@ jobs:
           GH_TOKEN: ${{ steps.cross-repo-token.outputs.token }}
           PUBLISHED: ${{ steps.changesets.outputs.publishedPackages }}
         run: |
-          PACKAGES=$(echo "$PUBLISHED" | jq -r '.[] | "- `\(.name)` → \(.version)"')
+          PACKAGES=$(echo "$PUBLISHED" | jq -r '.[] | "- `\(.name)` → v\(.version)"')
 
-          BODY=$(cat <<EOF
+          BODY=$(cat <<'ISSUE_BODY'
           ## New @couch-kit versions published
 
-          $PACKAGES
+          ISSUE_BODY
+          )
 
-          Please update the \`@couch-kit\` dependencies in this repo to the latest versions.
-          EOF
+          BODY+="$PACKAGES"
+
+          BODY+=$(cat <<'ISSUE_BODY'
+
+          ## Steps to update
+
+          1. Update the versions in the relevant `packages/*/package.json` files
+          2. Run `bun install` to update the lockfile
+          3. Run `bun run typecheck` to verify type compatibility
+          4. Run `bun run build:client` to verify the build succeeds
+          5. Commit changes to `package.json` files and `bun.lock`
+
+          > Check the [CHANGELOGs](https://github.com/faluciano/react-native-couch-kit/tree/main/packages) for migration instructions if this is a major version bump.
+          ISSUE_BODY
           )
 
           for REPO in domino-party-game buzz-tv-party-game; do
