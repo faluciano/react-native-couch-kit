@@ -60,3 +60,40 @@ jobs:
         run: gh pr merge ${{ steps.changesets.outputs.pullRequestNumber }} --auto --squash
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
+      - name: Generate cross-repo token
+        if: steps.changesets.outputs.published == 'true'
+        id: cross-repo-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: faluciano
+          repositories: |
+            domino-party-game
+            buzz-tv-party-game
+
+      - name: Create update issues in consumer apps
+        if: steps.changesets.outputs.published == 'true'
+        env:
+          GH_TOKEN: ${{ steps.cross-repo-token.outputs.token }}
+          PUBLISHED: ${{ steps.changesets.outputs.publishedPackages }}
+        run: |
+          PACKAGES=$(echo "$PUBLISHED" | jq -r '.[] | "- `\(.name)` → \(.version)"')
+
+          BODY=$(cat <<EOF
+          ## New @couch-kit versions published
+
+          $PACKAGES
+
+          Please update the \`@couch-kit\` dependencies in this repo to the latest versions.
+          EOF
+          )
+
+          for REPO in domino-party-game buzz-tv-party-game; do
+            gh issue create \
+              --repo "faluciano/$REPO" \
+              --title "chore: update @couch-kit packages" \
+              --body "$BODY" \
+              --assignee "copilot"
+          done
