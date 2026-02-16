@@ -33,12 +33,12 @@ interface GameState extends IGameState {
   score: number;
 }
 
-type GameAction = { type: "SCORE" } | { type: "RESET" };
+type GameAction = { type: "SCORE"; payload: number } | { type: "RESET" };
 
 const gameReducer = (state: GameState, action: GameAction): GameState => {
   switch (action.type) {
     case "SCORE":
-      return { ...state, score: state.score + 1 };
+      return { ...state, score: state.score + action.payload };
     case "RESET":
       return { ...state, score: 0 };
     default:
@@ -46,6 +46,75 @@ const gameReducer = (state: GameState, action: GameAction): GameState => {
   }
 };
 ```
+
+### Middleware
+
+`createGameReducer` accepts an optional second argument with a `middleware` array. Middlewares follow the Redux pattern — each is a three-layer curried function that can observe, transform, or block actions before they reach the reducer.
+
+```typescript
+import {
+  createGameReducer,
+  actionLogger,
+  actionValidator,
+  type Middleware,
+} from "@couch-kit/core";
+
+const reducer = createGameReducer(gameReducer, {
+  middleware: [
+    actionLogger(),
+    actionValidator({ SCORE: (action) => action.payload > 0 }),
+  ],
+});
+```
+
+Middlewares execute in array order: the first middleware sees the action first on the way in and last on the way out. Each middleware is wrapped in an error boundary — if one throws, it is skipped and the action continues to the next layer.
+
+#### `actionLogger(options?)`
+
+Logs every dispatched action with its previous state, action payload, and resulting state.
+
+| Option      | Type      | Default | Description                                     |
+| ----------- | --------- | ------- | ----------------------------------------------- |
+| `collapsed` | `boolean` | `true`  | Use `console.groupCollapsed` instead of `group` |
+
+```typescript
+actionLogger(); // collapsed groups (default)
+actionLogger({ collapsed: false }); // expanded groups
+```
+
+#### `actionValidator(schema)`
+
+Validates actions against a schema before they reach the reducer. If a validator returns `false`, the action is dropped and a warning is logged.
+
+```typescript
+import { actionValidator, type ActionSchema } from "@couch-kit/core";
+
+const schema: ActionSchema<GameAction> = {
+  SCORE: (action) => typeof action.payload === "number" && action.payload > 0,
+  RESET: () => true,
+};
+
+const validator = actionValidator<GameState, GameAction>(schema);
+```
+
+Actions without a matching validator in the schema pass through unchanged. Internal actions (types prefixed with `__`) are never validated.
+
+#### Custom middleware
+
+A middleware is a function with the signature:
+
+```typescript
+const myMiddleware: Middleware<GameState, GameAction> =
+  (api) => (next) => (action) => {
+    // `api.getState()` returns the current state
+    // `next(action)` passes the action to the next layer
+    // Return the resulting state
+    const result = next(action);
+    return result;
+  };
+```
+
+> **Note:** Internal actions (`__HYDRATE__`, `__PLAYER_JOINED__`, etc.) flow through middleware and are observable, but custom middleware should **not** block them. Doing so will break framework behaviour.
 
 ### Interfaces
 

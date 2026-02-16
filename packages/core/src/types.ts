@@ -1,3 +1,6 @@
+import { applyMiddleware } from "./middleware";
+import type { Middleware } from "./middleware";
+
 /**
  * Represents a player connected to the game session.
  *
@@ -76,6 +79,22 @@ export type GameReducer<S extends IGameState, A extends IAction> = (
   action: A,
 ) => S;
 
+/** Options for `createGameReducer`. */
+export interface CreateGameReducerOptions<
+  S extends IGameState,
+  A extends IAction,
+> {
+  /**
+   * Optional middleware stack. Middlewares are applied in order — the first
+   * middleware in the array is the outermost layer and sees every action first.
+   *
+   * Middleware can observe **and** transform both user actions and internal
+   * actions. Custom middleware should avoid blocking internal actions (types
+   * prefixed with `__`) to prevent breaking framework behaviour.
+   */
+  middleware?: Middleware<S, A>[];
+}
+
 /**
  * Wraps a user-provided reducer with automatic handling of internal actions:
  *
@@ -87,11 +106,19 @@ export type GameReducer<S extends IGameState, A extends IAction> = (
  *
  * The wrapped reducer accepts both `A` (user actions) and `InternalAction<S>`.
  * User reducers only need to handle their own action types.
+ *
+ * When `options.middleware` is provided, the middleware stack wraps around the
+ * entire reducer (including internal-action handling). Middleware can observe
+ * all actions flowing through the reducer.
  */
 export function createGameReducer<S extends IGameState, A extends IAction>(
   reducer: GameReducer<S, A>,
+  options?: CreateGameReducerOptions<S, A>,
 ): GameReducer<S, A | InternalAction<S>> {
-  return (state: S, action: A | InternalAction<S>): S => {
+  const baseReducer: GameReducer<S, A | InternalAction<S>> = (
+    state: S,
+    action: A | InternalAction<S>,
+  ): S => {
     switch (action.type) {
       case InternalActionTypes.HYDRATE:
         return (action as InternalAction<S> & { type: "__HYDRATE__" }).payload;
@@ -161,4 +188,10 @@ export function createGameReducer<S extends IGameState, A extends IAction>(
         return reducer(state, action as A);
     }
   };
+
+  const middlewares = options?.middleware;
+
+  if (!middlewares || middlewares.length === 0) return baseReducer;
+
+  return applyMiddleware<S, A>(...middlewares)(baseReducer);
 }
