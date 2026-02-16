@@ -50,10 +50,44 @@ jobs:
         with:
           version: bun run version
           publish: bun run release
-          createGithubReleases: true
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub Releases
+        if: steps.changesets.outputs.published == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PUBLISHED: ${{ steps.changesets.outputs.publishedPackages }}
+        run: |
+          echo "$PUBLISHED" | jq -c '.[]' | while read -r pkg; do
+            NAME=$(echo "$pkg" | jq -r '.name')
+            VERSION=$(echo "$pkg" | jq -r '.version')
+            TAG="${NAME}@${VERSION}"
+            DIR=$(echo "$NAME" | sed 's/@couch-kit\///')
+            CHANGELOG="packages/${DIR}/CHANGELOG.md"
+
+            # Extract version section from CHANGELOG
+            if [ -f "$CHANGELOG" ]; then
+              awk -v ver="$VERSION" '
+                /^## / { if (found) exit; if ($2 == ver) { found=1; next } }
+                found { print }
+              ' "$CHANGELOG" > /tmp/release-notes.md
+            fi
+
+            # Fall back to minimal body if no changelog section found
+            if [ ! -s /tmp/release-notes.md ]; then
+              echo "Release ${TAG}" > /tmp/release-notes.md
+            fi
+
+            echo "Creating release: ${TAG}"
+            gh release create "${TAG}" \
+              --title "${TAG}" \
+              --notes-file /tmp/release-notes.md \
+              --verify-tag || echo "⚠️ Failed to create release for ${TAG}"
+
+            rm -f /tmp/release-notes.md
+          done
 
       - name: Enable auto-merge
         if: steps.changesets.outputs.pullRequestNumber
