@@ -312,6 +312,22 @@ When you make changes to the library:
 | **`@couch-kit/core`**   | Shared TypeScript types and protocol definitions.                                          |
 | **`@couch-kit/cli`**    | CLI tools to scaffold, bundle, and simulate web controllers                                |
 
+## 🔄 Release Flow
+
+This repo uses [Changesets](https://github.com/changesets/changesets) for versioning and publishing.
+
+### How it works
+
+1. **Every PR** must include a changeset (`bun changeset` to create one)
+2. On merge to `main`, the release workflow either:
+   - Creates a **"Version Packages"** PR if there are pending changesets
+   - **Publishes to npm** if the version PR was merged (no pending changesets)
+3. After publishing, **issues are automatically created** in consumer app repos ([domino](https://github.com/faluciano/domino-party-game), [buzz](https://github.com/faluciano/buzz-tv-party-game)) assigned to Copilot to update dependencies
+
+### Breaking changes
+
+When publishing a **major version bump**, the consumer apps will need code changes. The auto-created issues flag this, and CI in each app repo (typecheck + build) will catch any breakage before the update is merged.
+
 ## 📚 Documentation
 
 - [Host Documentation](./packages/host/README.md)
