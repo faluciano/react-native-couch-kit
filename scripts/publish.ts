@@ -109,6 +109,8 @@ for (const pkg of PACKAGES) {
       }
     } else {
       console.log(`   ✅ Published ${pkg}`);
+      // Emit changeset-compatible format so changesets/action@v1 detects published packages
+      console.log(`🦋  ${json.name}@${json.version}`);
     }
   } catch (e) {
     console.error(`   ❌ Error publishing ${pkg}:`, e);
