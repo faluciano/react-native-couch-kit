@@ -1,0 +1,35 @@
+name: "@couch-kit Update"
+description: "Track a @couch-kit package update"
+title: "chore: update @couch-kit packages"
+labels: ["couch-kit-update"]
+assignees: ["copilot"]
+body:
+  - type: input
+    id: packages
+    attributes:
+      label: Packages
+      description: "Comma-separated list of updated packages with versions"
+      placeholder: "@couch-kit/core@0.6.0, @couch-kit/host@1.5.0"
+    validations:
+      required: true
+  - type: textarea
+    id: breaking-changes
+    attributes:
+      label: Breaking Changes
+      description: "List any breaking changes"
+      placeholder: "None"
+  - type: textarea
+    id: migration
+    attributes:
+      label: Migration Guide
+      description: "Steps to migrate to the new version"
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Update Checklist
+      options:
+        - label: "Updated package.json versions"
+        - label: "Ran bun install"
+        - label: "Ran bun run typecheck"
+        - label: "Ran bun run build"
+        - label: "Tested locally on TV + phone"

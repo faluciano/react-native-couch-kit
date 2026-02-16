@@ -73,40 +73,55 @@ jobs:
             domino-party-game
             buzz-tv-party-game
 
+      - name: Extract changelogs
+        if: steps.changesets.outputs.published == 'true'
+        env:
+          PUBLISHED: ${{ steps.changesets.outputs.publishedPackages }}
+        run: bun run scripts/extract-changelog.ts "$PUBLISHED" > /tmp/changelog.json
+
+      - name: Render issue
+        if: steps.changesets.outputs.published == 'true'
+        run: bun run scripts/render-issue.ts /tmp/changelog.json > /tmp/issue-output.txt
+
       - name: Create update issues in consumer apps
         if: steps.changesets.outputs.published == 'true'
         env:
           GH_TOKEN: ${{ steps.cross-repo-token.outputs.token }}
-          PUBLISHED: ${{ steps.changesets.outputs.publishedPackages }}
         run: |
-          PACKAGES=$(echo "$PUBLISHED" | jq -r '.[] | "- `\(.name)` → v\(.version)"')
+          head -n 1 /tmp/issue-output.txt > /tmp/issue-title.txt
+          TITLE=$(cat /tmp/issue-title.txt)
+          tail -n +3 /tmp/issue-output.txt > /tmp/issue-body.md
 
-          BODY=$(cat <<'ISSUE_BODY'
-          ## New @couch-kit versions published
+          HAS_BREAKING=$(jq -r '.hasBreaking' /tmp/changelog.json)
+          HAS_SECURITY=$(jq -r '.hasSecurity' /tmp/changelog.json)
 
-          ISSUE_BODY
-          )
-
-          BODY+="$PACKAGES"
-
-          BODY+=$(cat <<'ISSUE_BODY'
-
-          ## Steps to update
-
-          1. Update the versions in the relevant `packages/*/package.json` files
-          2. Run `bun install` to update the lockfile
-          3. Run `bun run typecheck` to verify type compatibility
-          4. Run `bun run build:client` to verify the build succeeds
-          5. Commit changes to `package.json` files and `bun.lock`
-
-          > Check the [CHANGELOGs](https://github.com/faluciano/react-native-couch-kit/tree/main/packages) for migration instructions if this is a major version bump.
-          ISSUE_BODY
-          )
+          LABELS="couch-kit-update"
+          if [ "$HAS_BREAKING" = "true" ]; then
+            LABELS="$LABELS,breaking-change"
+          fi
+          if [ "$HAS_SECURITY" = "true" ]; then
+            LABELS="$LABELS,security"
+          fi
 
           for REPO in domino-party-game buzz-tv-party-game; do
-            gh issue create \
-              --repo "faluciano/$REPO" \
-              --title "chore: update @couch-kit packages" \
-              --body "$BODY" \
-              --assignee "copilot"
+            FULL_REPO="faluciano/$REPO"
+
+            existing=$(gh issue list --repo "$FULL_REPO" --label "couch-kit-update" --state open --json number --jq '.[0].number // empty')
+
+            if [ -n "$existing" ]; then
+              gh issue edit "$existing" \
+                --repo "$FULL_REPO" \
+                --title "$TITLE" \
+                --add-label "$LABELS"
+              gh issue comment "$existing" \
+                --repo "$FULL_REPO" \
+                --body-file /tmp/issue-body.md
+            else
+              gh issue create \
+                --repo "$FULL_REPO" \
+                --title "$TITLE" \
+                --body-file /tmp/issue-body.md \
+                --label "$LABELS" \
+                --assignee "copilot"
+            fi
           done
