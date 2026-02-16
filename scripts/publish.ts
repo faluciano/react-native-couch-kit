@@ -6,7 +6,7 @@ const PACKAGES_DIR = join(process.cwd(), "packages");
 const IS_CI = Boolean(process.env.CI);
 
 // List of packages to publish (order matters if there are strict dep chains, but parallel is usually fine for npm)
-const PACKAGES = ["core", "client", "host", "cli"];
+const PACKAGES = ["core", "client", "host", "cli", "devtools"];
 
 const ALREADY_PUBLISHED_PATTERN =
   /you cannot publish over the previously published versions|403 forbidden/i;
@@ -110,7 +110,7 @@ for (const pkg of PACKAGES) {
     } else {
       console.log(`   ✅ Published ${pkg}`);
       // Emit changeset-compatible format so changesets/action@v1 detects published packages
-      console.log(`🦋  ${json.name}@${json.version}`);
+      console.log(`🦋  New tag:  ${json.name}@${json.version}`);
     }
   } catch (e) {
     console.error(`   ❌ Error publishing ${pkg}:`, e);
