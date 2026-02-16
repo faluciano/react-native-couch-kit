@@ -77,8 +77,15 @@ for (const pkg of PACKAGES) {
 
     const result = spawnSync("bun", publishArgs, {
       cwd: join(PACKAGES_DIR, pkg),
-      stdio: IS_CI ? "pipe" : "inherit",
+      stdio: IS_CI ? ["pipe", "inherit", "pipe"] : "inherit",
+      timeout: 120_000,
+      env: { ...process.env },
     });
+
+    if (result.signal === "SIGTERM") {
+      console.error(`   ❌ Publish timed out for @couch-kit/${pkg}`);
+      if (IS_CI) process.exit(1);
+    }
 
     if (result.status !== 0) {
       const stderr = result.stderr?.toString() ?? "";
