@@ -5,7 +5,7 @@ import {
   actionValidator,
   type Middleware,
   type MiddlewareAPI,
-  type Dispatch,
+  type MiddlewareDispatch,
   type ActionSchema,
 } from "../src/middleware";
 import {
@@ -60,7 +60,7 @@ describe("middleware types", () => {
   test("middleware signature matches the three-layer curried shape", () => {
     const mw: Middleware<TestState, TestAction> =
       (_api: MiddlewareAPI<TestState>) =>
-      (next: Dispatch<TestState, TestAction>) =>
+      (next: MiddlewareDispatch<TestState, TestAction>) =>
       (action) =>
         next(action);
 
@@ -167,6 +167,38 @@ describe("error boundary", () => {
     // which flows into goodAfter.
     expect(order).toContain("after");
   });
+
+  test("middleware that throws after calling next does not double-dispatch", () => {
+    const errorSpy = mock(() => {});
+    console.error = errorSpy;
+
+    let reducerCallCount = 0;
+    const countingReducer: GameReducer<
+      TestState,
+      TestAction | InternalAction<TestState>
+    > = (state, action) => {
+      reducerCallCount++;
+      return wrappedReducer(state, action);
+    };
+
+    const throwsAfterNext: Middleware<TestState, TestAction> =
+      (_api) => (next) => (action) => {
+        next(action); // dispatches the action
+        throw new Error("post-next boom");
+      };
+
+    const enhanced = applyMiddleware<TestState, TestAction>(throwsAfterNext)(
+      countingReducer,
+    );
+
+    const result = enhanced(initialState, { type: "INCREMENT" });
+
+    // The action should only be dispatched once — no double-dispatch.
+    expect(reducerCallCount).toBe(1);
+    expect(result.count).toBe(1);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy.mock.calls[0][0]).toContain("Middleware 0");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -212,6 +244,60 @@ describe("getState() returns latest state", () => {
     expect(states[0]!.count).toBe(0);
     // After dispatch: getState reflects the new state.
     expect(states[1]!.count).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Action transformation
+// ---------------------------------------------------------------------------
+
+describe("action transformation", () => {
+  test("middleware can modify an action before forwarding", () => {
+    const doublePayload: Middleware<TestState, TestAction> =
+      (_api) => (next) => (action) => {
+        if (action.type === "ADD" && "payload" in action) {
+          return next({ ...action, payload: (action.payload as number) * 2 });
+        }
+        return next(action);
+      };
+
+    const enhanced = applyMiddleware<TestState, TestAction>(doublePayload)(
+      wrappedReducer,
+    );
+
+    const result = enhanced(initialState, { type: "ADD", payload: 5 });
+    expect(result.count).toBe(10);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Custom middleware short-circuit
+// ---------------------------------------------------------------------------
+
+describe("custom middleware short-circuit", () => {
+  test("middleware that returns getState without calling next skips the reducer", () => {
+    let reducerCallCount = 0;
+    const countingReducer: GameReducer<
+      TestState,
+      TestAction | InternalAction<TestState>
+    > = (state, action) => {
+      reducerCallCount++;
+      return wrappedReducer(state, action);
+    };
+
+    const blockAll: Middleware<TestState, TestAction> =
+      (api) => (_next) => (_action) => {
+        return api.getState();
+      };
+
+    const enhanced = applyMiddleware<TestState, TestAction>(blockAll)(
+      countingReducer,
+    );
+
+    const result = enhanced(initialState, { type: "INCREMENT" });
+
+    expect(result.count).toBe(0);
+    expect(reducerCallCount).toBe(0);
   });
 });
 

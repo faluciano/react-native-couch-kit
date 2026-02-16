@@ -33,12 +33,12 @@ interface GameState extends IGameState {
   score: number;
 }
 
-type GameAction = { type: "SCORE" } | { type: "RESET" };
+type GameAction = { type: "SCORE"; payload: number } | { type: "RESET" };
 
 const gameReducer = (state: GameState, action: GameAction): GameState => {
   switch (action.type) {
     case "SCORE":
-      return { ...state, score: state.score + 1 };
+      return { ...state, score: state.score + action.payload };
     case "RESET":
       return { ...state, score: 0 };
     default:
