@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { MessageTypes } from "@couch-kit/core";
+import { MessageTypes, generateId } from "@couch-kit/core";
 
 export const simulateCommand = new Command("simulate")
   .description("Spawns headless bots to simulate players")
@@ -17,6 +17,7 @@ export const simulateCommand = new Command("simulate")
     const intervals: ReturnType<typeof setInterval>[] = [];
 
     for (let i = 0; i < count; i++) {
+      const secret = generateId();
       const ws = new WebSocket(url);
 
       ws.addEventListener("open", () => {
@@ -26,7 +27,7 @@ export const simulateCommand = new Command("simulate")
         ws.send(
           JSON.stringify({
             type: MessageTypes.JOIN,
-            payload: { name: `Bot ${i}`, avatar: "bot" },
+            payload: { name: `Bot ${i}`, avatar: "bot", secret },
           }),
         );
 
@@ -46,6 +47,21 @@ export const simulateCommand = new Command("simulate")
         ); // Add jitter
 
         intervals.push(id);
+      });
+
+      ws.addEventListener("message", (event) => {
+        try {
+          const msg = JSON.parse(
+            typeof event.data === "string" ? event.data : event.data.toString(),
+          );
+          if (msg.type === MessageTypes.WELCOME) {
+            console.log(`[Bot ${i}] Joined as ${msg.payload.playerId}`);
+          } else if (msg.type === MessageTypes.ERROR) {
+            console.error(`[Bot ${i}] Server error: ${msg.payload.message}`);
+          }
+        } catch {
+          // Ignore unparseable messages
+        }
       });
 
       ws.addEventListener("close", () => {

@@ -2,3 +2,4 @@ export * from "./types";
 export * from "./protocol";
 export * from "./constants";
 export * from "./replay";
+export * from "./middleware";

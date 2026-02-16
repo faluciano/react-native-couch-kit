@@ -12,7 +12,8 @@
     "clean": "bun run --filter '*' clean",
     "changeset": "changeset",
     "version": "changeset version",
-    "release": "bun run scripts/publish.ts"
+    "release": "bun run scripts/publish.ts",
+    "lint:changesets": "bun run scripts/lint-changeset-headers.ts"
   },
   "devDependencies": {
     "@changesets/changelog-github": "^0.5.2",

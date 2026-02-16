@@ -1,6 +1,6 @@
 {
   "name": "@couch-kit/cli",
-  "version": "0.2.4",
+  "version": "0.2.6",
   "publishConfig": {
     "access": "public",
     "provenance": true

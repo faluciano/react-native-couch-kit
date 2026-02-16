@@ -1,5 +1,46 @@
 # @couch-kit/client
 
+## 0.7.1
+
+### Patch Changes
+
+- Updated dependencies [[`978616b`](https://github.com/faluciano/react-native-couch-kit/commit/978616b767031e02e24fe48de8dbdf37d15be783)]:
+  - @couch-kit/core@0.7.0
+
+## 0.7.0
+
+### Minor Changes
+
+- [#16](https://github.com/faluciano/react-native-couch-kit/pull/16) [`86b5ff3`](https://github.com/faluciano/react-native-couch-kit/commit/86b5ff353ce9baac0c48e6a8315bbb57eb155daf) Thanks [@faluciano](https://github.com/faluciano)! - ### Phase 1: Quick Wins — Bug Fixes, Security, and Cleanup
+
+  **Bug fixes:**
+  - Fix `simulate` command: add missing `secret` to JOIN payload so bots are no longer rejected with `INVALID_SECRET`
+  - Send `RECONNECTED` message (instead of `WELCOME`) when a player reconnects, enabling clients to distinguish reconnections
+  - Wire `ASSETS_LOADED` end-to-end: `usePreload` now accepts an optional `sendMessage` callback to notify the host when assets finish loading; host tracks per-player asset status
+  - Include dispatched action(s) in `STATE_UPDATE` broadcasts via an action queue, so clients receive the `action` field
+
+  **Security:**
+  - Replace `derivePlayerId` with SHA-256 (Web Crypto API) — the old implementation exposed the first 16 hex chars of the player secret
+  - Add dual-derivation migration: host tries SHA-256 first, falls back to legacy ID for existing players
+  - Add per-socket rate limiting (60 actions/second) with `RATE_LIMITED` error response
+  - Cache `socketId → playerId` mapping to avoid async derivation in hot paths
+
+  **Cleanup:**
+  - Remove dead code: `buffer-utils.ts`, `declarations.d.ts`, and their test file (TCP WebSocket remnants)
+  - Deprecate unused constants: `MAX_FRAME_SIZE`, `KEEPALIVE_INTERVAL`, `KEEPALIVE_TIMEOUT` (will be removed in next major)
+  - Extract `DEFAULT_DISCONNECT_TIMEOUT` constant (replaces hardcoded 5-minute magic number)
+  - Add configurable `disconnectTimeout` to `GameHostConfig`
+
+  **DX improvements:**
+  - Auto-detect package manager in `bundle` command (checks lock files instead of hardcoding `bun`)
+  - Show build output (`stdio: "inherit"` instead of `"ignore"`)
+  - Log bot WELCOME/ERROR responses in `simulate` command
+
+### Patch Changes
+
+- Updated dependencies [[`86b5ff3`](https://github.com/faluciano/react-native-couch-kit/commit/86b5ff353ce9baac0c48e6a8315bbb57eb155daf)]:
+  - @couch-kit/core@0.6.0
+
 ## 0.6.1
 
 ### Patch Changes
