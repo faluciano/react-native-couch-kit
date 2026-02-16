@@ -5,7 +5,7 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "bun run --filter '@couch-kit/core' build && bun run --filter './packages/*' build",
+    "build": "bun run --filter '@couch-kit/core' build && bun run --filter '@couch-kit/client' build && bun run --filter './packages/*' build",
     "test": "bun run --filter './packages/*' test",
     "lint": "bun run --filter '*' lint",
     "typecheck": "bun run --filter '@couch-kit/core' typecheck && bun run --filter '*' typecheck",

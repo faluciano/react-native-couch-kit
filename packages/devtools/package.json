@@ -1,0 +1,46 @@
+{
+  "name": "@couch-kit/devtools",
+  "version": "0.1.0",
+  "description": "Developer tooling and debug overlay for Couch Kit games",
+  "main": "./dist/index.js",
+  "types": "./lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "sideEffects": false,
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target browser --external react --external @couch-kit/client --external @couch-kit/core && tsc -p tsconfig.build.json",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "clean": "rm -rf dist lib"
+  },
+  "files": [
+    "src",
+    "dist",
+    "lib",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "dependencies": {
+    "@couch-kit/client": "workspace:*"
+  },
+  "devDependencies": {
+    "@couch-kit/core": "workspace:*",
+    "@types/react": "^19.1.1",
+    "react": "^18.2.0",
+    "typescript": "^5.4.0",
+    "eslint": "^8.57.0"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT"
+}

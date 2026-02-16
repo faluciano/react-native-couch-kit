@@ -3,16 +3,16 @@ import { Command } from "commander";
 
 // Mock the dependencies
 mock.module("ora", () => {
-    return {
-        default: () => ({
-            start: () => ({
-                text: "",
-                succeed: () => {},
-                fail: () => {},
-                warn: () => {}
-            })
-        })
-    };
+  return {
+    default: () => ({
+      start: () => ({
+        text: "",
+        succeed: () => {},
+        fail: () => {},
+        warn: () => {},
+      }),
+    }),
+  };
 });
 
 describe("CLI Structure", () => {
@@ -33,5 +33,17 @@ describe("CLI Structure", () => {
     const { simulateCommand } = await import("../src/commands/simulate");
     expect(simulateCommand).toBeInstanceOf(Command);
     expect(simulateCommand.name()).toBe("simulate");
+  });
+
+  test("should be able to import replay command", async () => {
+    const { replay } = await import("../src/commands/replay");
+    expect(replay).toBeInstanceOf(Command);
+    expect(replay.name()).toBe("replay");
+  });
+
+  test("should be able to import dev command", async () => {
+    const { dev } = await import("../src/commands/dev");
+    expect(dev).toBeInstanceOf(Command);
+    expect(dev.name()).toBe("dev");
   });
 });

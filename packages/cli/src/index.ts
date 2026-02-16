@@ -57,6 +57,34 @@ program
     await initCommand.parseAsync(["init", name], { from: "user" });
   });
 
+program
+  .command("replay")
+  .description("Replay a recorded game session against a reducer")
+  .argument("<recording>", "Path to recording JSON file")
+  .argument("<reducer>", "Path to reducer module")
+  .option("--snapshots", "Output intermediate state snapshots")
+  .option("--json", "Output as formatted JSON")
+  .action(async (recording, reducer, options) => {
+    const { replay } = await import("./commands/replay");
+    await replay.parseAsync(
+      ["replay", recording, reducer, ...reconstructArgs(options)],
+      { from: "user" },
+    );
+  });
+
+program
+  .command("dev")
+  .description("Start development server with LAN access")
+  .option("-p, --port <port>", "Port number", "5173")
+  .option("--host", "Expose to LAN")
+  .option("--open", "Open browser automatically")
+  .action(async (options) => {
+    const { dev } = await import("./commands/dev");
+    await dev.parseAsync(["dev", ...reconstructArgs(options)], {
+      from: "user",
+    });
+  });
+
 /**
  * Reconstruct CLI args from parsed options for re-parsing by the lazy-loaded command.
  *

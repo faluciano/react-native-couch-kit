@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "paths": {
+      "@couch-kit/core": ["../core/src"],
+      "@couch-kit/client": ["../client/src"]
+    }
+  },
+  "include": ["src/**/*", "../client/src/**/*", "../core/src/**/*"]
+}
