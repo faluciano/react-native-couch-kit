@@ -1,5 +1,11 @@
 # @couch-kit/core
 
+## 0.7.0
+
+### Minor Changes
+
+- [#19](https://github.com/faluciano/react-native-couch-kit/pull/19) [`978616b`](https://github.com/faluciano/react-native-couch-kit/commit/978616b767031e02e24fe48de8dbdf37d15be783) Thanks [@faluciano](https://github.com/faluciano)! - Add middleware system with `applyMiddleware`, `actionLogger`, and `actionValidator`. Middleware can observe and transform actions flowing through `createGameReducer`. Includes error boundaries for fault tolerance.
+
 ## 0.6.0
 
 ### Minor Changes
