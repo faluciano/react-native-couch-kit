@@ -78,7 +78,7 @@ export class GameWebSocketServer extends EventEmitter<WebSocketServerEvents> {
         this.emit("connection", socketId);
 
         // Handle incoming messages
-        ws.onmessage = (event) => {
+        ws.onmessage = (event: { data: string | ArrayBuffer }) => {
           try {
             const data =
               typeof event.data === "string"
@@ -95,7 +95,11 @@ export class GameWebSocketServer extends EventEmitter<WebSocketServerEvents> {
         };
 
         // Handle disconnect
-        ws.onclose = (event) => {
+        ws.onclose = (event: {
+          code: number;
+          reason: string;
+          wasClean: boolean;
+        }) => {
           this.log(
             `[WebSocket] Client disconnected: ${socketId}`,
             event.code,
@@ -106,7 +110,7 @@ export class GameWebSocketServer extends EventEmitter<WebSocketServerEvents> {
         };
 
         // Handle errors
-        ws.onerror = (event) => {
+        ws.onerror = (event: { message: string }) => {
           this.log(`[WebSocket] Error on ${socketId}:`, event.message);
           this.emit(
             "error",
@@ -151,7 +155,7 @@ export class GameWebSocketServer extends EventEmitter<WebSocketServerEvents> {
   public async stop() {
     if (this.server) {
       // Close all client connections
-      for (const [socketId, client] of this.clients) {
+      for (const [, client] of this.clients) {
         try {
           await client.ws.close(1000, "Server shutting down");
         } catch (error) {
@@ -177,7 +181,7 @@ export class GameWebSocketServer extends EventEmitter<WebSocketServerEvents> {
     if (client) {
       try {
         const message = JSON.stringify(data);
-        client.ws.send(message).catch((error) => {
+        client.ws.send(message).catch((error: Error) => {
           this.log(`[WebSocket] Failed to send to ${socketId}:`, error);
           this.emit(
             "error",
@@ -203,7 +207,7 @@ export class GameWebSocketServer extends EventEmitter<WebSocketServerEvents> {
       const message = JSON.stringify(data);
       this.clients.forEach((client, id) => {
         if (id !== excludeId) {
-          client.ws.send(message).catch((error) => {
+          client.ws.send(message).catch((error: Error) => {
             this.log(`[WebSocket] Failed to broadcast to ${id}:`, error);
             // Don't abort -- continue sending to remaining clients
           });
