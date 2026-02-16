@@ -1,6 +1,10 @@
 {
   "name": "@couch-kit/cli",
   "version": "0.2.3",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "description": "CLI tools for Couch Kit party games — bundle web controllers, simulate clients, and scaffold projects",
   "license": "MIT",
   "repository": {
@@ -28,6 +32,7 @@
     "test": "bun test",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
+    "prepublishOnly": "bun run build",
     "clean": "rm -rf dist"
   },
   "dependencies": {
