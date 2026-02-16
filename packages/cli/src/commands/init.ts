@@ -3,6 +3,19 @@ import fs from "node:fs";
 import path from "node:path";
 import { toErrorMessage } from "@couch-kit/core";
 
+function detectPackageManager(): string {
+  // Check for bun runtime
+  if (typeof Bun !== "undefined") return "bun";
+
+  // Check npm_config_user_agent
+  const userAgent = process.env.npm_config_user_agent ?? "";
+  if (userAgent.includes("yarn")) return "yarn";
+  if (userAgent.includes("pnpm")) return "pnpm";
+  if (userAgent.includes("bun")) return "bun";
+
+  return "npm";
+}
+
 export const initCommand = new Command("init")
   .description("Scaffolds a new web controller project")
   .argument("[name]", "Project name", "web-controller")
@@ -66,6 +79,8 @@ export const initCommand = new Command("init")
               noEmit: true,
               jsx: "react-jsx",
               strict: true,
+              noUncheckedIndexedAccess: true,
+              exactOptionalPropertyTypes: true,
               noUnusedLocals: true,
               noUnusedParameters: true,
               noFallthroughCasesInSwitch: true,
@@ -187,9 +202,55 @@ body { margin: 0; background: #111; color: #fff; }
 `,
       );
 
+      // Write sample reducer
+      const reducerContent = `import type { IAction, IGameState, GameReducer } from "@couch-kit/core";
+
+export interface GameState extends IGameState {
+  score: number;
+  round: number;
+}
+
+export interface GameAction extends IAction {
+  type: "SCORE" | "NEXT_ROUND" | "RESET";
+  payload?: { points?: number };
+}
+
+export const gameReducer: GameReducer<GameState, GameAction> = (state, action) => {
+  switch (action.type) {
+    case "SCORE":
+      return { ...state, score: state.score + (action.payload?.points ?? 1) };
+    case "NEXT_ROUND":
+      return { ...state, round: state.round + 1 };
+    case "RESET":
+      return { ...state, score: 0, round: 1 };
+    default:
+      return state;
+  }
+};
+
+export const initialState: GameState = {
+  status: "lobby",
+  players: {},
+  score: 0,
+  round: 1,
+};
+`;
+      fs.writeFileSync(path.join(targetDir, "src/reducer.ts"), reducerContent);
+
+      // Write .gitignore
+      const gitignoreContent = `node_modules/
+dist/
+lib/
+.DS_Store
+*.local
+`;
+      fs.writeFileSync(path.join(targetDir, ".gitignore"), gitignoreContent);
+
+      const pm = detectPackageManager();
+
       console.log(`Done! Created new project in ${name}`);
       console.log(
-        `\nNext steps:\n  cd ${name}\n  bun install\n  bun run dev\n`,
+        `\nNext steps:\n  cd ${name}\n  ${pm} install\n  ${pm} run dev\n`,
       );
     } catch (e) {
       console.error(`Init failed: ${toErrorMessage(e)}`);

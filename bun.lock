@@ -57,6 +57,23 @@
         "typescript": "^5.0.0",
       },
     },
+    "packages/devtools": {
+      "name": "@couch-kit/devtools",
+      "version": "0.1.0",
+      "dependencies": {
+        "@couch-kit/client": "workspace:*",
+      },
+      "devDependencies": {
+        "@couch-kit/core": "workspace:*",
+        "@types/react": "^19.1.1",
+        "eslint": "^8.57.0",
+        "react": "^18.2.0",
+        "typescript": "^5.4.0",
+      },
+      "peerDependencies": {
+        "react": ">=18.0.0",
+      },
+    },
     "packages/host": {
       "name": "@couch-kit/host",
       "version": "1.4.0",
@@ -320,6 +337,8 @@
     "@couch-kit/client": ["@couch-kit/client@workspace:packages/client"],
 
     "@couch-kit/core": ["@couch-kit/core@workspace:packages/core"],
+
+    "@couch-kit/devtools": ["@couch-kit/devtools@workspace:packages/devtools"],
 
     "@couch-kit/host": ["@couch-kit/host@workspace:packages/host"],
 
