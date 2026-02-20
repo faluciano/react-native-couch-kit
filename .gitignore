@@ -6,6 +6,8 @@ out
 dist
 lib
 *.tgz
+*.d.ts
+*.d.ts.map
 
 # code coverage
 coverage
