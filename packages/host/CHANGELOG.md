@@ -1,5 +1,11 @@
 # @couch-kit/host
 
+## 1.7.2
+
+### Patch Changes
+
+- [#29](https://github.com/faluciano/react-native-couch-kit/pull/29) [`b9e1058`](https://github.com/faluciano/react-native-couch-kit/commit/b9e1058cf0ec686a1ba65aae985202e569d5bea3) Thanks [@faluciano](https://github.com/faluciano)! - Append `/index.html` to the static server URL so QR codes point directly to the client entry point. Also add error handling for the `derivePlayerId` promise in the JOIN handler to prevent silent failures that leave clients stuck on "Connected" without receiving a WELCOME message.
+
 ## 1.7.1
 
 ### Patch Changes
