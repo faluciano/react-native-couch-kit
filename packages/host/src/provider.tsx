@@ -341,6 +341,17 @@ export function GameHostProvider<S extends IGameState, A extends IAction>({
             }
 
             configRef.current.onPlayerJoined?.(playerId, payload.name);
+          }).catch((err) => {
+            if (configRef.current.debug) {
+              console.error("[GameHost] Failed to derive player ID:", err);
+            }
+            server.send(socketId, {
+              type: MessageTypes.ERROR,
+              payload: {
+                code: "JOIN_FAILED",
+                message: "Failed to process join request",
+              },
+            });
           });
           break;
         }

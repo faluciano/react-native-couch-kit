@@ -73,10 +73,10 @@ export const useStaticServer = (config: CouchKitHostConfig) => {
         // We prefer the actual IP over "localhost" returned by some libs
         const ip = await getBestIpAddress();
         if (ip) {
-          setUrl(`http://${ip}:${port}`);
+          setUrl(`http://${ip}:${port}/index.html`);
         } else {
           // Fallback if we can't detect IP
-          setUrl(`http://localhost:${port}`);
+          setUrl(`http://localhost:${port}/index.html`);
         }
       } catch (e) {
         setError(new Error(toErrorMessage(e)));
