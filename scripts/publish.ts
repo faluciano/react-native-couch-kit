@@ -109,8 +109,23 @@ for (const pkg of PACKAGES) {
       }
     } else {
       console.log(`   ✅ Published ${pkg}`);
+
+      // Create the git tag so changesets/action@v1 can push it
+      const tag = `${json.name}@${json.version}`;
+      const tagResult = spawnSync("git", ["tag", tag], {
+        cwd: process.cwd(),
+        stdio: "pipe",
+      });
+      if (tagResult.status === 0) {
+        console.log(`   🏷️  Created tag: ${tag}`);
+      } else {
+        const tagErr = tagResult.stderr?.toString() ?? "";
+        // Tag may already exist (e.g., re-run) — not fatal
+        console.warn(`   ⚠️  Could not create tag ${tag}: ${tagErr.trim()}`);
+      }
+
       // Emit changeset-compatible format so changesets/action@v1 detects published packages
-      console.log(`🦋  New tag:  ${json.name}@${json.version}`);
+      console.log(`🦋  New tag:  ${tag}`);
     }
   } catch (e) {
     console.error(`   ❌ Error publishing ${pkg}:`, e);
