@@ -1,6 +1,6 @@
 {
   "name": "@couch-kit/devtools",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Developer tooling and debug overlay for Couch Kit games",
   "main": "./dist/index.js",
   "types": "./lib/index.d.ts",

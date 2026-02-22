@@ -1,5 +1,11 @@
 # @couch-kit/core
 
+## 0.8.2
+
+### Patch Changes
+
+- [#31](https://github.com/faluciano/react-native-couch-kit/pull/31) [`e5178dc`](https://github.com/faluciano/react-native-couch-kit/commit/e5178dc666f95c2893e803f1f290abcfd7db6306) Thanks [@faluciano](https://github.com/faluciano)! - Fall back to legacy player ID derivation when `crypto.subtle` is unavailable (React Native / Hermes). Previously, `derivePlayerId` unconditionally called `crypto.subtle.digest("SHA-256", ...)` which threw in Hermes, silently preventing the JOIN handshake from completing and leaving clients stuck on a loading spinner.
+
 ## 0.8.1
 
 ### Patch Changes
