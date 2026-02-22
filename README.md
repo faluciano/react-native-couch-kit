@@ -47,6 +47,14 @@ Turn an Android TV / Fire TV into a local party-game console and use phones as w
 
 > **Starter Project:** The fastest way to get started is to clone the [Buzz](https://github.com/faluciano/buzz-tv-party-game) starter project — a fully working buzzer game that demonstrates the complete `@couch-kit` setup (shared reducer, TV host, phone controller, build pipeline). Use it as a starting point for your own game.
 
+### Example Apps
+
+| App | Description | Complexity |
+|-----|-------------|------------|
+| [Buzz](https://github.com/faluciano/buzz-tv-party-game) | Minimal buzzer party game | Starter |
+| [Domino](https://github.com/faluciano/domino-party-game) | Dominos with hidden hands | Intermediate |
+| [Card Game Engine](https://github.com/faluciano/card-game-engine) | JSON-driven card game engine (blackjack, poker, UNO) with expression evaluator and seeded PRNG | Advanced |
+
 This guide assumes you are using the published `@couch-kit/*` packages from npm.
 
 ### 1. Installation
@@ -322,7 +330,7 @@ This repo uses [Changesets](https://github.com/changesets/changesets) for versio
 2. On merge to `main`, the release workflow either:
    - Creates a **"Version Packages"** PR if there are pending changesets
    - **Publishes to npm** if the version PR was merged (no pending changesets)
-3. After publishing, **issues are automatically created** in consumer app repos ([domino](https://github.com/faluciano/domino-party-game), [buzz](https://github.com/faluciano/buzz-tv-party-game)) assigned to Copilot to update dependencies
+3. After publishing, **issues are automatically created** in consumer app repos ([domino](https://github.com/faluciano/domino-party-game), [buzz](https://github.com/faluciano/buzz-tv-party-game), [card-game-engine](https://github.com/faluciano/card-game-engine)) assigned to Copilot to update dependencies
 
 ### Breaking changes
 
