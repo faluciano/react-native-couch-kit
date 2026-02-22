@@ -81,14 +81,25 @@ export function isValidSecret(secret: string): boolean {
  *
  * Takes the first 16 hex characters of the SHA-256 hash, producing
  * a deterministic ID that cannot be reversed to recover the secret.
+ *
+ * Falls back to {@link derivePlayerIdLegacy} when the Web Crypto API
+ * (`crypto.subtle`) is unavailable (e.g. React Native / Hermes).
  */
 export async function derivePlayerId(secret: string): Promise<string> {
-  const data = new TextEncoder().encode(secret);
-  const hash = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(hash))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("")
-    .slice(0, 16);
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.subtle?.digest === "function"
+  ) {
+    const data = new TextEncoder().encode(secret);
+    const hash = await crypto.subtle.digest("SHA-256", data);
+    return Array.from(new Uint8Array(hash))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("")
+      .slice(0, 16);
+  }
+
+  // Web Crypto unavailable (React Native / Hermes) — fall back to legacy derivation
+  return derivePlayerIdLegacy(secret);
 }
 
 /**
