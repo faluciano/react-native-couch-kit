@@ -44,19 +44,19 @@ export const KEEPALIVE_TIMEOUT = 10000;
  */
 export function generateId(): string {
   if (
-    typeof crypto !== "undefined" &&
-    typeof crypto.randomUUID === "function"
+    typeof globalThis.crypto !== "undefined" &&
+    typeof globalThis.crypto.randomUUID === "function"
   ) {
-    return crypto.randomUUID();
+    return globalThis.crypto.randomUUID();
   }
 
   // Fallback: 32 hex chars from crypto.getRandomValues
   if (
-    typeof crypto !== "undefined" &&
-    typeof crypto.getRandomValues === "function"
+    typeof globalThis.crypto !== "undefined" &&
+    typeof globalThis.crypto.getRandomValues === "function"
   ) {
     const bytes = new Uint8Array(16);
-    crypto.getRandomValues(bytes);
+    globalThis.crypto.getRandomValues(bytes);
     return Array.from(bytes)
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
@@ -87,11 +87,11 @@ export function isValidSecret(secret: string): boolean {
  */
 export async function derivePlayerId(secret: string): Promise<string> {
   if (
-    typeof crypto !== "undefined" &&
-    typeof crypto.subtle?.digest === "function"
+    typeof globalThis.crypto !== "undefined" &&
+    typeof globalThis.crypto.subtle?.digest === "function"
   ) {
     const data = new TextEncoder().encode(secret);
-    const hash = await crypto.subtle.digest("SHA-256", data);
+    const hash = await globalThis.crypto.subtle.digest("SHA-256", data);
     return Array.from(new Uint8Array(hash))
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("")
