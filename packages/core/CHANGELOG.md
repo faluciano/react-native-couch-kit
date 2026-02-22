@@ -1,5 +1,11 @@
 # @couch-kit/core
 
+## 0.8.1
+
+### Patch Changes
+
+- [#27](https://github.com/faluciano/react-native-couch-kit/pull/27) [`4976357`](https://github.com/faluciano/react-native-couch-kit/commit/49763573df502e394d5591b73000f48ee711d7a8) Thanks [@faluciano](https://github.com/faluciano)! - Fix WebSocket connection failure caused by path mismatch: the client connected to `ws://host:8082` (root path `/`) while the server only accepted upgrades on `/ws`. Added shared `DEFAULT_WS_PATH` constant to `@couch-kit/core` and use it in both client URL construction and server handler registration.
+
 ## 0.8.0
 
 ### Minor Changes
