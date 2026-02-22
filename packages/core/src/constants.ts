@@ -6,6 +6,9 @@ export const DEFAULT_HTTP_PORT = 8080;
 /** Default WebSocket port offset from the HTTP port (skips Metro on +1). */
 export const DEFAULT_WS_PORT_OFFSET = 2;
 
+/** Default WebSocket endpoint path on the host server. */
+export const DEFAULT_WS_PATH = "/ws";
+
 /** @deprecated Not used by Couch Kit internals. Will be removed in the next major version. */
 export const MAX_FRAME_SIZE = 1024 * 1024;
 

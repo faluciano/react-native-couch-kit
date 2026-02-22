@@ -3,6 +3,7 @@ import {
   MessageTypes,
   InternalActionTypes,
   DEFAULT_WS_PORT_OFFSET,
+  DEFAULT_WS_PATH,
   DEFAULT_MAX_RETRIES,
   DEFAULT_BASE_DELAY,
   DEFAULT_MAX_DELAY,
@@ -106,7 +107,7 @@ export function useGameClient<S extends IGameState, A extends IAction>(
       const host = window.location.hostname;
       const httpPort = parseInt(window.location.port, 10) || 80;
       const wsPort = cfg.wsPort || httpPort + DEFAULT_WS_PORT_OFFSET;
-      wsUrl = `${protocol}//${host}:${wsPort}`;
+      wsUrl = `${protocol}//${host}:${wsPort}${DEFAULT_WS_PATH}`;
     }
 
     if (!wsUrl) return;
