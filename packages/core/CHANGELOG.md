@@ -1,5 +1,11 @@
 # @couch-kit/core
 
+## 0.8.3
+
+### Patch Changes
+
+- [#33](https://github.com/faluciano/react-native-couch-kit/pull/33) [`8773b1d`](https://github.com/faluciano/react-native-couch-kit/commit/8773b1d8687247f3f77faf116c041a26c634c8d0) Thanks [@faluciano](https://github.com/faluciano)! - Access `crypto` via `globalThis.crypto` to avoid `ReferenceError` in React Native's Hermes engine where `typeof crypto` throws instead of returning `"undefined"`. Fixes `derivePlayerId` and `generateId` on Android TV.
+
 ## 0.8.2
 
 ### Patch Changes
