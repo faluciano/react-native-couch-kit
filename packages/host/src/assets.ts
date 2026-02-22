@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import * as FileSystem from "expo-file-system";
-import { Paths, Directory } from "expo-file-system";
+import { File, Paths, Directory } from "expo-file-system";
 import { Platform } from "react-native";
 import { toErrorMessage } from "@couch-kit/core";
 
@@ -63,9 +62,6 @@ export function useExtractAssets(manifest: AssetManifest): ExtractAssetsResult {
         for (const filePath of manifest.files) {
           if (cancelled) return;
 
-          const sourceUri = `asset:///www/${filePath}`;
-          const destUri = `${targetDir.uri}${filePath}`;
-
           // Ensure subdirectory exists (e.g., "assets/" in "assets/index.js")
           const lastSlash = filePath.lastIndexOf("/");
           if (lastSlash > 0) {
@@ -78,9 +74,15 @@ export function useExtractAssets(manifest: AssetManifest): ExtractAssetsResult {
             }
           }
 
-          // Use legacy API — the new File API doesn't support asset:// URIs
-          // on Android because it bypasses the AssetManager
-          await FileSystem.copyAsync({ from: sourceUri, to: destUri });
+          // Read from APK asset via the new File API.
+          // Note: File.copy() has a bug with asset:// URIs in expo-file-system@19
+          // (ClassCastException: AssetFile cannot be cast to java.io.File).
+          // Instead, we read bytes via the working inputStream path and write
+          // to the destination — this correctly uses Android's AssetManager.
+          const sourceFile = new File(`asset:///www/${filePath}`);
+          const destFile = new File(targetDir, filePath);
+          const content = sourceFile.bytesSync();
+          destFile.write(content);
         }
 
         if (cancelled) return;
