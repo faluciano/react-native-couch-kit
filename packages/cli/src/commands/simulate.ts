@@ -1,10 +1,10 @@
 import { Command } from "commander";
-import { MessageTypes, generateId } from "@couch-kit/core";
+import { MessageTypes, generateId, DEFAULT_HTTP_PORT, DEFAULT_WS_PORT_OFFSET, DEFAULT_WS_PATH } from "@couch-kit/core";
 
 export const simulateCommand = new Command("simulate")
   .description("Spawns headless bots to simulate players")
   .option("-n, --count <number>", "Number of bots", "4")
-  .option("-u, --url <url>", "WebSocket URL of host", "ws://localhost:8082")
+  .option("-u, --url <url>", "WebSocket URL of host", `ws://localhost:${DEFAULT_HTTP_PORT + DEFAULT_WS_PORT_OFFSET}${DEFAULT_WS_PATH}`)
   .option("-i, --interval <ms>", "Action interval in ms", "1000")
   .action(async (options) => {
     const count = parseInt(options.count);

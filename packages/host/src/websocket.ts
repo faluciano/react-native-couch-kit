@@ -11,7 +11,7 @@ import type {
   WebSocketConnectionRequest,
 } from "react-native-nitro-http-server";
 import { EventEmitter } from "./event-emitter";
-import { generateId } from "@couch-kit/core";
+import { generateId, DEFAULT_WS_PATH } from "@couch-kit/core";
 
 export interface WebSocketConfig {
   port: number;
@@ -66,7 +66,7 @@ export class GameWebSocketServer extends EventEmitter<WebSocketServerEvents> {
 
     // Register WebSocket handler for the /ws path
     this.server.onWebSocket(
-      "/ws",
+      DEFAULT_WS_PATH,
       (ws: ServerWebSocket, request: WebSocketConnectionRequest) => {
         const socketId = generateId();
         this.log(`[WebSocket] New connection: ${socketId}`, request);
@@ -135,7 +135,7 @@ export class GameWebSocketServer extends EventEmitter<WebSocketServerEvents> {
           mounts: [
             {
               type: "websocket",
-              path: "/ws",
+              path: DEFAULT_WS_PATH,
             },
           ],
         },
