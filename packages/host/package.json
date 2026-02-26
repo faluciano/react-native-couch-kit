@@ -58,7 +58,7 @@
     "@couch-kit/core": "workspace:*",
     "buffer": "^6.0.3",
     "js-sha1": "^0.7.0",
-    "react-native-nitro-http-server": "^1.5.4"
+    "react-native-nitro-http-server": "^1.6.1"
   },
   "devDependencies": {
     "@types/react": "^19.1.1",
