@@ -1,5 +1,11 @@
 # @couch-kit/host
 
+## 1.7.5
+
+### Patch Changes
+
+- [`dc840d2`](https://github.com/faluciano/react-native-couch-kit/commit/dc840d2a33c345f6a8716819a525329cf90e8723) Thanks [@faluciano](https://github.com/faluciano)! - Upgrade react-native-nitro-http-server from ^1.5.4 to ^1.6.1
+
 ## 1.7.4
 
 ### Patch Changes
