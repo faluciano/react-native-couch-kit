@@ -1,5 +1,15 @@
 # @couch-kit/core
 
+## 0.9.0
+
+### Minor Changes
+
+- [#36](https://github.com/faluciano/react-native-couch-kit/pull/36) [`a17371d`](https://github.com/faluciano/react-native-couch-kit/commit/a17371d9523e59c1fbffe94248bb2af080de3b51) Thanks [@faluciano](https://github.com/faluciano)! - Add CJS export for core package and fix host main field
+  - Added `require` export condition and CJS build step to `@couch-kit/core` for CommonJS consumers
+  - Fixed `@couch-kit/host` main field from `lib/index.d.ts` to `./src/index.tsx`
+  - Removed `typescript` from core `peerDependencies`
+  - Added `engines` field (`node >=18`) to all packages
+
 ## 0.8.3
 
 ### Patch Changes
