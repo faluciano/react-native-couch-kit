@@ -1,0 +1,22 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": [
+    "packages/core",
+    "packages/client",
+    "packages/host",
+    "packages/cli",
+    "packages/devtools"
+  ],
+  "entryPointStrategy": "packages",
+  "out": "docs",
+  "name": "couch-kit",
+  "readme": "README.md",
+  "excludePrivate": true,
+  "excludeInternal": true,
+  "includeVersion": true,
+  "categorizeByGroup": true,
+  "navigation": {
+    "includeCategories": true,
+    "includeGroups": true
+  }
+}

@@ -7,6 +7,9 @@
   },
   "description": "React Native host for local multiplayer party games on Android TV — WebSocket server, state management, and static file serving",
   "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/faluciano/react-native-couch-kit.git",
@@ -23,7 +26,7 @@
     "local-multiplayer",
     "game-host"
   ],
-  "main": "lib/index.d.ts",
+  "main": "./src/index.tsx",
   "types": "lib/index.d.ts",
   "react-native": "src/index.tsx",
   "source": "src/index.tsx",

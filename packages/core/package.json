@@ -7,6 +7,9 @@
   },
   "description": "Shared types, protocol, and game reducer for Couch Kit party games",
   "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/faluciano/react-native-couch-kit.git",
@@ -26,6 +29,7 @@
     ".": {
       "types": "./lib/index.d.ts",
       "import": "./dist/index.js",
+      "require": "./dist/index.cjs",
       "default": "./dist/index.js"
     }
   },
@@ -38,7 +42,7 @@
   ],
   "sideEffects": false,
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir ./dist --target browser && tsc -p tsconfig.build.json",
+    "build": "bun build ./src/index.ts --outdir ./dist --target browser && bun build ./src/index.ts --outfile ./dist/index.cjs --target browser --format cjs && tsc -p tsconfig.build.json",
     "prepublishOnly": "bun run build",
     "test": "bun test",
     "lint": "eslint src/",
@@ -46,10 +50,6 @@
     "clean": "rm -rf dist lib"
   },
   "devDependencies": {
-    "typescript": "^5.4.0",
-    "eslint": "^8.57.0"
-  },
-  "peerDependencies": {
-    "typescript": "^5.0.0"
+    "typescript": "^5.4.0"
   }
 }

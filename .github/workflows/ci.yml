@@ -18,6 +18,12 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.2.19"
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-
       - run: bun install
       - run: bun run lint
       - run: bun run typecheck
@@ -29,8 +35,14 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.2.19"
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-
       - run: bun install
-      - run: bun run test
+      - run: bun run test --coverage
 
   build:
     runs-on: ubuntu-latest
@@ -39,8 +51,55 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.2.19"
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-
       - run: bun install
       - run: bun run build
+
+  size:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.2.19"
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-
+      - run: bun install
+      - run: bun run build
+      - name: Check bundle size
+        run: bunx size-limit
+
+  typecheck-matrix:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        react-native: ["0.76.0", "0.83.2"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.2.19"
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-rn${{ matrix.react-native }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-rn${{ matrix.react-native }}-
+      - run: bun install
+      - name: Install React Native ${{ matrix.react-native }}
+        run: bun add --dev react-native@${{ matrix.react-native }} --cwd packages/host
+      - name: Typecheck with RN ${{ matrix.react-native }}
+        run: bun run typecheck
 
   changesets:
     if: github.event_name == 'pull_request' && github.head_ref != 'changeset-release/main'
@@ -52,6 +111,12 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.2.19"
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-
       - run: bun install
       - run: bunx changeset status --since=origin/main
         env:
