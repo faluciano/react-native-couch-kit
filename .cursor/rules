@@ -1,0 +1,20 @@
+You are working on couch-kit, a TypeScript framework for local multiplayer TV party games.
+
+Package manager: Bun (1.2.19). Never use npm/yarn/pnpm.
+Build: bun run build (core must build first)
+Test: bun run test
+Lint: bun run lint
+Typecheck: bun run typecheck
+
+Monorepo: 5 packages under packages/ — core, client, host, cli, devtools.
+core is the foundation — all other packages depend on it.
+
+Key rules:
+- Host is authoritative. Clients receive full state snapshots.
+- createGameReducer wraps user reducers. Internal actions (__HYDRATE__, __PLAYER_JOINED__, etc.) are handled automatically.
+- Player IDs are derived from session secrets via SHA-256.
+- WebSocket port = HTTP port + 2 (default 8082).
+- workspace:* references in package.json are resolved at publish time. Never change them.
+- Every PR changing package source needs a changeset: bun run changeset
+- Never edit CHANGELOG.md files directly.
+- Never bundle react or react-native (peer dependencies).

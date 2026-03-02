@@ -7,6 +7,9 @@
   },
   "description": "React hooks for phone controllers in Couch Kit party games — WebSocket client and action dispatch",
   "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/faluciano/react-native-couch-kit.git",
@@ -51,8 +54,7 @@
   },
   "devDependencies": {
     "react": "^18.2.0",
-    "typescript": "^5.4.0",
-    "eslint": "^8.57.0"
+    "typescript": "^5.4.0"
   },
   "peerDependencies": {
     "react": ">=18.0.0"
