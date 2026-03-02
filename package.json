@@ -15,6 +15,7 @@
     "release": "bun run scripts/publish.ts",
     "lint:changesets": "bun run scripts/lint-changeset-headers.ts",
     "docs": "typedoc",
+    "docs:llms": "bun run scripts/generate-llms-txt.ts",
     "size": "size-limit"
   },
   "devDependencies": {
