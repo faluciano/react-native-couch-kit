@@ -96,4 +96,8 @@ Key test files:
 
 1. PRs merged to `main` with changesets → CI creates "Version Packages" PR
 2. Version PR merged → CI publishes to npm with provenance
-3. After publish → issues auto-created in consumer apps assigned to Copilot
+3. After publish → `repository_dispatch` sent to all consumer repos with changelog + package payload
+4. Consumer repos receive the dispatch and auto-create a PR that updates `@couch-kit/*` dependencies, runs typecheck/build, and auto-merges if no breaking changes
+5. For breaking changes only → Copilot-assigned issues are also created in consumer repos
+
+The consumer-side workflow template is at `scripts/templates/consumer-update-workflow.yml`.

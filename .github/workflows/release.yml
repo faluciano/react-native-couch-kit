@@ -106,6 +106,7 @@ jobs:
           repositories: |
             domino-party-game
             buzz-tv-party-game
+            card-game-engine
 
       - name: Extract changelogs
         if: steps.changesets.outputs.published == 'true'
@@ -113,31 +114,54 @@ jobs:
           PUBLISHED: ${{ steps.changesets.outputs.publishedPackages }}
         run: bun run scripts/extract-changelog.ts "$PUBLISHED" > /tmp/changelog.json
 
-      - name: Render issue
+      - name: Render update body
         if: steps.changesets.outputs.published == 'true'
         run: bun run scripts/render-issue.ts /tmp/changelog.json > /tmp/issue-output.txt
 
-      - name: Create update issues in consumer apps
+      - name: Dispatch consumer updates
+        if: steps.changesets.outputs.published == 'true'
+        env:
+          GH_TOKEN: ${{ steps.cross-repo-token.outputs.token }}
+          PUBLISHED: ${{ steps.changesets.outputs.publishedPackages }}
+        run: |
+          CHANGELOG=$(cat /tmp/changelog.json)
+          HAS_BREAKING=$(jq -r '.hasBreaking' /tmp/changelog.json)
+
+          for REPO in domino-party-game buzz-tv-party-game card-game-engine; do
+            echo "Dispatching couch-kit-update to faluciano/$REPO"
+            gh api "repos/faluciano/$REPO/dispatches" \
+              --method POST \
+              -f event_type=couch-kit-update \
+              --argjson client_payload "$(jq -n \
+                --argjson packages "$PUBLISHED" \
+                --argjson changelog "$CHANGELOG" \
+                '{packages: $packages, changelog: $changelog}')"
+          done
+
+      - name: Create breaking-change issues
         if: steps.changesets.outputs.published == 'true'
         env:
           GH_TOKEN: ${{ steps.cross-repo-token.outputs.token }}
         run: |
+          HAS_BREAKING=$(jq -r '.hasBreaking' /tmp/changelog.json)
+
+          if [ "$HAS_BREAKING" != "true" ]; then
+            echo "No breaking changes — skipping issue creation"
+            exit 0
+          fi
+
           head -n 1 /tmp/issue-output.txt > /tmp/issue-title.txt
           TITLE=$(cat /tmp/issue-title.txt)
           tail -n +3 /tmp/issue-output.txt > /tmp/issue-body.md
 
-          HAS_BREAKING=$(jq -r '.hasBreaking' /tmp/changelog.json)
           HAS_SECURITY=$(jq -r '.hasSecurity' /tmp/changelog.json)
 
-          LABELS="couch-kit-update"
-          if [ "$HAS_BREAKING" = "true" ]; then
-            LABELS="$LABELS,breaking-change"
-          fi
+          LABELS="couch-kit-update,breaking-change"
           if [ "$HAS_SECURITY" = "true" ]; then
             LABELS="$LABELS,security"
           fi
 
-          for REPO in domino-party-game buzz-tv-party-game; do
+          for REPO in domino-party-game buzz-tv-party-game card-game-engine; do
             FULL_REPO="faluciano/$REPO"
 
             existing=$(gh issue list --repo "$FULL_REPO" --label "couch-kit-update" --state open --json number --jq '.[0].number // empty')
@@ -151,11 +175,11 @@ jobs:
                 --repo "$FULL_REPO" \
                 --body-file /tmp/issue-body.md
             else
-              ISSUE_URL=$(gh issue create \
+              gh issue create \
                 --repo "$FULL_REPO" \
                 --title "$TITLE" \
                 --body-file /tmp/issue-body.md \
-                --label "$LABELS")
-              ISSUE_NUMBER=$(echo "$ISSUE_URL" | grep -o '[0-9]*$')
+                --label "$LABELS" \
+                --assignee "copilot"
             fi
           done

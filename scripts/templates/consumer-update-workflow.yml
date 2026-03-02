@@ -1,0 +1,101 @@
+# Consumer repo workflow: .github/workflows/update-couch-kit.yml
+# This workflow is triggered by the couch-kit library when new versions are published.
+# It automatically updates @couch-kit/* dependencies and creates a PR.
+
+name: Update @couch-kit
+
+on:
+  repository_dispatch:
+    types: [couch-kit-update]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.2.19"
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Update @couch-kit packages
+        run: |
+          PACKAGES='${{ toJson(github.event.client_payload.packages) }}'
+
+          echo "$PACKAGES" | jq -c '.[]' | while read -r pkg; do
+            NAME=$(echo "$pkg" | jq -r '.name')
+            VERSION=$(echo "$pkg" | jq -r '.version')
+
+            echo "Updating $NAME to ^$VERSION"
+
+            # Update in all sub-packages that have this dependency
+            for PKG_JSON in packages/*/package.json; do
+              if jq -e "(.dependencies[\"$NAME\"] // .devDependencies[\"$NAME\"] // .peerDependencies[\"$NAME\"])" "$PKG_JSON" > /dev/null 2>&1; then
+                echo "  → $PKG_JSON"
+                TMP=$(mktemp)
+                jq "
+                  if .dependencies[\"$NAME\"] then .dependencies[\"$NAME\"] = \"^$VERSION\" else . end |
+                  if .devDependencies[\"$NAME\"] then .devDependencies[\"$NAME\"] = \"^$VERSION\" else . end |
+                  if .peerDependencies[\"$NAME\"] then .peerDependencies[\"$NAME\"] = \"^$VERSION\" else . end
+                " "$PKG_JSON" > "$TMP" && mv "$TMP" "$PKG_JSON"
+              fi
+            done
+          done
+
+          bun install
+
+      - name: Verify
+        run: |
+          bun run typecheck
+          bun run build
+
+      - name: Generate PR body
+        run: |
+          CHANGELOG='${{ toJson(github.event.client_payload.changelog) }}'
+          HAS_BREAKING=$(echo "$CHANGELOG" | jq -r '.hasBreaking')
+
+          {
+            echo "## 📦 @couch-kit Update"
+            echo ""
+
+            echo "$CHANGELOG" | jq -r '.packages[] | "### \(.name) → \(.version) (\(.bump))\n\n\(.fullChangelog)\n"'
+
+            if [ "$HAS_BREAKING" = "true" ]; then
+              echo "## ⚠️ Breaking Changes"
+              echo ""
+              echo "$CHANGELOG" | jq -r '.packages[] | select(.breaking | length > 0) | .breaking[] | "- \(.)"'
+              echo ""
+            fi
+
+            MIGRATIONS=$(echo "$CHANGELOG" | jq -r '[.packages[] | select(.migration != null)] | length')
+            if [ "$MIGRATIONS" -gt "0" ]; then
+              echo "## 🔄 Migration Guide"
+              echo ""
+              echo "$CHANGELOG" | jq -r '.packages[] | select(.migration != null) | "### \(.name)\n\n\(.migration)\n"'
+            fi
+          } > /tmp/pr-body.md
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v7
+        id: create-pr
+        with:
+          title: "chore(deps): update @couch-kit packages"
+          body-path: /tmp/pr-body.md
+          branch: chore/update-couch-kit
+          labels: couch-kit-update
+          commit-message: "chore(deps): update @couch-kit packages"
+          delete-branch: true
+
+      - name: Auto-merge non-breaking updates
+        if: steps.create-pr.outputs.pull-request-number && !fromJson(toJson(github.event.client_payload.changelog)).hasBreaking
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr merge ${{ steps.create-pr.outputs.pull-request-number }} --auto --squash
