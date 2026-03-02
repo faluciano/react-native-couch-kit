@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+# LLM-friendly documentation
+Sitemap: https://faluciano.github.io/react-native-couch-kit/llms.txt
