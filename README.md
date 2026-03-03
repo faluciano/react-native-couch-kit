@@ -30,19 +30,17 @@ graph LR
   subgraph TV["📺 Android TV"]
     HTTP["HTTP :8080"]
     WS["WebSocket :8082"]
-    STATE["Game State"]
   end
 
-  subgraph PHONES["📱 Phones"]
+  subgraph PHONES["📱 Phones on same Wi-Fi"]
     P1["Player 1"]
     P2["Player 2"]
     P3["Player 3"]
   end
 
-  HTTP -- "serves controller page" --> PHONES
-  P1 & P2 & P3 -- "send actions" --> WS
-  WS -- "broadcast state" --> P1 & P2 & P3
-  WS --> STATE
+  HTTP -- "serves controller page" --> P1 & P2 & P3
+  P1 & P2 & P3 -- "actions ➡" --> WS
+  WS -- "⬅ state updates" --> P1 & P2 & P3
 ```
 
 ```mermaid
