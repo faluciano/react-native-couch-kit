@@ -1,5 +1,11 @@
 # @couch-kit/host
 
+## 1.7.7
+
+### Patch Changes
+
+- [#42](https://github.com/faluciano/react-native-couch-kit/pull/42) [`8a5be21`](https://github.com/faluciano/react-native-couch-kit/commit/8a5be21a2cbf7f49aa06f1274418cb54432f9dc4) Thanks [@faluciano](https://github.com/faluciano)! - Fix: move WELCOME useEffect debug log after early-return guard to prevent console spam on every state change
+
 ## 1.7.6
 
 ### Patch Changes
