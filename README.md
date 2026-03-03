@@ -32,15 +32,14 @@ graph LR
     WS["WebSocket :8082"]
   end
 
-  subgraph PHONES["📱 Phones on same Wi-Fi"]
+  subgraph PHONES["📱 Phones"]
     P1["Player 1"]
     P2["Player 2"]
-    P3["Player 3"]
   end
 
-  HTTP -- "serves controller page" --> P1 & P2 & P3
-  P1 & P2 & P3 -- "actions ➡" --> WS
-  WS -- "⬅ state updates" --> P1 & P2 & P3
+  HTTP -- "serves controller page" --> P1 & P2
+  P1 & P2 -- "actions ➡" --> WS
+  WS -- "⬅ state updates" --> P1 & P2
 ```
 
 ```mermaid
