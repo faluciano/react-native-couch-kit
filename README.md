@@ -25,138 +25,42 @@ Turn an Android TV / Fire TV into a local party-game console and use phones as w
 
 ## How It Works
 
-TV runs a static file server (default `:8080`) and a WebSocket game server (default `:8082`).
-Phones open the controller page, connect via WebSocket, send actions, and receive state updates.
-
-### System Architecture
-
 ```mermaid
-graph TB
-  subgraph TV["Android TV (Host)"]
-    direction TB
-    HOST["@couch-kit/host<br/><i>React Native / Expo</i>"]
-    PROVIDER["GameHostProvider"]
-    REDUCER_H["createGameReducer<br/><i>Canonical game state</i>"]
-    HTTP["Static File Server<br/><i>:8080</i>"]
-    WS["WebSocket Server<br/><i>:8082</i>"]
-    HOST --> PROVIDER
-    PROVIDER --> REDUCER_H
-    PROVIDER --> HTTP
-    PROVIDER --> WS
+graph LR
+  subgraph TV["📺 Android TV"]
+    HTTP["HTTP :8080"]
+    WS["WebSocket :8082"]
   end
 
-  subgraph CORE["@couch-kit/core"]
-    TYPES["IGameState · IPlayer · IAction"]
-    PROTOCOL["Protocol Messages<br/><i>JOIN · WELCOME · STATE_UPDATE<br/>ACTION · PING · PONG · ERROR</i>"]
-    FN["createGameReducer<br/>derivePlayerId · middleware"]
+  subgraph PHONES["📱 Phones"]
+    P1["Player 1"]
+    P2["Player 2"]
   end
 
-  subgraph LAN["Local Network (LAN)"]
-    direction LR
-    HTTP_CONN["HTTP — serves controller page"]
-    WS_CONN["WebSocket — real-time game sync"]
-  end
-
-  subgraph PHONE1["Phone Browser (Client 1)"]
-    direction TB
-    CLIENT1["@couch-kit/client<br/><i>React / Vite</i>"]
-    HOOK1["useGameClient"]
-    REDUCER_C1["createGameReducer<br/><i>Optimistic local state</i>"]
-    SYNC1["useServerTime<br/><i>NTP-style clock sync</i>"]
-    CLIENT1 --> HOOK1
-    HOOK1 --> REDUCER_C1
-    HOOK1 --> SYNC1
-  end
-
-  subgraph PHONE2["Phone Browser (Client 2)"]
-    direction TB
-    CLIENT2["@couch-kit/client"]
-    HOOK2["useGameClient"]
-    CLIENT2 --> HOOK2
-  end
-
-  TV -- "HTTP :8080" --> LAN
-  TV -- "WS :8082" --> LAN
-  LAN -- "GET /index.html" --> PHONE1
-  LAN -- "ws:// bidirectional" --> PHONE1
-  LAN -- "GET /index.html" --> PHONE2
-  LAN -- "ws:// bidirectional" --> PHONE2
-
-  CORE -. "shared types &<br/>reducer wrapper" .-> TV
-  CORE -. "shared types &<br/>reducer wrapper" .-> PHONE1
-  CORE -. "shared types &<br/>reducer wrapper" .-> PHONE2
-
-  style TV fill:#1a1a2e,stroke:#e94560,color:#fff
-  style CORE fill:#0f3460,stroke:#16213e,color:#fff
-  style LAN fill:#16213e,stroke:#533483,color:#fff
-  style PHONE1 fill:#1a1a2e,stroke:#00b4d8,color:#fff
-  style PHONE2 fill:#1a1a2e,stroke:#00b4d8,color:#fff
+  HTTP -- "serves controller page" --> P1 & P2
+  P1 & P2 -- "actions ➡" --> WS
+  WS -- "⬅ state updates" --> P1 & P2
 ```
-
-### Protocol Sequence
 
 ```mermaid
 sequenceDiagram
-  participant Phone as Phone Browser
-  participant HTTP as HTTP Server :8080
-  participant WS as WebSocket Server :8082
-  participant Host as Host (GameHostProvider)
-  participant Reducer as createGameReducer
+  participant P as 📱 Phone
+  participant TV as 📺 TV
 
-  Note over Phone,HTTP: 1. Load Controller Page
-  Phone->>HTTP: GET /index.html
-  HTTP-->>Phone: Static web controller (React/Vite app)
+  P->>TV: GET controller page (HTTP)
+  TV-->>P: Web app
 
-  Note over Phone,WS: 2. Establish Connection
-  Phone->>WS: WebSocket connect to ws://host:8082/ws
-  WS-->>Host: connection event (socketId)
+  P->>TV: JOIN { name, secret }
+  TV-->>P: WELCOME { playerId, state }
 
-  Note over Phone,Reducer: 3. Join Handshake
-  Phone->>WS: JOIN { name, avatar, secret }
-  WS->>Host: message event
-  Host->>Host: Validate secret (isValidSecret)
-  Host->>Host: derivePlayerId(secret) via SHA-256
-
-  Host->>Reducer: dispatch __PLAYER_JOINED__ { id, name, avatar }
-  Reducer-->>Host: New state with player added
-
-  Host-->>Phone: WELCOME { playerId, state, serverTime }
-
-  Note over Phone,Reducer: 4. Game Loop (throttled to ~30fps)
-  loop State Sync
-    Phone->>WS: ACTION { type, payload }
-    WS->>Host: message event
-    Host->>Host: Rate limit check (60 actions/sec)
-    Host->>Reducer: dispatch action { ...payload, playerId }
-    Reducer-->>Host: New state
-    Host-->>Phone: STATE_UPDATE { state }
+  loop Game Loop
+    P->>TV: ACTION { type, payload }
+    TV-->>P: STATE_UPDATE { state }
   end
 
-  Note over Phone,Host: 5. Time Synchronization
-  loop Clock Sync (every 5s)
-    Host-->>Phone: PING { serverTime }
-    Phone->>WS: PONG { clientTime, serverTime }
-  end
-
-  Note over Phone,Reducer: 6. Disconnection & Session Recovery
-  Phone--xWS: Connection lost
-  WS->>Host: disconnect event
-  Host->>Reducer: dispatch __PLAYER_LEFT__ { playerId }
-  Reducer-->>Host: Player marked connected: false
-
-  Note over Host: 5-min disconnect timeout starts
-
-  alt Player reconnects within 5 minutes
-    Phone->>WS: WebSocket reconnect
-    Phone->>WS: JOIN { name, avatar, secret } (same secret)
-    Host->>Host: derivePlayerId returns same playerId
-    Host->>Host: Cancel cleanup timer
-    Host->>Reducer: dispatch __PLAYER_RECONNECTED__ { playerId }
-    Reducer-->>Host: Player marked connected: true
-    Host-->>Phone: WELCOME { playerId, state, serverTime }
-  else Timeout expires (5 min)
-    Host->>Reducer: dispatch __PLAYER_REMOVED__ { playerId }
-    Reducer-->>Host: Player permanently removed from state
+  loop Heartbeat
+    TV-->>P: PING
+    P->>TV: PONG
   end
 ```
 
