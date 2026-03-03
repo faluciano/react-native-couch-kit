@@ -141,6 +141,12 @@ export function GameHostProvider<S extends IGameState, A extends IAction>({
     if (pendingWelcome.current.size === 0) return;
     if (!wsServer.current) return;
 
+    if (configRef.current.debug) {
+      console.log(
+        `[GameHost] Sending WELCOME/RECONNECTED to ${pendingWelcome.current.size} client(s)`,
+      );
+    }
+
     const server = wsServer.current;
     for (const [
       socketId,
