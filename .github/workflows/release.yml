@@ -26,6 +26,11 @@ jobs:
         with:
           bun-version: "1.2.19"
 
+      # Trusted publishing (OIDC) requires a recent npm CLI (>= 11.5.1). The
+      # runner's bundled npm may be older, so upgrade it before publishing.
+      - name: Ensure npm supports trusted publishing (OIDC)
+        run: npm install -g npm@latest
+
       - run: bun install
 
       - name: Build
@@ -33,9 +38,6 @@ jobs:
 
       - name: Test
         run: bun run test
-
-      - name: Create .npmrc
-        run: echo '//registry.npmjs.org/:_authToken=${NPM_TOKEN}' > .npmrc
 
       - name: Generate GitHub App token
         id: app-token
@@ -52,7 +54,6 @@ jobs:
           publish: bun run release
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create GitHub Releases
         if: steps.changesets.outputs.published == 'true'
