@@ -131,13 +131,11 @@ jobs:
 
           for REPO in domino-party-game buzz-tv-party-game card-game-engine; do
             echo "Dispatching couch-kit-update to faluciano/$REPO"
-            gh api "repos/faluciano/$REPO/dispatches" \
-              --method POST \
-              -f event_type=couch-kit-update \
-              --argjson client_payload "$(jq -n \
-                --argjson packages "$PUBLISHED" \
-                --argjson changelog "$CHANGELOG" \
-                '{packages: $packages, changelog: $changelog}')"
+            jq -n \
+              --argjson packages "$PUBLISHED" \
+              --argjson changelog "$CHANGELOG" \
+              '{event_type: "couch-kit-update", client_payload: {packages: $packages, changelog: $changelog}}' \
+              | gh api "repos/faluciano/$REPO/dispatches" --method POST --input -
           done
 
       - name: Create breaking-change issues
