@@ -95,9 +95,8 @@ Key test files:
 ## Release Flow
 
 1. PRs merged to `main` with changesets → CI creates "Version Packages" PR
-2. Version PR merged → CI publishes to npm with provenance
-3. After publish → `repository_dispatch` sent to all consumer repos with changelog + package payload
-4. Consumer repos receive the dispatch and auto-create a PR that updates `@couch-kit/*` dependencies, runs typecheck/build, and auto-merges if no breaking changes
-5. For breaking changes only → Copilot-assigned issues are also created in consumer repos
+2. Version PR merged → CI publishes to npm with provenance (OIDC Trusted Publishing, no NPM_TOKEN)
+3. After publish → each consumer repo's **Dependabot** opens a PR bumping `@couch-kit/*`
+4. Each consumer's CI (typecheck + build) gates the PR; patch/minor auto-merge, **major** bumps are held for manual review
 
-The consumer-side workflow template is at `scripts/templates/consumer-update-workflow.yml`.
+Consumers use native Dependabot (`.github/dependabot.yml`) + an auto-merge workflow — there is no custom dispatch glue in this repo.
