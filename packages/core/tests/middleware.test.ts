@@ -8,8 +8,8 @@ import {
   type MiddlewareDispatch,
   type ActionSchema,
 } from "../src/middleware";
+import { createGameReducer } from "../src/reducer";
 import {
-  createGameReducer,
   InternalActionTypes,
   type IAction,
   type IGameState,
