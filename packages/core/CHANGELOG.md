@@ -1,5 +1,11 @@
 # @couch-kit/core
 
+## 0.9.1
+
+### Patch Changes
+
+- [#54](https://github.com/faluciano/react-native-couch-kit/pull/54) [`6860811`](https://github.com/faluciano/react-native-couch-kit/commit/6860811ec2fc0648fd9fd9d676c1b6ebcb4d14d0) Thanks [@faluciano](https://github.com/faluciano)! - Move `createGameReducer` and `CreateGameReducerOptions` from `types.ts` into a dedicated `reducer.ts` module. This is an internal refactor — the public API is unchanged (both remain exported from `@couch-kit/core`) and runtime behaviour is identical. It also removes a circular import between `types.ts` and `middleware.ts`.
+
 ## 0.9.0
 
 ### Minor Changes
