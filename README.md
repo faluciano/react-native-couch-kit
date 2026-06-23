@@ -366,11 +366,11 @@ This repo uses [Changesets](https://github.com/changesets/changesets) for versio
 2. On merge to `main`, the release workflow either:
    - Creates a **"Version Packages"** PR if there are pending changesets
    - **Publishes to npm** if the version PR was merged (no pending changesets)
-3. After publishing, a **`repository_dispatch`** event is sent to consumer app repos ([domino](https://github.com/faluciano/domino-party-game), [buzz](https://github.com/faluciano/buzz-tv-party-game), [card-game-engine](https://github.com/faluciano/card-game-engine)) which automatically creates a PR updating `@couch-kit/*` dependencies
+3. Consumer app repos ([domino](https://github.com/faluciano/domino-party-game), [buzz](https://github.com/faluciano/buzz-tv-party-game), [card-game-engine](https://github.com/faluciano/card-game-engine)) use **[Dependabot](https://docs.github.com/en/code-security/dependabot)** to pick up new `@couch-kit/*` releases and open update PRs automatically
 
-### Breaking changes
+### Dogfooding consumers
 
-When publishing a **major version bump**, the auto-created PRs require manual review. CI in each app repo (typecheck + build) catches any breakage. Breaking-change issues are also filed and assigned to Copilot for migration guidance.
+Each consumer repo runs its own CI (typecheck + build) on the Dependabot PR. Patch/minor updates that pass CI are auto-merged; **major version bumps** skip auto-merge and require manual review, so breaking changes surface as a failing or held PR in each app.
 
 ## 📚 Documentation
 
