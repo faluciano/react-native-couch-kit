@@ -28,8 +28,9 @@ jobs:
 
       # Trusted publishing (OIDC) requires a recent npm CLI (>= 11.5.1). The
       # runner's bundled npm may be older, so upgrade it before publishing.
+      # The global npm prefix is root-owned on GitHub runners, so use sudo.
       - name: Ensure npm supports trusted publishing (OIDC)
-        run: npm install -g npm@latest
+        run: sudo npm install -g npm@latest
 
       - run: bun install
 
