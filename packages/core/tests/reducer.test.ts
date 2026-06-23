@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { createGameReducer } from "../src/reducer";
 import {
-  createGameReducer,
   InternalActionTypes,
   type IAction,
   type IGameState,
