@@ -68,16 +68,23 @@ Releases are automated via GitHub Actions:
 
 ## Maintainer Reference
 
-### NPM_TOKEN Setup
+### npm Trusted Publishing (OIDC)
 
-1. Go to [npmjs.com](https://www.npmjs.com) → Avatar → **Access Tokens** → **Generate New Token** → **Granular Access Token**
-2. Configure the token:
-   - **Name:** `couch-kit-ci-release`
-   - **Expiration:** 1 year (set a reminder to rotate)
-   - **Packages:** Only select packages — add `@couch-kit/core`, `@couch-kit/client`, `@couch-kit/host`, `@couch-kit/cli`
-   - **Permissions:** Read and write
-3. Add the token as a GitHub repository secret named `NPM_TOKEN` (Settings → Secrets and variables → Actions)
-4. Enable "Allow GitHub Actions to create and approve pull requests" in repo Settings → Actions → General → Workflow permissions
+Packages are published from CI using [npm Trusted Publishing](https://docs.npmjs.com/trusted-publishers/) via GitHub Actions OIDC — **no long-lived `NPM_TOKEN` is required**. The release workflow has `id-token: write` permission and a recent npm CLI; npm exchanges a short-lived, workflow-scoped credential at publish time, and [provenance](https://docs.npmjs.com/generating-provenance-statements) is generated automatically.
+
+One-time setup per package (maintainer, on npmjs.com):
+
+1. Go to [npmjs.com](https://www.npmjs.com) → **Packages** → the package → **Settings** → **Trusted Publisher**
+2. Select **GitHub Actions** and configure:
+   - **Organization or user:** `faluciano`
+   - **Repository:** `react-native-couch-kit`
+   - **Workflow filename:** `release.yml`
+   - **Environment:** leave blank (the release job does not use a GitHub Environment)
+3. Repeat for every published package: `@couch-kit/core`, `@couch-kit/client`, `@couch-kit/host`, `@couch-kit/cli`, `@couch-kit/devtools`
+4. (Recommended) After verifying a publish works, set each package's **Publishing access** to **"Require two-factor authentication and disallow tokens"** for maximum security.
+5. Enable "Allow GitHub Actions to create and approve pull requests" in repo Settings → Actions → General → Workflow permissions.
+
+> The previous `NPM_TOKEN` repository secret is no longer used and can be revoked once trusted publishing is confirmed working.
 
 ### Branch Protection
 
