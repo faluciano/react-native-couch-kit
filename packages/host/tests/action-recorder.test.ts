@@ -23,7 +23,16 @@ describe("useActionRecorder", () => {
       timestamp: Date.now(),
     };
 
+    const _controls: ActionRecorderControls = {
+      isRecording: false,
+      recordedCount: 0,
+      startRecording: () => {},
+      stopRecording: () => null,
+      recordAction: () => {},
+    };
+
     expect(_recording.actions).toHaveLength(0);
     expect(_recordedAction.action.type).toBe("TEST");
+    expect(_controls.isRecording).toBe(false);
   });
 });
