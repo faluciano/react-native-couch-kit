@@ -26,16 +26,16 @@
     "README.md",
     "CHANGELOG.md"
   ],
-  "dependencies": {
-    "@couch-kit/client": "workspace:*"
-  },
+  "dependencies": {},
   "devDependencies": {
+    "@couch-kit/client": "workspace:*",
     "@couch-kit/core": "workspace:*",
     "@types/react": "^19.1.1",
     "react": "^18.2.0",
     "typescript": "^5.4.0"
   },
   "peerDependencies": {
+    "@couch-kit/client": "workspace:*",
     "react": ">=18.0.0"
   },
   "publishConfig": {
