@@ -11,7 +11,7 @@
     "typecheck": "bun run --filter '@couch-kit/core' typecheck && bun run --filter '*' typecheck",
     "clean": "bun run --filter '*' clean",
     "changeset": "changeset",
-    "version": "changeset version",
+    "version": "bun run scripts/version.ts",
     "release": "bun run scripts/publish.ts",
     "lint:changesets": "bun run scripts/lint-changeset-headers.ts",
     "docs": "typedoc",
