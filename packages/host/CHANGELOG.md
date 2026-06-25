@@ -1,5 +1,11 @@
 # @couch-kit/host
 
+## 1.7.9
+
+### Patch Changes
+
+- [#64](https://github.com/faluciano/react-native-couch-kit/pull/64) [`e0d8641`](https://github.com/faluciano/react-native-couch-kit/commit/e0d864179049d0d1dbf9d4473e413771fb356a41) Thanks [@faluciano](https://github.com/faluciano)! - Mark the unused `WebSocketConfig` options (`maxFrameSize`, `keepaliveInterval`, `keepaliveTimeout`) as `@deprecated`. These have no effect — the nitro-http WebSocket transport does not expose these knobs, and the server only honors `port` and `debug`. The deprecated fields are retained for backward compatibility and will be removed in a future major release. Application-level heartbeats continue to be handled by the host PING/PONG protocol.
+
 ## 1.7.8
 
 ### Patch Changes
