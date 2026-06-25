@@ -125,10 +125,12 @@ export function useGameClient<S extends IGameState, A extends IAction>(
       currentCfg.onConnect?.();
 
       // Session Recovery Logic -- use cryptographically random secrets
-      let secret: string | null = null;
+      let secret: string;
       try {
-        secret = localStorage.getItem("ck_secret");
-        if (!secret) {
+        const stored = localStorage.getItem("ck_secret");
+        if (stored) {
+          secret = stored;
+        } else {
           secret = generateId();
           localStorage.setItem("ck_secret", secret);
         }
