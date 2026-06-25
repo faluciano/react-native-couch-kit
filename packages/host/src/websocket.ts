@@ -16,11 +16,24 @@ import { generateId, DEFAULT_WS_PATH } from "@couch-kit/core";
 export interface WebSocketConfig {
   port: number;
   debug?: boolean;
-  /** Maximum allowed frame payload size in bytes (default: 1 MB). */
+  /**
+   * @deprecated No effect. The underlying nitro-http WebSocket transport
+   * manages frame sizing internally and this value is never read. This field
+   * will be removed in a future major release. Do not set it.
+   */
   maxFrameSize?: number;
-  /** Interval (ms) between server-side keepalive pings (default: 30s). 0 disables. */
+  /**
+   * @deprecated No effect. The nitro-http WebSocket transport does not expose
+   * server-side keepalive ping configuration, so this value is never read.
+   * Application-level heartbeats are handled by the host PING/PONG protocol.
+   * This field will be removed in a future major release. Do not set it.
+   */
   keepaliveInterval?: number;
-  /** Timeout (ms) to wait for a pong after a keepalive ping (default: 10s). */
+  /**
+   * @deprecated No effect. The nitro-http WebSocket transport does not expose
+   * keepalive pong-timeout configuration, so this value is never read. This
+   * field will be removed in a future major release. Do not set it.
+   */
   keepaliveTimeout?: number;
 }
 
@@ -48,9 +61,10 @@ export class GameWebSocketServer extends EventEmitter<WebSocketServerEvents> {
     super();
     this.port = config.port;
     this.debug = !!config.debug;
-    // Note: maxFrameSize, keepaliveInterval, and keepaliveTimeout are not directly
-    // configurable in nitro-http WebSocket plugin, but the underlying implementation
-    // handles these concerns automatically.
+    // Only `port` and `debug` are honored. `maxFrameSize`, `keepaliveInterval`,
+    // and `keepaliveTimeout` are deprecated no-ops: the nitro-http WebSocket
+    // transport does not expose these knobs, so they are intentionally ignored
+    // (see the @deprecated tags on WebSocketConfig).
   }
 
   private log(...args: unknown[]) {
