@@ -1,5 +1,11 @@
 # @couch-kit/client
 
+## 0.8.6
+
+### Patch Changes
+
+- [#62](https://github.com/faluciano/react-native-couch-kit/pull/62) [`bd9cd2d`](https://github.com/faluciano/react-native-couch-kit/commit/bd9cd2d6eebc464e33fd1ecbbb6731783ba3ed0c) Thanks [@faluciano](https://github.com/faluciano)! - Simplify session-secret recovery in the game client to remove a redundant variable initializer. Behavior is unchanged: an existing `ck_secret` is reused, a new one is generated and persisted when absent, and a fresh secret is generated when `localStorage` is unavailable.
+
 ## 0.8.5
 
 ### Patch Changes
