@@ -30,7 +30,7 @@
   "devDependencies": {
     "@couch-kit/client": "workspace:*",
     "@couch-kit/core": "workspace:*",
-    "@types/react": "^19.1.1",
+    "@types/react": "^19.2.17",
     "react": "^18.2.0",
     "typescript": "^5.4.0"
   },
