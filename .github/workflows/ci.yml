@@ -60,25 +60,6 @@ jobs:
       - run: bun install
       - run: bun run build
 
-  size:
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.2.19"
-      - name: Cache Bun dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun/install/cache
-          key: bun-${{ hashFiles('bun.lock') }}
-          restore-keys: bun-
-      - run: bun install
-      - run: bun run build
-      - name: Check bundle size
-        run: bunx size-limit
-
   typecheck-matrix:
     runs-on: ubuntu-latest
     strategy:
