@@ -1,5 +1,12 @@
 # @couch-kit/devtools
 
+## 0.2.8
+
+### Patch Changes
+
+- Updated dependencies [[`7897e88`](https://github.com/faluciano/react-native-couch-kit/commit/7897e887967c440b5b973c8dc753bf1fa705b993)]:
+  - @couch-kit/client@0.8.7
+
 ## 0.2.7
 
 ### Patch Changes
