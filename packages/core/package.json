@@ -50,6 +50,6 @@
     "clean": "rm -rf dist lib"
   },
   "devDependencies": {
-    "typescript": "^5.4.0"
+    "typescript": "^6.0.0"
   }
 }
