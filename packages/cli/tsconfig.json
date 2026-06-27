@@ -1,7 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "baseUrl": ".",
+    "types": ["bun"],
     "paths": {
       "@couch-kit/core": ["../core/src"]
     }

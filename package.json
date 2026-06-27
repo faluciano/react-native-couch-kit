@@ -27,7 +27,7 @@
     "typescript-eslint": "^8.62.0",
     "prettier": "^3.8.4",
     "typedoc": "^0.28.19",
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.3"
   },
   "packageManager": "bun@1.2.19",
   "engines": {
