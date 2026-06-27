@@ -1,5 +1,14 @@
 # @couch-kit/client
 
+## 0.8.7
+
+### Patch Changes
+
+- [#70](https://github.com/faluciano/react-native-couch-kit/pull/70) [`7897e88`](https://github.com/faluciano/react-native-couch-kit/commit/7897e887967c440b5b973c8dc753bf1fa705b993) Thanks [@faluciano](https://github.com/faluciano)! - Extract the client's connection logic (WebSocket URL resolution, reconnect
+  backoff, session-secret recovery, and host-message interpretation) into a
+  framework-free `connection` module with full unit test coverage. No behavior
+  change; these pure helpers are now exported for reuse and testing.
+
 ## 0.8.6
 
 ### Patch Changes

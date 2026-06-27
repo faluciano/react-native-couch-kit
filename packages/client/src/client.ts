@@ -2,12 +2,9 @@ import { useState, useEffect, useRef, useCallback, useReducer } from "react";
 import {
   MessageTypes,
   InternalActionTypes,
-  DEFAULT_WS_PORT_OFFSET,
-  DEFAULT_WS_PATH,
   DEFAULT_MAX_RETRIES,
   DEFAULT_BASE_DELAY,
   DEFAULT_MAX_DELAY,
-  generateId,
   createGameReducer,
   type HostMessage,
   type IGameState,
@@ -15,6 +12,13 @@ import {
   type InternalAction,
 } from "@couch-kit/core";
 import { useServerTime } from "./time-sync";
+import {
+  resolveWebSocketUrl,
+  computeBackoffDelay,
+  shouldReconnect,
+  resolveSessionSecret,
+  interpretHostMessage,
+} from "./connection";
 
 export interface ClientConfig<S extends IGameState, A extends IAction> {
   url?: string; // Full WebSocket URL (overrides auto-detection)
@@ -100,15 +104,10 @@ export function useGameClient<S extends IGameState, A extends IAction>(
     // so derive the WebSocket URL from window.location.
     // Convention: WS port = HTTP port + 2 (e.g., HTTP 8080 -> WS 8082)
     // Port + 1 is skipped to avoid conflicts with Metro bundler (which uses 8081)
-    let wsUrl = cfg.url;
-
-    if (!wsUrl && typeof window !== "undefined") {
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const host = window.location.hostname;
-      const httpPort = parseInt(window.location.port, 10) || 80;
-      const wsPort = cfg.wsPort || httpPort + DEFAULT_WS_PORT_OFFSET;
-      wsUrl = `${protocol}//${host}:${wsPort}${DEFAULT_WS_PATH}`;
-    }
+    const wsUrl = resolveWebSocketUrl(
+      { url: cfg.url, wsPort: cfg.wsPort },
+      typeof window !== "undefined" ? window.location : null,
+    );
 
     if (!wsUrl) return;
 
@@ -125,19 +124,9 @@ export function useGameClient<S extends IGameState, A extends IAction>(
       currentCfg.onConnect?.();
 
       // Session Recovery Logic -- use cryptographically random secrets
-      let secret: string;
-      try {
-        const stored = localStorage.getItem("ck_secret");
-        if (stored) {
-          secret = stored;
-        } else {
-          secret = generateId();
-          localStorage.setItem("ck_secret", secret);
-        }
-      } catch {
-        // localStorage unavailable (Safari private browsing, restrictive WebViews, etc.)
-        secret = generateId();
-      }
+      const secret = resolveSessionSecret(
+        typeof localStorage !== "undefined" ? localStorage : null,
+      );
 
       // Join with secret
       try {
@@ -158,41 +147,30 @@ export function useGameClient<S extends IGameState, A extends IAction>(
     };
 
     ws.onmessage = (event) => {
+      let msg: HostMessage;
       try {
-        const msg = JSON.parse(event.data) as HostMessage;
+        msg = JSON.parse(event.data) as HostMessage;
+      } catch (e) {
+        console.error("Failed to parse message", e);
+        return;
+      }
 
-        switch (msg.type) {
-          case MessageTypes.WELCOME:
-            setPlayerId(msg.payload.playerId);
-            // Hydrate state from server (Single Source of Truth)
-            dispatchLocal({
-              type: InternalActionTypes.HYDRATE,
-              payload: msg.payload.state as S,
-            } as InternalAction<S>);
+      for (const effect of interpretHostMessage<S>(msg)) {
+        switch (effect.kind) {
+          case "setPlayerId":
+            setPlayerId(effect.playerId);
             break;
-
-          case MessageTypes.STATE_UPDATE:
+          case "hydrate":
             // Full state replacement from the host's authoritative state.
             dispatchLocal({
               type: InternalActionTypes.HYDRATE,
-              payload: msg.payload.newState as S,
+              payload: effect.state,
             } as InternalAction<S>);
             break;
-
-          case MessageTypes.PONG:
-            handlePongRef.current(msg.payload);
-            break;
-
-          case MessageTypes.RECONNECTED:
-            setPlayerId(msg.payload.playerId);
-            dispatchLocal({
-              type: InternalActionTypes.HYDRATE,
-              payload: msg.payload.state as S,
-            } as InternalAction<S>);
+          case "pong":
+            handlePongRef.current(effect.payload);
             break;
         }
-      } catch (e) {
-        console.error("Failed to parse message", e);
       }
     };
 
@@ -201,25 +179,31 @@ export function useGameClient<S extends IGameState, A extends IAction>(
       configRef.current.onDisconnect?.();
 
       // Don't reconnect if the close was intentional or if the server
-      // sent a policy/unexpected error close code
-      if (intentionalClose.current) return;
-      if (event.code === 1008 || event.code === 1011) return;
+      // sent a policy/unexpected error close code, or once retries are exhausted.
+      if (
+        !shouldReconnect({
+          intentionalClose: intentionalClose.current,
+          closeCode: event.code,
+          attempts: reconnectAttempts.current,
+          maxRetries,
+        })
+      )
+        return;
 
       // Exponential backoff reconnection
-      if (reconnectAttempts.current < maxRetries) {
-        const delay = Math.min(
-          baseDelay * Math.pow(2, reconnectAttempts.current),
-          maxDelay,
-        );
-        reconnectAttempts.current++;
+      const delay = computeBackoffDelay(
+        reconnectAttempts.current,
+        baseDelay,
+        maxDelay,
+      );
+      reconnectAttempts.current++;
 
-        if (configRef.current.debug)
-          console.log(`[GameClient] Reconnecting in ${delay}ms...`);
+      if (configRef.current.debug)
+        console.log(`[GameClient] Reconnecting in ${delay}ms...`);
 
-        reconnectTimer.current = setTimeout(() => {
-          connect();
-        }, delay);
-      }
+      reconnectTimer.current = setTimeout(() => {
+        connect();
+      }, delay);
     };
 
     ws.onerror = (e) => {
