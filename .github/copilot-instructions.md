@@ -6,14 +6,15 @@ couch-kit is a framework for building TV party games. The host runs on Android T
 
 ## Monorepo Structure
 
-4 packages under `packages/`, managed with Bun workspaces:
+5 packages under `packages/`, managed with Bun workspaces:
 
-| Package  | npm Name            | Purpose                                                                                           |
-| -------- | ------------------- | ------------------------------------------------------------------------------------------------- |
-| `core`   | `@couch-kit/core`   | Shared types, protocol definitions, `createGameReducer`                                           |
-| `client` | `@couch-kit/client` | Web SDK — `CouchKitProvider`, `useCouchKit()`, `useServerTime()`, `useAssets()`                   |
-| `host`   | `@couch-kit/host`   | Android TV SDK — `GameHostProvider`, `useRoom()`, `usePlayers()`, `useGameState()`, `useAssets()` |
-| `cli`    | `@couch-kit/cli`    | CLI tooling — `couch-kit bundle` bundles web client into Android assets                           |
+| Package    | npm Name              | Purpose                                                                                           |
+| ---------- | --------------------- | ------------------------------------------------------------------------------------------------- |
+| `core`     | `@couch-kit/core`     | Shared types, protocol definitions, `createGameReducer`                                            |
+| `client`   | `@couch-kit/client`   | Web SDK — `useGameClient()`, `useServerTime()`, `usePreload()`, `useDebugPanel()`                  |
+| `host`     | `@couch-kit/host`     | Android TV SDK — `GameHostProvider`, `useGameHost()`, `useExtractAssets()`, `useActionRecorder()`  |
+| `cli`      | `@couch-kit/cli`      | CLI tooling — `init`, `bundle`, `simulate`, `replay`, `dev`                                         |
+| `devtools` | `@couch-kit/devtools` | Optional `DebugOverlay` component for web controllers                                              |
 
 ## Build Order
 
@@ -73,14 +74,15 @@ bun run typecheck # typechecks all packages
 ## Release Flow
 
 1. PRs merged to `main` with changesets → CI creates "Version Packages" PR
-2. Version PR merged → CI publishes to npm with provenance
-3. After publish → issues auto-created in consumer apps (domino, buzz) assigned to Copilot
+2. Version PR merged → CI publishes to npm with provenance (OIDC Trusted Publishing)
+3. After publish → each consumer repo's **Renovate** opens a PR bumping `@couch-kit/*` (minor/patch auto-merge, major held for review)
 
 ## Consumer Apps
 
-Two apps consume couch-kit via npm:
+Three apps consume couch-kit via npm:
 
 - [domino-party-game](https://github.com/faluciano/domino-party-game) — Dominican domino (complex, 4 players, teams, bots)
 - [buzz-tv-party-game](https://github.com/faluciano/buzz-tv-party-game) — Buzzer game (starter template)
+- [card-game-engine](https://github.com/faluciano/card-game-engine) — JSON-driven card game engine
 
-Both follow the same pattern: `shared` (reducer + types) → `client` (web UI) → `host` (TV display)
+All follow the same pattern: `shared` (reducer + types) → `client` (web UI) → `host` (TV display)

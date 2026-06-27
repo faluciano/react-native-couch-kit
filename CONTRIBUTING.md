@@ -16,7 +16,7 @@ bun run typecheck  # type-check
 
 ## Monorepo Structure
 
-Four packages under `packages/`:
+Five packages under `packages/`:
 
 | Package             | Description                            |
 | ------------------- | -------------------------------------- |
@@ -24,6 +24,7 @@ Four packages under `packages/`:
 | `@couch-kit/client` | React hooks for phone controllers      |
 | `@couch-kit/host`   | React Native TV host                   |
 | `@couch-kit/cli`    | CLI tools (bundle, simulate, scaffold) |
+| `@couch-kit/devtools` | Debug overlay component for web controllers |
 
 ## Making Changes
 
