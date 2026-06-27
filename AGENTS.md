@@ -96,7 +96,7 @@ Key test files:
 
 1. PRs merged to `main` with changesets → CI creates "Version Packages" PR
 2. Version PR merged → CI publishes to npm with provenance (OIDC Trusted Publishing, no NPM_TOKEN)
-3. After publish → each consumer repo's **Dependabot** opens a PR bumping `@couch-kit/*`
+3. After publish → each consumer repo's **Renovate** opens a PR bumping `@couch-kit/*`
 4. Each consumer's CI (typecheck + build) gates the PR; patch/minor auto-merge, **major** bumps are held for manual review
 
-Consumers use native Dependabot (`.github/dependabot.yml`) + an auto-merge workflow — there is no custom dispatch glue in this repo.
+Consumers use Renovate (`renovate.json`, scoped to `@couch-kit/*` and grouped into one PR) with auto-merge for minor/patch/digest updates — there is no custom dispatch glue in this repo. Renovate (not Dependabot) is used because Dependabot does not regenerate Bun workspace lockfiles.

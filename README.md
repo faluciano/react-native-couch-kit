@@ -11,6 +11,7 @@ Turn an Android TV / Fire TV into a local party-game console and use phones as w
 [![@couch-kit/client](https://img.shields.io/npm/dt/@couch-kit/client?label=%40couch-kit%2Fclient)](https://www.npmjs.com/package/@couch-kit/client)
 [![@couch-kit/core](https://img.shields.io/npm/dt/@couch-kit/core?label=%40couch-kit%2Fcore)](https://www.npmjs.com/package/@couch-kit/core)
 [![@couch-kit/cli](https://img.shields.io/npm/dt/@couch-kit/cli?label=%40couch-kit%2Fcli)](https://www.npmjs.com/package/@couch-kit/cli)
+[![@couch-kit/devtools](https://img.shields.io/npm/dt/@couch-kit/devtools?label=%40couch-kit%2Fdevtools)](https://www.npmjs.com/package/@couch-kit/devtools)
 
 ---
 
@@ -271,7 +272,7 @@ bun install
 
 ### 2. Building the Libraries
 
-The packages (`host`, `client`, `core`, `cli`) are located in `packages/*`. You can build them all at once:
+The packages (`host`, `client`, `core`, `cli`, `devtools`) are located in `packages/*`. You can build them all at once:
 
 ```bash
 bun run build
@@ -355,6 +356,7 @@ When you make changes to the library:
 | **`@couch-kit/client`** | Runs on the phone browser. Connects to the host and renders the controller UI.             |
 | **`@couch-kit/core`**   | Shared TypeScript types and protocol definitions.                                          |
 | **`@couch-kit/cli`**    | CLI tools to scaffold, bundle, and simulate web controllers                                |
+| **`@couch-kit/devtools`** | Optional debug overlay component for web controllers (state inspector).                   |
 
 ## 🔄 Release Flow
 
@@ -366,11 +368,13 @@ This repo uses [Changesets](https://github.com/changesets/changesets) for versio
 2. On merge to `main`, the release workflow either:
    - Creates a **"Version Packages"** PR if there are pending changesets
    - **Publishes to npm** if the version PR was merged (no pending changesets)
-3. Consumer app repos ([domino](https://github.com/faluciano/domino-party-game), [buzz](https://github.com/faluciano/buzz-tv-party-game), [card-game-engine](https://github.com/faluciano/card-game-engine)) use **[Dependabot](https://docs.github.com/en/code-security/dependabot)** to pick up new `@couch-kit/*` releases and open update PRs automatically
+3. Consumer app repos ([domino](https://github.com/faluciano/domino-party-game), [buzz](https://github.com/faluciano/buzz-tv-party-game), [card-game-engine](https://github.com/faluciano/card-game-engine)) use **[Renovate](https://docs.renovatebot.com/)** to pick up new `@couch-kit/*` releases and open update PRs automatically
 
 ### Dogfooding consumers
 
-Each consumer repo runs its own CI (typecheck + build) on the Dependabot PR. Patch/minor updates that pass CI are auto-merged; **major version bumps** skip auto-merge and require manual review, so breaking changes surface as a failing or held PR in each app.
+Each consumer repo has a `renovate.json` scoped to the `@couch-kit/*` packages (grouped into a single PR). Renovate regenerates the Bun lockfile, then each repo runs its own CI (typecheck + build) on the PR. Patch/minor/digest updates that pass CI are auto-merged by Renovate; **major version bumps** skip auto-merge and require manual review, so breaking changes surface as a held PR in each app.
+
+> Renovate (not Dependabot) is used because Dependabot does not regenerate Bun workspace lockfiles, which causes `bun install --frozen-lockfile` to fail in CI.
 
 ## 📚 Documentation
 
@@ -378,6 +382,7 @@ Each consumer repo runs its own CI (typecheck + build) on the Dependabot PR. Pat
 - [Client Documentation](./packages/client/README.md)
 - [Core Documentation](./packages/core/README.md)
 - [CLI Documentation](./packages/cli/README.md)
+- [Devtools Documentation](./packages/devtools/README.md)
 
 ## Troubleshooting
 
