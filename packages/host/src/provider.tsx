@@ -16,20 +16,22 @@ import {
   DEFAULT_WS_PORT_OFFSET,
   DEFAULT_DISCONNECT_TIMEOUT,
   createGameReducer,
-  derivePlayerId,
-  derivePlayerIdLegacy,
   isValidSecret,
   type IGameState,
   type IAction,
   type InternalAction,
-  type ClientMessage,
 } from "@couch-kit/core";
-
-/** Maximum actions per rate-limit window. */
-const RATE_LIMIT_MAX = 60;
-
-/** Rate-limit window duration (ms). */
-const RATE_LIMIT_WINDOW = 1000;
+import { isValidClientMessage } from "./message-validation";
+import { ActionRateLimiter } from "./rate-limiter";
+import {
+  HostSessionManager,
+  type JoinSessionPayload,
+} from "./session-manager";
+import {
+  BroadcastScheduler,
+  DEFAULT_STATE_THROTTLE_MS,
+  createStateUpdateMessage,
+} from "./broadcast-scheduler";
 
 export interface GameHostConfig<S extends IGameState, A extends IAction> {
   initialState: S;
@@ -42,6 +44,8 @@ export interface GameHostConfig<S extends IGameState, A extends IAction> {
   debug?: boolean;
   /** Timeout (ms) before a disconnected player is permanently removed (default: 5 minutes). */
   disconnectTimeout?: number;
+  /** State broadcast throttle interval in milliseconds (default: 33ms, ~30fps). */
+  stateThrottleMs?: number;
   /** Called when a player successfully joins. */
   onPlayerJoined?: (playerId: string, name: string) => void;
   /** Called when a player disconnects. */
@@ -62,42 +66,6 @@ interface GameHostContextValue<S extends IGameState, A extends IAction> {
 const GameHostContext = createContext<GameHostContextValue<any, any> | null>(
   null,
 );
-
-/**
- * Validates that an incoming message has the expected shape.
- * Returns true if the message is a valid ClientMessage, false otherwise.
- */
-function isValidClientMessage(msg: unknown): msg is ClientMessage {
-  if (typeof msg !== "object" || msg === null) return false;
-  const m = msg as Record<string, unknown>;
-  if (typeof m.type !== "string") return false;
-
-  switch (m.type) {
-    case MessageTypes.JOIN:
-      return (
-        typeof m.payload === "object" &&
-        m.payload !== null &&
-        typeof (m.payload as Record<string, unknown>).name === "string"
-      );
-    case MessageTypes.ACTION:
-      return (
-        typeof m.payload === "object" &&
-        m.payload !== null &&
-        typeof (m.payload as Record<string, unknown>).type === "string"
-      );
-    case MessageTypes.PING:
-      return (
-        typeof m.payload === "object" &&
-        m.payload !== null &&
-        typeof (m.payload as Record<string, unknown>).id === "string" &&
-        typeof (m.payload as Record<string, unknown>).timestamp === "number"
-      );
-    case MessageTypes.ASSETS_LOADED:
-      return m.payload === true;
-    default:
-      return false;
-  }
-}
 
 /**
  * React context provider that turns a React Native TV app into a local game server.
@@ -193,15 +161,11 @@ export function GameHostProvider<S extends IGameState, A extends IAction>({
   // 2. Start WebSocket Server (Convention: HTTP port + 2, avoids Metro on 8081)
   const wsServer = useRef<GameWebSocketServer | null>(null);
 
-  // Track active sessions: secret -> socketId
-  const sessions = useRef<Map<string, string>>(new Map());
-
-  // Reverse lookup: socketId -> secret (for disconnect resolution)
-  const reverseMap = useRef<Map<string, string>>(new Map());
-
-  // Stale player cleanup timers: playerId -> timer
-  const cleanupTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(
-    new Map(),
+  const sessionManager = useRef(
+    new HostSessionManager({
+      getDisconnectTimeout: () =>
+        configRef.current.disconnectTimeout ?? DEFAULT_DISCONNECT_TIMEOUT,
+    }),
   );
 
   // Track socket IDs that have received their WELCOME message
@@ -212,19 +176,13 @@ export function GameHostProvider<S extends IGameState, A extends IAction>({
     Map<string, { playerId: string; isReconnect: boolean }>
   >(new Map());
 
-  // Cache: socketId -> playerId (avoids async derivation in hot paths)
-  const socketIdToPlayerId = useRef<Map<string, string>>(new Map());
-
   // Track which players have finished loading assets
   const assetsLoaded = useRef<Map<string, boolean>>(new Map());
 
   // Queue of actions dispatched since last broadcast (for STATE_UPDATE.action)
   const actionQueue = useRef<unknown[]>([]);
 
-  // Rate limiting: track action count per socket
-  const rateLimits = useRef<
-    Map<string, { count: number; windowStart: number }>
-  >(new Map());
+  const rateLimiter = useRef(new ActionRateLimiter());
 
   useEffect(() => {
     const port = config.wsPort || httpPort + DEFAULT_WS_PORT_OFFSET;
@@ -274,7 +232,11 @@ export function GameHostProvider<S extends IGameState, A extends IAction>({
           const { secret, ...payload } = message.payload;
 
           // Validate secret format
-          if (!secret || !isValidSecret(secret)) {
+          if (
+            !secret ||
+            typeof secret !== "string" ||
+            !isValidSecret(secret)
+          ) {
             server.send(socketId, {
               type: MessageTypes.ERROR,
               payload: {
@@ -285,80 +247,38 @@ export function GameHostProvider<S extends IGameState, A extends IAction>({
             return;
           }
 
-          // Async dual-derivation: try SHA-256 first, fall back to legacy
-          derivePlayerId(secret).then((hashedId) => {
-            let playerId = hashedId;
+          sessionManager.current
+            .handleJoin<S>(
+              socketId,
+              message.payload as JoinSessionPayload,
+              () => stateRef.current.players,
+            )
+            .then(({ playerId, isReconnect, action }) => {
+              dispatch(action);
 
-            // Migration: if a player exists under the legacy ID, use that instead
-            const legacyId = derivePlayerIdLegacy(secret);
-            if (
-              !stateRef.current.players[playerId] &&
-              stateRef.current.players[legacyId]
-            ) {
-              playerId = legacyId;
-            }
-
-            // Cache the resolved playerId for this socket
-            socketIdToPlayerId.current.set(socketId, playerId);
-
-            // Update session maps
-            sessions.current.set(secret, socketId);
-            reverseMap.current.set(socketId, secret);
-
-            // Cancel any pending cleanup timer for this player
-            const existingTimer = cleanupTimers.current.get(playerId);
-            if (existingTimer) {
-              clearTimeout(existingTimer);
-              cleanupTimers.current.delete(playerId);
-            }
-
-            // Check if this is a returning player
-            const existingPlayer = stateRef.current.players[playerId];
-            if (existingPlayer) {
-              // Reconnection — restore existing player
-              dispatch({
-                type: InternalActionTypes.PLAYER_RECONNECTED,
-                payload: { playerId },
-              } as InternalAction<S>);
-
-              // Reset assets loaded status on reconnect
+              // Initialize/reset assets loaded status
               assetsLoaded.current.set(playerId, false);
 
-              // Queue RECONNECTED message
+              // Queue WELCOME/RECONNECTED message
               pendingWelcome.current.set(socketId, {
                 playerId,
-                isReconnect: true,
+                isReconnect,
               });
-            } else {
-              // New player
-              dispatch({
-                type: InternalActionTypes.PLAYER_JOINED,
-                payload: { id: playerId, ...payload },
-              } as InternalAction<S>);
 
-              // Initialize assets loaded status
-              assetsLoaded.current.set(playerId, false);
-
-              // Queue WELCOME message
-              pendingWelcome.current.set(socketId, {
-                playerId,
-                isReconnect: false,
+              configRef.current.onPlayerJoined?.(playerId, payload.name);
+            })
+            .catch((err) => {
+              if (configRef.current.debug) {
+                console.error("[GameHost] Failed to derive player ID:", err);
+              }
+              server.send(socketId, {
+                type: MessageTypes.ERROR,
+                payload: {
+                  code: "JOIN_FAILED",
+                  message: "Failed to process join request",
+                },
               });
-            }
-
-            configRef.current.onPlayerJoined?.(playerId, payload.name);
-          }).catch((err) => {
-            if (configRef.current.debug) {
-              console.error("[GameHost] Failed to derive player ID:", err);
-            }
-            server.send(socketId, {
-              type: MessageTypes.ERROR,
-              payload: {
-                code: "JOIN_FAILED",
-                message: "Failed to process join request",
-              },
             });
-          });
           break;
         }
 
@@ -390,14 +310,7 @@ export function GameHostProvider<S extends IGameState, A extends IAction>({
           }
 
           // Rate limiting
-          const now = Date.now();
-          let rateInfo = rateLimits.current.get(socketId);
-          if (!rateInfo || now - rateInfo.windowStart > RATE_LIMIT_WINDOW) {
-            rateInfo = { count: 0, windowStart: now };
-            rateLimits.current.set(socketId, rateInfo);
-          }
-          rateInfo.count++;
-          if (rateInfo.count > RATE_LIMIT_MAX) {
+          if (!rateLimiter.current.record(socketId).allowed) {
             if (configRef.current.debug)
               console.warn(`[GameHost] Rate limited ${socketId}`);
             server.send(socketId, {
@@ -411,7 +324,8 @@ export function GameHostProvider<S extends IGameState, A extends IAction>({
           }
 
           // Use cached playerId (populated at JOIN time)
-          const resolvedPlayerId = socketIdToPlayerId.current.get(socketId);
+          const resolvedPlayerId =
+            sessionManager.current.getPlayerIdForSocket(socketId);
           dispatch({ ...actionPayload, playerId: resolvedPlayerId });
           actionQueue.current.push(actionPayload);
           break;
@@ -429,7 +343,8 @@ export function GameHostProvider<S extends IGameState, A extends IAction>({
           break;
 
         case MessageTypes.ASSETS_LOADED: {
-          const loadedPlayerId = socketIdToPlayerId.current.get(socketId);
+          const loadedPlayerId =
+            sessionManager.current.getPlayerIdForSocket(socketId);
           if (loadedPlayerId) {
             assetsLoaded.current.set(loadedPlayerId, true);
             if (configRef.current.debug)
@@ -446,48 +361,36 @@ export function GameHostProvider<S extends IGameState, A extends IAction>({
 
       welcomedClients.current.delete(socketId);
 
-      // Use cached playerId
-      const playerId = socketIdToPlayerId.current.get(socketId);
-      socketIdToPlayerId.current.delete(socketId);
-
-      // Clean up reverse map
-      const secret = reverseMap.current.get(socketId);
-      reverseMap.current.delete(socketId);
-
       // Clean up rate limits
-      rateLimits.current.delete(socketId);
+      rateLimiter.current.reset(socketId);
 
-      if (!playerId || !secret) return; // Unknown socket, nothing to do
+      const result = sessionManager.current.handleDisconnect<S>(socketId);
+      if (result.kind === "unknown") return; // Unknown socket, nothing to do
 
       // Clean up assets loaded tracking
-      assetsLoaded.current.delete(playerId);
+      assetsLoaded.current.delete(result.playerId);
 
-      // RACE GUARD: Only mark as left if this socket is still the active one for this secret
-      if (sessions.current.get(secret) !== socketId) {
+      if (result.kind === "stale") {
         // Player already reconnected on a newer socket — skip
         return;
       }
 
       // Mark disconnected (don't remove from sessions — allow reconnect)
-      dispatch({
-        type: InternalActionTypes.PLAYER_LEFT,
-        payload: { playerId },
-      } as InternalAction<S>);
+      dispatch(result.action);
 
-      configRef.current.onPlayerLeft?.(playerId);
+      configRef.current.onPlayerLeft?.(result.playerId);
 
       // Start stale player cleanup timer
-      const timeout =
-        configRef.current.disconnectTimeout ?? DEFAULT_DISCONNECT_TIMEOUT;
-      const timer = setTimeout(() => {
-        cleanupTimers.current.delete(playerId);
-        sessions.current.delete(secret);
-        dispatch({
-          type: InternalActionTypes.PLAYER_REMOVED,
-          payload: { playerId },
-        } as InternalAction<S>);
-      }, timeout);
-      cleanupTimers.current.set(playerId, timer);
+      sessionManager.current.scheduleRemoval(
+        result.playerId,
+        result.secret,
+        (playerId) => {
+          dispatch({
+            type: InternalActionTypes.PLAYER_REMOVED,
+            payload: { playerId },
+          } as InternalAction<S>);
+        },
+      );
     });
 
     server.on("error", (error) => {
@@ -498,50 +401,42 @@ export function GameHostProvider<S extends IGameState, A extends IAction>({
 
     return () => {
       server.stop();
-      for (const timer of cleanupTimers.current.values()) {
-        clearTimeout(timer);
-      }
-      cleanupTimers.current.clear();
+      sessionManager.current.clearRemovalTimers();
     };
   }, []); // Run once on mount
 
   // 3. Throttled State Broadcasts (~30fps)
   // Batches rapid state changes so at most one broadcast is sent per ~33ms frame,
   // reducing serialization overhead and network traffic for fast-updating games.
-  const broadcastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const broadcastScheduler = useRef(
+    new BroadcastScheduler({
+      stateThrottleMs: config.stateThrottleMs,
+    }),
+  );
+
+  useEffect(() => {
+    broadcastScheduler.current.setStateThrottleMs(
+      config.stateThrottleMs ?? DEFAULT_STATE_THROTTLE_MS,
+    );
+  }, [config.stateThrottleMs]);
 
   const broadcastState = useCallback(() => {
     if (wsServer.current) {
       const actions = actionQueue.current;
       actionQueue.current = [];
-      wsServer.current.broadcast({
-        type: MessageTypes.STATE_UPDATE,
-        payload: {
-          newState: stateRef.current,
-          timestamp: Date.now(),
-          ...(actions.length === 1
-            ? { action: actions[0] }
-            : actions.length > 1
-              ? { action: actions }
-              : {}),
-        },
-      });
+      wsServer.current.broadcast(
+        createStateUpdateMessage(stateRef.current, actions),
+      );
     }
   }, []);
 
   useEffect(() => {
     // Cancel any pending broadcast and schedule a fresh one.
     // This ensures the broadcast always uses the latest stateRef.
-    if (broadcastTimer.current) {
-      clearTimeout(broadcastTimer.current);
-    }
-    broadcastTimer.current = setTimeout(broadcastState, 33); // ~30fps
+    broadcastScheduler.current.schedule(broadcastState);
 
     return () => {
-      if (broadcastTimer.current) {
-        clearTimeout(broadcastTimer.current);
-        broadcastTimer.current = null;
-      }
+      broadcastScheduler.current.cancel();
     };
   }, [state, broadcastState]);
 
