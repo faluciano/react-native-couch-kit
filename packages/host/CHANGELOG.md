@@ -1,5 +1,11 @@
 # @couch-kit/host
 
+## 1.7.10
+
+### Patch Changes
+
+- [#72](https://github.com/faluciano/react-native-couch-kit/pull/72) [`a50e851`](https://github.com/faluciano/react-native-couch-kit/commit/a50e8516b7f8030679f24e4b8d566483ba2ce71d) Thanks [@faluciano](https://github.com/faluciano)! - Extract rate limiting, session management, message validation, and broadcast scheduling out of the host provider into dedicated, unit-tested modules. No behavior change for consumers — the protocol flow, deterministic player IDs, rate limits, disconnect timeout, and broadcast throttling are preserved.
+
 ## 1.7.9
 
 ### Patch Changes
