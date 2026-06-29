@@ -26,10 +26,10 @@ Then install the required peer dependencies:
 
 ```bash
 npx expo install expo-file-system expo-network
-bun add react-native-tcp-socket react-native-nitro-modules
+bun add react-native-nitro-modules
 ```
 
-> **Note:** This library requires Expo modules (`expo-file-system`, `expo-network`), `react-native-tcp-socket`, and `react-native-nitro-modules` as peer dependencies. These must be installed in your consumer app. React Native's autolinking will handle native setup automatically.
+> **Note:** This library requires Expo modules (`expo-file-system`, `expo-network`) and `react-native-nitro-modules` as peer dependencies. These must be installed in your consumer app. React Native's autolinking will handle native setup automatically.
 
 ## Compatibility
 
@@ -39,9 +39,8 @@ bun add react-native-tcp-socket react-native-nitro-modules
 | `react-native`               | `>= 0.72.0`     |
 | `react-native-nitro-modules` | `>= 0.33.0`     |
 | `expo`                       | `>= 51.0.0`     |
-| `expo-file-system`           | `>= 17.0.0`     |
+| `expo-file-system`           | `>= 19.0.0`    |
 | `expo-network`               | `>= 7.0.0`      |
-| `react-native-tcp-socket`    | `>= 6.0.0`      |
 
 > **New Architecture:** This package supports React Native's New Architecture (Fabric/TurboModules) via React Native 0.83+.
 
@@ -58,6 +57,8 @@ Config:
 - `staticDir?`: absolute path to the directory of static files to serve. **Required on Android** — APK assets live inside a zip archive and cannot be served directly, so use this to point to a writable filesystem path where you've extracted the `www/` assets at runtime. On iOS, defaults to the bundle directory + `/www`.
 - `devMode?`: if true, do not start the TV static file server; instead point phones at `devServerUrl`
 - `devServerUrl?`: URL of your laptop dev server (e.g. `http://192.168.1.50:5173`)
+- `stateThrottleMs?`: minimum interval (ms) between state broadcasts (default `33` ≈ 30fps)
+- `disconnectTimeout?`: time (ms) before a disconnected player is permanently removed (default `300000` = 5 minutes)
 - `debug?`: enable verbose logs
 
 ### `useGameHost()`
@@ -183,8 +184,8 @@ function GameScreen() {
 
 To iterate on your web controller without rebuilding the Android app constantly:
 
-1.  Start your web project locally (`vite dev` usually runs on `localhost:5173`).
-2.  Configure the Host to point to your laptop:
+1. Start your web project locally (`vite dev` usually runs on `localhost:5173`).
+2. Configure the Host to point to your laptop:
 
 ```tsx
 <GameHostProvider
@@ -206,3 +207,51 @@ Important: when the controller is served from the laptop, the client-side hook c
 In production, the host serves static controller assets from the iOS bundle directory + `/www` by default. On Android, `staticDir` must be provided since bundle assets live inside the APK.
 
 The CLI `couch-kit bundle` copies your web build output into `android/app/src/main/assets/www` (default). Ensure your app packaging makes those assets available under the expected `www` folder.
+
+## Additional Hooks
+
+### `useActionRecorder()`
+
+Records game actions with timestamps for session replay and debugging. Useful for testing, bug reproduction, and replay-based features.
+
+```tsx
+import { useActionRecorder, useGameHost } from "@couch-kit/host";
+
+function GameScreen() {
+  const { state } = useGameHost();
+  const { isRecording, recordedCount, startRecording, stopRecording, recordAction } =
+    useActionRecorder();
+
+  const handleStartRecording = () => startRecording(state);
+  const handleStop = () => {
+    const recording = stopRecording();
+    // Save recording JSON for later replay via `couch-kit replay`
+    console.log(JSON.stringify(recording));
+  };
+
+  return (
+    <View>
+      <Text>Actions recorded: {recordedCount}</Text>
+      <Button title={isRecording ? "Stop" : "Record"} onPress={isRecording ? handleStop : handleStartRecording} />
+    </View>
+  );
+}
+```
+
+Returns:
+
+- `isRecording`: whether a recording session is active
+- `recordedCount`: number of actions captured so far
+- `startRecording(currentState, metadata?)`: begin recording from the given state
+- `stopRecording()`: end recording and return the `ActionRecording` object (or `null`)
+- `recordAction(action, state)`: capture a single action + resulting state
+
+### `getBestIpAddress()`
+
+Returns the device's best LAN IPv4 address (or `null`). Used internally by the provider but exported for custom networking UI (e.g., displaying a manual connect URL).
+
+```tsx
+import { getBestIpAddress } from "@couch-kit/host";
+
+const ip = await getBestIpAddress(); // e.g. "192.168.1.99"
+```
