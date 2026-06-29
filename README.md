@@ -96,14 +96,11 @@ This guide assumes you are using the published `@couch-kit/*` packages from npm.
 
 ### 1. Installation
 
-Create a new project and install the library:
+> **Prerequisite:** You need an existing React Native TV application (Expo with TV config or `react-native-tvos`). If you don't have one yet, clone the [Buzz starter](https://github.com/faluciano/buzz-tv-party-game) — it's a complete working project you can build on.
+
+Install the library packages into your TV app:
 
 ```bash
-# Initialize a new repository
-mkdir my-party-game
-cd my-party-game
-bun init
-
 # For the TV App (Host)
 bun add @couch-kit/host @couch-kit/core
 
