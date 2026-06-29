@@ -1,5 +1,11 @@
 # @couch-kit/cli
 
+## 0.3.6
+
+### Patch Changes
+
+- [#83](https://github.com/faluciano/react-native-couch-kit/pull/83) [`3085f53`](https://github.com/faluciano/react-native-couch-kit/commit/3085f5360a694066439544078bf86dcc72c13570) Thanks [@faluciano](https://github.com/faluciano)! - Update `init` scaffold to current dependency versions (React 19, Vite 6, TS 5.7) and wire App.tsx to the generated reducer file
+
 ## 0.3.5
 
 ### Patch Changes
