@@ -109,7 +109,7 @@ bun add @couch-kit/host @couch-kit/core
 
 # Install required peer dependencies
 npx expo install expo-file-system expo-network
-bun add react-native-tcp-socket react-native-nitro-modules
+bun add react-native-nitro-modules
 ```
 
 If you are setting up the Web Controller manually (instead of using the CLI in Step 4):
@@ -265,8 +265,8 @@ If you want to contribute to `couch-kit` or test changes locally before they are
 Clone the repository and install dependencies:
 
 ```bash
-git clone <this-repo>
-cd couch-kit
+git clone https://github.com/faluciano/react-native-couch-kit.git
+cd react-native-couch-kit
 bun install
 ```
 
@@ -342,6 +342,7 @@ When you make changes to the library:
 
 - **Duplicate React / Invalid Hook Call:** Ensure your library packages treat `react` as a `peerDependency` and do not bundle it. `yalc` handles this correctly by default.
 - **Changes not showing up?** If you add new files or exports, Metro might get stuck. Stop the bundler and run:
+
   ```bash
   bun start --reset-cache
   ```
@@ -378,6 +379,7 @@ Each consumer repo has a `renovate.json` scoped to the `@couch-kit/*` packages (
 
 ## 📚 Documentation
 
+- [API Reference (TypeDoc)](https://faluciano.github.io/react-native-couch-kit/) — full generated API docs
 - [Host Documentation](./packages/host/README.md)
 - [Client Documentation](./packages/client/README.md)
 - [Core Documentation](./packages/core/README.md)
