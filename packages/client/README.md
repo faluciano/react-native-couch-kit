@@ -1,6 +1,6 @@
 # @couch-kit/client
 
-The client-side library for the web controller. Designed to be lightweight and framework-agnostic (though React hooks are provided).
+The client-side React hooks for the web controller.
 
 ## Features
 
@@ -158,6 +158,20 @@ function App() {
   return <GameController />;
 }
 ```
+
+### 4. Debug Panel
+
+Captures connection status, state history, and action log for use with the `@couch-kit/devtools` overlay (or your own debug UI).
+
+```tsx
+import { useGameClient, useDebugPanel } from "@couch-kit/client";
+
+const client = useGameClient({ reducer, initialState });
+const debugData = useDebugPanel(client);
+// Pass `debugData` to <DebugOverlay data={debugData} /> from @couch-kit/devtools
+```
+
+Returns a `DebugPanelData` object with connection status, state snapshots, and action entries.
 
 ## Notes / Limitations
 
