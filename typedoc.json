@@ -11,6 +11,7 @@
   "out": "docs",
   "name": "couch-kit",
   "readme": "README.md",
+  "customJs": "static/mermaid-init.js",
   "excludePrivate": true,
   "excludeInternal": true,
   "includeVersion": true,
