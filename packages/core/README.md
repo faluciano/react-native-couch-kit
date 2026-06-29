@@ -190,9 +190,9 @@ try {
 
 Validates that a string is a valid UUID format (32+ hex characters, with or without dashes).
 
-#### `derivePlayerId(secret: string): string`
+#### `derivePlayerId(secret: string): Promise<string>`
 
-Derives a stable, public player ID from a secret UUID by stripping dashes and taking the first 16 hex characters.
+Derives a stable, public player ID from a secret UUID using SHA-256, taking the first 16 hex characters of the hash. Async because it uses the Web Crypto `crypto.subtle.digest` API.
 
 ### Constants
 
