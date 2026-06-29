@@ -43,16 +43,16 @@ export const initCommand = new Command("init")
           preview: "vite preview",
         },
         dependencies: {
-          react: "^18.2.0",
-          "react-dom": "^18.2.0",
-          "@couch-kit/client": "^0.4.3",
+          react: "^19.0.0",
+          "react-dom": "^19.0.0",
+          "@couch-kit/client": "^0.8.0",
         },
         devDependencies: {
-          "@types/react": "^18.2.66",
-          "@types/react-dom": "^18.2.22",
-          "@vitejs/plugin-react": "^4.2.1",
-          typescript: "^5.2.2",
-          vite: "^5.2.0",
+          "@types/react": "^19.0.0",
+          "@types/react-dom": "^19.0.0",
+          "@vitejs/plugin-react": "^6.0.0",
+          typescript: "^5.7.0",
+          vite: "^6.0.0",
         },
       };
 
@@ -171,11 +171,12 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         path.join(targetDir, "src/App.tsx"),
         `
 import { useGameClient } from '@couch-kit/client';
+import { gameReducer, initialState } from './reducer';
 
 function App() {
   const { status, playerId, sendAction } = useGameClient({
-    initialState: { count: 0 },
-    reducer: (state, action) => state // Dummy reducer
+    initialState,
+    reducer: gameReducer,
   });
 
   return (
@@ -183,7 +184,7 @@ function App() {
         <h1>Controller</h1>
         <p>Status: {status}</p>
         <p>ID: {playerId || 'Connecting...'}</p>
-        <button onClick={() => sendAction({ type: 'BUZZ' })} 
+        <button onClick={() => sendAction({ type: 'SCORE' })} 
                 style={{ fontSize: 24, padding: '20px 40px', width: '100%' }}>
             BUZZ!
         </button>

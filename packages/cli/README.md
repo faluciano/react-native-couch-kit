@@ -14,7 +14,7 @@ bun add -d @couch-kit/cli
 
 ### `init`
 
-Scaffolds a new web controller project (Vite + React + TypeScript) configured to work with Couch Kit.
+Scaffolds a web controller project (Vite + React + TypeScript) to add to an existing host app. This creates only the phone/tablet side — for a full game project (host + client + shared), clone the [Buzz starter](https://github.com/faluciano/buzz-tv-party-game).
 
 ```bash
 bunx couch-kit init web-controller
