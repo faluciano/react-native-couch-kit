@@ -1,0 +1,33 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":dependencyDashboard"],
+  "labels": ["dependencies"],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on monday"]
+  },
+  "packageRules": [
+    {
+      "description": "Internal workspace packages are versioned by the changesets release pipeline, never by Renovate. Their package.json references use the workspace:* protocol and must stay untouched.",
+      "matchPackageNames": ["@couch-kit/*"],
+      "enabled": false
+    },
+    {
+      "description": "Group all non-major devDependency updates into a single PR and auto-merge once CI (lint, typecheck, build, test) passes.",
+      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "groupName": "dev dependencies",
+      "automerge": true
+    },
+    {
+      "description": "Auto-merge the weekly Bun lockfile refresh once CI passes.",
+      "matchUpdateTypes": ["lockFileMaintenance"],
+      "automerge": true
+    },
+    {
+      "description": "Hold every major update for manual review — these can carry breaking changes for consumers.",
+      "matchUpdateTypes": ["major"],
+      "automerge": false
+    }
+  ]
+}
