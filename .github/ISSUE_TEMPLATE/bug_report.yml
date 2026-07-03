@@ -1,0 +1,86 @@
+name: 🐛 Bug report
+description: Report a reproducible problem in couch-kit
+labels: ["bug", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug! Please search
+        [existing issues](https://github.com/faluciano/react-native-couch-kit/issues)
+        first to avoid duplicates.
+
+        ⚠️ **Do not report security vulnerabilities here.** Use
+        [private vulnerability reporting](https://github.com/faluciano/react-native-couch-kit/security/advisories/new)
+        instead.
+  - type: dropdown
+    id: package
+    attributes:
+      label: Affected package(s)
+      description: Which package(s) does this bug involve?
+      multiple: true
+      options:
+        - "@couch-kit/core"
+        - "@couch-kit/client"
+        - "@couch-kit/host"
+        - "@couch-kit/cli"
+        - "@couch-kit/devtools"
+        - Not sure / other
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear and concise description of the bug.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps (or a link to a minimal repo) that reproduce the problem.
+      placeholder: |
+        1. Run `couch-kit init ...`
+        2. Start the host with ...
+        3. Join from a phone and ...
+        4. See error
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen instead?
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: |
+        Please provide relevant versions.
+      value: |
+        - couch-kit version(s):
+        - Bun version (`bun --version`):
+        - Host platform (Android TV / Fire TV / emulator + OS version):
+        - Controller device & browser:
+        - React Native / Expo version:
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / screenshots
+      description: Paste any relevant log output or screenshots. Log output is automatically formatted as code.
+      render: shell
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
+        - label: This is not a security vulnerability (those are reported privately).
+          required: true

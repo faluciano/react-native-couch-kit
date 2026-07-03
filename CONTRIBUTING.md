@@ -2,9 +2,12 @@
 
 A TypeScript framework for Android TV party games using phones as controllers.
 
+This project has a [Code of Conduct](./CODE_OF_CONDUCT.md). By participating,
+you are expected to uphold it.
+
 ## Development Setup
 
-**Package manager:** Bun (v1.2.19)
+**Package manager:** Bun (v1.3.14)
 
 ```bash
 bun install        # install dependencies
@@ -18,12 +21,12 @@ bun run typecheck  # type-check
 
 Five packages under `packages/`:
 
-| Package             | Description                            |
-| ------------------- | -------------------------------------- |
-| `@couch-kit/core`   | Shared types, protocol, reducer        |
-| `@couch-kit/client` | React hooks for phone controllers      |
-| `@couch-kit/host`   | React Native TV host                   |
-| `@couch-kit/cli`    | CLI tools (bundle, simulate, scaffold) |
+| Package               | Description                                 |
+| --------------------- | ------------------------------------------- |
+| `@couch-kit/core`     | Shared types, protocol, reducer             |
+| `@couch-kit/client`   | React hooks for phone controllers           |
+| `@couch-kit/host`     | React Native TV host                        |
+| `@couch-kit/cli`      | CLI tools (bundle, simulate, scaffold)      |
 | `@couch-kit/devtools` | Debug overlay component for web controllers |
 
 ## Making Changes
