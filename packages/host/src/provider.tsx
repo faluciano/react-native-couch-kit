@@ -27,6 +27,7 @@ import {
   HostSessionManager,
   type JoinSessionPayload,
 } from "./session-manager";
+import { authorizeClientAction } from "./action-authorization";
 import {
   BroadcastScheduler,
   DEFAULT_STATE_THROTTLE_MS,
@@ -283,28 +284,25 @@ export function GameHostProvider<S extends IGameState, A extends IAction>({
         }
 
         case MessageTypes.ACTION: {
-          // Only accept actions with a user-defined type string,
-          // reject internal action types to prevent injection.
           const actionPayload = message.payload as A;
-          if (
-            actionPayload.type === InternalActionTypes.HYDRATE ||
-            actionPayload.type === InternalActionTypes.PLAYER_JOINED ||
-            actionPayload.type === InternalActionTypes.PLAYER_LEFT ||
-            actionPayload.type === InternalActionTypes.PLAYER_RECONNECTED ||
-            actionPayload.type === InternalActionTypes.PLAYER_REMOVED
-          ) {
+
+          // Authorize before doing any work: reject client-injected internal
+          // action types and actions from sockets that never completed a JOIN.
+          const resolvedPlayerId =
+            sessionManager.current.getPlayerIdForSocket(socketId);
+          const auth = authorizeClientAction(
+            actionPayload.type,
+            resolvedPlayerId,
+          );
+          if (auth.kind === "reject") {
             if (configRef.current.debug)
               console.warn(
-                `[GameHost] Rejected internal action from ${socketId}:`,
+                `[GameHost] Rejected action from ${socketId} (${auth.code}):`,
                 actionPayload.type,
               );
             server.send(socketId, {
               type: MessageTypes.ERROR,
-              payload: {
-                code: "FORBIDDEN_ACTION",
-                message:
-                  "Internal action types cannot be dispatched by clients",
-              },
+              payload: { code: auth.code, message: auth.message },
             });
             return;
           }
@@ -323,10 +321,7 @@ export function GameHostProvider<S extends IGameState, A extends IAction>({
             return;
           }
 
-          // Use cached playerId (populated at JOIN time)
-          const resolvedPlayerId =
-            sessionManager.current.getPlayerIdForSocket(socketId);
-          dispatch({ ...actionPayload, playerId: resolvedPlayerId });
+          dispatch({ ...actionPayload, playerId: auth.playerId });
           actionQueue.current.push(actionPayload);
           break;
         }
