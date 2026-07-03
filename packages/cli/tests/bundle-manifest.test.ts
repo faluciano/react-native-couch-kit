@@ -39,7 +39,6 @@ describe("Bundle manifest generation", () => {
 
     await bundleCommand.parseAsync(
       [
-        "bundle",
         "--source",
         path.join(tmpDir, "web-controller"),
         "--output",
@@ -78,7 +77,6 @@ describe("Bundle manifest generation", () => {
 
     await bundleCommand.parseAsync(
       [
-        "bundle",
         "--source",
         path.join(tmpDir, "web-controller"),
         "--output",
