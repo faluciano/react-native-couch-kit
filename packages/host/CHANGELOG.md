@@ -1,5 +1,12 @@
 # @couch-kit/host
 
+## 1.7.11
+
+### Patch Changes
+
+- Updated dependencies [[`0064a42`](https://github.com/faluciano/react-native-couch-kit/commit/0064a42e0593d2ed2734c27926c5df686dcf3b5f)]:
+  - @couch-kit/core@0.9.2
+
 ## 1.7.10
 
 ### Patch Changes
