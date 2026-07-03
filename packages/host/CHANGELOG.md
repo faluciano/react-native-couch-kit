@@ -1,5 +1,17 @@
 # @couch-kit/host
 
+## 1.7.13
+
+### Patch Changes
+
+- [#89](https://github.com/faluciano/react-native-couch-kit/pull/89) [`bffc377`](https://github.com/faluciano/react-native-couch-kit/commit/bffc377952edaf9ca72f189eb936373e7ec7d4af) Thanks [@faluciano](https://github.com/faluciano)! - **Security:** Cap the size of inbound client WebSocket messages.
+
+  The host now discards any inbound frame larger than a configurable limit
+  (default 256 KiB, via `maxMessageBytes`) before `JSON.parse`, bounding the
+  memory a single malicious LAN client can force the host to allocate. The
+  previous `maxFrameSize` option remains a documented no-op; this is a distinct
+  application-level guard with a real default.
+
 ## 1.7.12
 
 ### Patch Changes
