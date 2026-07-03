@@ -45,7 +45,7 @@ describe("dev command", () => {
 
     let thrown: unknown;
     try {
-      await dev.parseAsync(["dev"], { from: "user" });
+      await dev.parseAsync([], { from: "user" });
     } catch (e) {
       thrown = e;
     }
