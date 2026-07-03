@@ -394,3 +394,4 @@ Each consumer repo has a `renovate.json` scoped to the `@couch-kit/*` packages (
 
 - The controller URL is reachable to anyone on the same LAN. Don’t run this on untrusted Wi‑Fi.
 - `JOIN` requires a `secret` field — a persistent session token stored in the client's `localStorage`. The library uses it internally for session recovery. The raw secret is never broadcast to other clients; only a derived public `playerId` is shared in game state.
+- The host rejects internal action injection, rate-limits actions (60/sec), ignores actions from clients that haven't `JOIN`ed, and discards inbound messages larger than 256 KiB (configurable via `maxMessageBytes`) to bound memory usage.
