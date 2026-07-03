@@ -1,5 +1,8 @@
 /** Shared constants for Couch Kit protocol defaults. */
 
+import { sha256Hex } from "./sha256";
+
+
 /** Default HTTP port for the static file server. */
 export const DEFAULT_HTTP_PORT = 8080;
 
@@ -82,8 +85,11 @@ export function isValidSecret(secret: string): boolean {
  * Takes the first 16 hex characters of the SHA-256 hash, producing
  * a deterministic ID that cannot be reversed to recover the secret.
  *
- * Falls back to {@link derivePlayerIdLegacy} when the Web Crypto API
- * (`crypto.subtle`) is unavailable (e.g. React Native / Hermes).
+ * Uses the Web Crypto API (`crypto.subtle`) when available (browser / Node),
+ * and a dependency-free pure-JS SHA-256 fallback otherwise (e.g. React Native
+ * / Hermes, which does not expose `crypto.subtle`). Both paths produce the
+ * same digest, so the derived ID is identical across host runtimes and never
+ * leaks any part of the secret.
  */
 export async function derivePlayerId(secret: string): Promise<string> {
   if (
@@ -98,8 +104,10 @@ export async function derivePlayerId(secret: string): Promise<string> {
       .slice(0, 16);
   }
 
-  // Web Crypto unavailable (React Native / Hermes) — fall back to legacy derivation
-  return derivePlayerIdLegacy(secret);
+  // Web Crypto unavailable (React Native / Hermes) — use the pure-JS SHA-256
+  // fallback. This still produces a secure one-way hash (unlike the deprecated
+  // legacy derivation, which exposed the first half of the secret).
+  return sha256Hex(secret).slice(0, 16);
 }
 
 /**
