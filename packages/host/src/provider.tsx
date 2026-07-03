@@ -47,6 +47,11 @@ export interface GameHostConfig<S extends IGameState, A extends IAction> {
   disconnectTimeout?: number;
   /** State broadcast throttle interval in milliseconds (default: 33ms, ~30fps). */
   stateThrottleMs?: number;
+  /**
+   * Maximum size (in bytes) of an inbound client message. Frames larger than
+   * this are discarded before parsing (default: 256 KiB).
+   */
+  maxMessageBytes?: number;
   /** Called when a player successfully joins. */
   onPlayerJoined?: (playerId: string, name: string) => void;
   /** Called when a player disconnects. */
@@ -187,7 +192,11 @@ export function GameHostProvider<S extends IGameState, A extends IAction>({
 
   useEffect(() => {
     const port = config.wsPort || httpPort + DEFAULT_WS_PORT_OFFSET;
-    const server = new GameWebSocketServer({ port, debug: config.debug });
+    const server = new GameWebSocketServer({
+      port,
+      debug: config.debug,
+      maxMessageBytes: config.maxMessageBytes,
+    });
 
     // Start the WebSocket server asynchronously
     server.start().catch((error) => {

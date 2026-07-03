@@ -12,10 +12,21 @@ import type {
 } from "react-native-nitro-http-server";
 import { EventEmitter } from "./event-emitter";
 import { generateId, DEFAULT_WS_PATH } from "@couch-kit/core";
+import {
+  DEFAULT_MAX_MESSAGE_BYTES,
+  frameByteLength,
+} from "./message-validation";
 
 export interface WebSocketConfig {
   port: number;
   debug?: boolean;
+  /**
+   * Maximum size (in bytes) of an inbound client message. Frames larger than
+   * this are discarded before parsing, bounding the memory a single client can
+   * force the host to allocate. Defaults to {@link DEFAULT_MAX_MESSAGE_BYTES}
+   * (256 KiB).
+   */
+  maxMessageBytes?: number;
   /**
    * @deprecated No effect. The underlying nitro-http WebSocket transport
    * manages frame sizing internally and this value is never read. This field
@@ -56,15 +67,18 @@ export class GameWebSocketServer extends EventEmitter<WebSocketServerEvents> {
   private clients: Map<string, WebSocketClient> = new Map();
   private port: number;
   private debug: boolean;
+  private maxMessageBytes: number;
 
   constructor(config: WebSocketConfig) {
     super();
     this.port = config.port;
     this.debug = !!config.debug;
-    // Only `port` and `debug` are honored. `maxFrameSize`, `keepaliveInterval`,
-    // and `keepaliveTimeout` are deprecated no-ops: the nitro-http WebSocket
-    // transport does not expose these knobs, so they are intentionally ignored
-    // (see the @deprecated tags on WebSocketConfig).
+    this.maxMessageBytes =
+      config.maxMessageBytes ?? DEFAULT_MAX_MESSAGE_BYTES;
+    // Only `port`, `debug`, and `maxMessageBytes` are honored. `maxFrameSize`,
+    // `keepaliveInterval`, and `keepaliveTimeout` are deprecated no-ops: the
+    // nitro-http WebSocket transport does not expose these knobs, so they are
+    // intentionally ignored (see the @deprecated tags on WebSocketConfig).
   }
 
   private log(...args: unknown[]) {
@@ -93,6 +107,16 @@ export class GameWebSocketServer extends EventEmitter<WebSocketServerEvents> {
 
         // Handle incoming messages
         ws.onmessage = (event: { data: string | ArrayBuffer }) => {
+          // Reject oversized frames before parsing to bound memory usage.
+          const size = frameByteLength(event.data);
+          if (size > this.maxMessageBytes) {
+            this.log(
+              `[WebSocket] Message from ${socketId} exceeds limit ` +
+                `(${size} > ${this.maxMessageBytes} bytes), discarding`,
+            );
+            return;
+          }
+
           try {
             const data =
               typeof event.data === "string"
