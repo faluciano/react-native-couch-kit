@@ -14,7 +14,7 @@
 
 ## Build & Verify
 
-Package manager: **Bun** (pinned to 1.2.19 via `packageManager` field). Never use npm, yarn, or pnpm.
+Package manager: **Bun** (pinned to 1.3.14 via `packageManager` field). Never use npm, yarn, or pnpm.
 
 ```bash
 bun install        # install dependencies

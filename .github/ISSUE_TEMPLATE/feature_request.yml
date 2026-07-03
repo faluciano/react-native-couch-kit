@@ -1,0 +1,62 @@
+name: ✨ Feature request
+description: Suggest an idea or enhancement for couch-kit
+labels: ["enhancement", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement! Please search
+        [existing issues](https://github.com/faluciano/react-native-couch-kit/issues)
+        first to see if it has already been proposed.
+  - type: dropdown
+    id: package
+    attributes:
+      label: Affected package(s)
+      description: Which package(s) would this feature touch?
+      multiple: true
+      options:
+        - "@couch-kit/core"
+        - "@couch-kit/client"
+        - "@couch-kit/host"
+        - "@couch-kit/cli"
+        - "@couch-kit/devtools"
+        - New package / cross-cutting
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What problem are you trying to solve? What is the use case?
+      placeholder: "I'm building a party game where ... and I can't ..."
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the API, behavior, or change you'd like to see.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any workarounds or alternative designs you've thought about.
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Links, sketches, or anything else that helps explain the request.
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
