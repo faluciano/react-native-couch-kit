@@ -1,5 +1,11 @@
 # @couch-kit/cli
 
+## 0.3.8
+
+### Patch Changes
+
+- [#93](https://github.com/faluciano/react-native-couch-kit/pull/93) [`2031041`](https://github.com/faluciano/react-native-couch-kit/commit/2031041d562c992a1d9543659e0fdb9c4a1226af) Thanks [@faluciano](https://github.com/faluciano)! - **CLI improvements:** Fix argument forwarding from the top-level command to the lazily-loaded sub-commands. `couch-kit init <name>` now scaffolds into `<name>` instead of always creating a folder called `init`; `couch-kit replay <recording> <reducer>` no longer shifts its positional arguments; and positive boolean flags (`--host`, `--open`, `--snapshots`, `--json`) are now forwarded correctly instead of being silently dropped.
+
 ## 0.3.7
 
 ### Patch Changes
