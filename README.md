@@ -6,6 +6,7 @@ Turn an Android TV / Fire TV into a local party-game console and use phones as w
 [![Release](https://github.com/faluciano/react-native-couch-kit/actions/workflows/release.yml/badge.svg)](https://github.com/faluciano/react-native-couch-kit/actions/workflows/release.yml)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![TypeScript](https://img.shields.io/badge/TypeScript-Strict-green.svg)
+![Coverage](https://img.shields.io/badge/coverage-76%25-yellowgreen.svg)
 
 [![@couch-kit/host](https://img.shields.io/npm/dt/@couch-kit/host?label=%40couch-kit%2Fhost)](https://www.npmjs.com/package/@couch-kit/host)
 [![@couch-kit/client](https://img.shields.io/npm/dt/@couch-kit/client?label=%40couch-kit%2Fclient)](https://www.npmjs.com/package/@couch-kit/client)
@@ -296,6 +297,31 @@ bun run lint
 bun run typecheck
 ```
 
+#### Coverage
+
+Coverage is enforced in CI. The gate runs each package's tests with coverage,
+counts only that package's own `src/` (workspace imports of `@couch-kit/*` are
+excluded), and fails if any package drops below its floor:
+
+```bash
+bun run coverage            # enforce floors (used in CI)
+bun run scripts/check-coverage.ts --report   # print numbers without failing
+```
+
+Current own-`src/` coverage (lines / functions):
+
+| Package     | Lines    | Functions |
+| ----------- | -------- | --------- |
+| `core`      | ~85%     | ~91%      |
+| `client`    | ~36%     | ~75%      |
+| `host`      | ~82%     | ~78%      |
+| `cli`       | ~67%     | ~73%      |
+| `devtools`  | ~99%     | ~83%      |
+| **overall** | **~76%** | **~82%**  |
+
+Floors live in `scripts/check-coverage.ts` — ratchet them up as coverage
+improves; never lower them without a good reason.
+
 ### 4. Code Style
 
 The project uses [Prettier](https://prettier.io/) for formatting (configured in `.prettierrc`) and [ESLint](https://eslint.org/) for linting.
@@ -348,13 +374,13 @@ When you make changes to the library:
 
 ## 📦 Architecture
 
-| Package                 | Purpose                                                                                    |
-| ----------------------- | ------------------------------------------------------------------------------------------ |
-| **`@couch-kit/host`**   | Runs on the TV. Manages WebSocket server, serves static files, and holds the "True" state. |
-| **`@couch-kit/client`** | Runs on the phone browser. Connects to the host and renders the controller UI.             |
-| **`@couch-kit/core`**   | Shared TypeScript types and protocol definitions.                                          |
-| **`@couch-kit/cli`**    | CLI tools to scaffold, bundle, and simulate web controllers                                |
-| **`@couch-kit/devtools`** | Optional debug overlay component for web controllers (state inspector).                   |
+| Package                   | Purpose                                                                                    |
+| ------------------------- | ------------------------------------------------------------------------------------------ |
+| **`@couch-kit/host`**     | Runs on the TV. Manages WebSocket server, serves static files, and holds the "True" state. |
+| **`@couch-kit/client`**   | Runs on the phone browser. Connects to the host and renders the controller UI.             |
+| **`@couch-kit/core`**     | Shared TypeScript types and protocol definitions.                                          |
+| **`@couch-kit/cli`**      | CLI tools to scaffold, bundle, and simulate web controllers                                |
+| **`@couch-kit/devtools`** | Optional debug overlay component for web controllers (state inspector).                    |
 
 ## 🔄 Release Flow
 

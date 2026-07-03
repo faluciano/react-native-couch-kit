@@ -42,7 +42,9 @@ jobs:
           key: bun-${{ hashFiles('bun.lock') }}
           restore-keys: bun-
       - run: bun install
-      - run: bun run test --coverage
+      - run: bun run test
+      - name: Enforce coverage floors
+        run: bun run coverage
 
   build:
     runs-on: ubuntu-latest
