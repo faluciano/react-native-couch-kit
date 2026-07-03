@@ -1,5 +1,18 @@
 # @couch-kit/host
 
+## 1.7.12
+
+### Patch Changes
+
+- [#87](https://github.com/faluciano/react-native-couch-kit/pull/87) [`ccc11d1`](https://github.com/faluciano/react-native-couch-kit/commit/ccc11d11c5861535cf3d5caa5f74a13051a8f770) Thanks [@faluciano](https://github.com/faluciano)! - **Security:** Reject client ACTIONs from sockets that have not completed a JOIN.
+
+  Previously an ACTION from a socket with no resolved player ID was dispatched with
+  `playerId: undefined`, letting an un-joined client mutate game state. The host now
+  rejects such actions with an `ERROR { code: "NOT_JOINED" }`.
+
+  The internal-action injection guard and this new un-joined guard are extracted
+  into a pure, unit-tested `authorizeClientAction` helper.
+
 ## 1.7.11
 
 ### Patch Changes
