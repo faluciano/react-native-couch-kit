@@ -1,5 +1,12 @@
 # @couch-kit/devtools
 
+## 0.2.10
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @couch-kit/client@0.8.9
+
 ## 0.2.9
 
 ### Patch Changes
