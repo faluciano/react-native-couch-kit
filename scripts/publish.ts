@@ -6,10 +6,15 @@ const PACKAGES_DIR = join(process.cwd(), "packages");
 const IS_CI = Boolean(process.env.CI);
 
 // List of packages to publish (order matters if there are strict dep chains, but parallel is usually fine for npm)
-const PACKAGES = ["core", "client", "host", "cli", "devtools"];
+const PACKAGES = ["core", "runtime", "client", "host", "cli", "devtools"];
 
+// Only npm's specific "version already exists" message counts as an
+// already-published (skippable) error. A bare 403 is NOT safe to treat this
+// way: authentication failures and first-publish permission errors (e.g. for a
+// brand-new package) also return 403, and swallowing those would silently skip
+// a real, unpublished release.
 const ALREADY_PUBLISHED_PATTERN =
-  /you cannot publish over the previously published versions|403 forbidden/i;
+  /cannot publish over the previously published versions/i;
 
 function isAlreadyPublishedError(stderr: string): boolean {
   return ALREADY_PUBLISHED_PATTERN.test(stderr);

@@ -9,7 +9,14 @@ const OUTPUT_DIR = process.argv[2] || join(process.cwd(), "docs");
 
 const PACKAGES_DIR = join(process.cwd(), "packages");
 
-const PACKAGE_NAMES = ["core", "client", "host", "cli", "devtools"] as const;
+const PACKAGE_NAMES = [
+  "core",
+  "runtime",
+  "client",
+  "host",
+  "cli",
+  "devtools",
+] as const;
 
 // ---------------------------------------------------------------------------
 // Read package versions dynamically
@@ -40,11 +47,12 @@ function generateLlmsTxt(versions: Record<string, string>): string {
 
 Couch Kit is a TypeScript framework for building local multiplayer party games on Android TV. The TV runs an HTTP static file server and a WebSocket game server on the LAN. Phones connect as web clients — no internet required. Game logic is defined once as a shared reducer and runs on both host and clients for optimistic updates, with the host as the single source of truth.
 
-Current versions: core ${versions.core}, client ${versions.client}, host ${versions.host}, cli ${versions.cli}, devtools ${versions.devtools}.
+Current versions: core ${versions.core}, runtime ${versions.runtime}, client ${versions.client}, host ${versions.host}, cli ${versions.cli}, devtools ${versions.devtools}.
 
 ## Packages
 
 - [@couch-kit/core](modules/_couch_kit_core.html): Shared types, protocol, constants, middleware, and \`createGameReducer\`
+- [@couch-kit/runtime](modules/_couch_kit_runtime.html): Transport-neutral authoritative state, sessions, authorization, and protocol processing
 - [@couch-kit/client](modules/_couch_kit_client.html): React hooks for phone web controllers — WebSocket client, time sync, asset preloading, debug panel
 - [@couch-kit/host](modules/_couch_kit_host.html): React Native TV host — GameHostProvider, WebSocket server, static file server, asset extraction
 - [@couch-kit/cli](modules/_couch_kit_cli.html): CLI tools — bundle, init, simulate, replay, dev
@@ -80,7 +88,7 @@ function generateLlmsFullTxt(versions: Record<string, string>): string {
 
 > Turn an Android TV into a local party-game console. Phones join as web controllers over LAN WebSocket.
 
-Versions: @couch-kit/core ${versions.core} · @couch-kit/client ${versions.client} · @couch-kit/host ${versions.host} · @couch-kit/cli ${versions.cli} · @couch-kit/devtools ${versions.devtools}
+Versions: @couch-kit/core ${versions.core} · @couch-kit/runtime ${versions.runtime} · @couch-kit/client ${versions.client} · @couch-kit/host ${versions.host} · @couch-kit/cli ${versions.cli} · @couch-kit/devtools ${versions.devtools}
 
 ---
 
@@ -193,6 +201,7 @@ export default function Controller() {
 When generating code for Couch Kit projects, follow these guidelines:
 
 - **Use \`@couch-kit/core\`** for shared types (\`IGameState\`, \`IAction\`, \`IPlayer\`) and reducer logic (\`createGameReducer\`). This package runs on both host and client.
+- **Use \`@couch-kit/runtime\`** when implementing a custom authoritative transport. Normal applications receive it through \`@couch-kit/host\`.
 - **Use \`@couch-kit/host\`** for the TV app (React Native). It provides \`GameHostProvider\`, \`useGameHost\`, and server infrastructure.
 - **Use \`@couch-kit/client\`** for phone web controllers (React). It provides \`useGameClient\` for WebSocket connection and state management.
 - **Use \`@couch-kit/cli\`** for scaffolding (\`couch-kit init\`), bundling (\`couch-kit bundle\`), and development (\`couch-kit dev\`).
@@ -575,7 +584,33 @@ function replayActions<S extends IGameState = IGameState, A extends IAction = IA
 
 ---
 
-## 5. Package: @couch-kit/client (v${versions.client})
+## 5. Package: @couch-kit/runtime (v${versions.runtime})
+
+Transport-neutral authoritative state and protocol processing.
+
+### GameHostRuntime
+
+\`GameHostRuntime\` owns canonical state, player sessions, action
+authorization, rate limiting, and throttled state broadcasts. A platform
+adapter supplies a \`GameRuntimeTransport\` with \`send\` and \`broadcast\`
+methods.
+
+\`\`\`typescript
+const runtime = new GameHostRuntime(
+  { reducer, initialState },
+  {
+    send(connectionId, message) {},
+    broadcast(message) {},
+  },
+);
+\`\`\`
+
+Most applications should use \`GameHostProvider\`; construct the runtime
+directly only when adding another authoritative transport.
+
+---
+
+## 6. Package: @couch-kit/client (v${versions.client})
 
 React hooks for phone web controllers.
 
@@ -709,7 +744,7 @@ function useDebugPanel<S = unknown>(options: UseDebugPanelOptions<S>): DebugPane
 
 ---
 
-## 6. Package: @couch-kit/host (v${versions.host})
+## 7. Package: @couch-kit/host (v${versions.host})
 
 React Native host for the TV app.
 
@@ -889,7 +924,7 @@ function useActionRecorder<
 
 ---
 
-## 7. Package: @couch-kit/cli (v${versions.cli})
+## 8. Package: @couch-kit/cli (v${versions.cli})
 
 CLI tools for Couch Kit. Installed as \`couch-kit\` binary.
 
@@ -954,7 +989,7 @@ Options:
 
 ---
 
-## 8. Package: @couch-kit/devtools (v${versions.devtools})
+## 9. Package: @couch-kit/devtools (v${versions.devtools})
 
 Developer tooling and debug overlay for Couch Kit games.
 

@@ -1,7 +1,6 @@
 /** Shared constants for Couch Kit protocol defaults. */
 
-import { sha256Hex } from "./sha256";
-
+import { sha256Hex } from "./sha256.js";
 
 /** Default HTTP port for the static file server. */
 export const DEFAULT_HTTP_PORT = 8080;

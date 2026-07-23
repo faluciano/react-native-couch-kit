@@ -11,8 +11,7 @@
     "allowImportingTsExtensions": false,
     "verbatimModuleSyntax": false,
     "paths": {
-      "@couch-kit/core": ["../core/lib"],
-      "@couch-kit/runtime": ["../runtime/lib"]
+      "@couch-kit/core": ["../core/lib"]
     }
   },
   "include": ["src/**/*"],

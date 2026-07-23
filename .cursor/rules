@@ -6,8 +6,8 @@ Test: bun run test
 Lint: bun run lint
 Typecheck: bun run typecheck
 
-Monorepo: 5 packages under packages/ — core, client, host, cli, devtools.
-core is the foundation — all other packages depend on it.
+Monorepo: 6 packages under packages/ — core, runtime, client, host, cli, devtools.
+core is the foundation; runtime builds next and powers authoritative hosts.
 
 Key rules:
 - Host is authoritative. Clients receive full state snapshots.

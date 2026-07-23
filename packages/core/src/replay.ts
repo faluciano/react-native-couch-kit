@@ -1,4 +1,4 @@
-import type { GameReducer, IAction, IGameState } from "./types";
+import type { GameReducer, IAction, IGameState } from "./types.js";
 
 /**
  * A recorded action with timing metadata.

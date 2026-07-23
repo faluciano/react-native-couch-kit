@@ -1,5 +1,10 @@
-import type { IGameState, IAction, InternalAction, GameReducer } from "./types";
-import { InternalActionTypes } from "./types";
+import type {
+  IGameState,
+  IAction,
+  InternalAction,
+  GameReducer,
+} from "./types.js";
+import { InternalActionTypes } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Middleware types

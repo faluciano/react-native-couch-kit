@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "paths": {
+      "@couch-kit/core": ["../core/src"]
+    }
+  },
+  "include": ["src/**/*", "../core/src/**/*"]
+}
