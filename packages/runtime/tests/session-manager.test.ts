@@ -57,7 +57,7 @@ function createManager(scheduler = new FakeScheduler()) {
   };
 }
 
-describe("HostSessionManager", () => {
+describe("runtime HostSessionManager", () => {
   test("derives a stable player ID for the same secret", async () => {
     const { manager } = createManager();
     const secret = "secret-a";
@@ -106,6 +106,8 @@ describe("HostSessionManager", () => {
       playerId: joined.playerId,
       secret,
     });
+    expect(manager.getPlayerIdForSocket("socket-1")).toBeUndefined();
+    expect(manager.getPlayerIdForSocket("socket-2")).toBe(joined.playerId);
   });
 
   test("uses the legacy player ID when existing state contains only the legacy ID", async () => {
@@ -172,9 +174,13 @@ describe("HostSessionManager", () => {
     expect(disconnect.kind).toBe("left");
     if (disconnect.kind !== "left") return;
 
-    manager.scheduleRemoval(disconnect.playerId, disconnect.secret, (playerId) => {
-      removed.push(playerId);
-    });
+    manager.scheduleRemoval(
+      disconnect.playerId,
+      disconnect.secret,
+      (playerId) => {
+        removed.push(playerId);
+      },
+    );
 
     expect(scheduler.tasks.size).toBe(1);
     const [timer, task] = Array.from(scheduler.tasks.entries())[0];
@@ -200,9 +206,13 @@ describe("HostSessionManager", () => {
     expect(disconnect.kind).toBe("left");
     if (disconnect.kind !== "left") return;
 
-    manager.scheduleRemoval(disconnect.playerId, disconnect.secret, (playerId) => {
-      removed.push(playerId);
-    });
+    manager.scheduleRemoval(
+      disconnect.playerId,
+      disconnect.secret,
+      (playerId) => {
+        removed.push(playerId);
+      },
+    );
     await manager.handleJoin<TestState>(
       "socket-2",
       { name: "Alice", secret },
@@ -212,5 +222,20 @@ describe("HostSessionManager", () => {
     expect(scheduler.tasks.size).toBe(0);
     expect(removed).toEqual([]);
     expect(manager.getSocketIdForSecret(secret)).toBe("socket-2");
+  });
+
+  test("abandons a connection and removes its active session mapping", async () => {
+    const { manager } = createManager();
+    const secret = "secret-a";
+    await manager.handleJoin<TestState>(
+      "socket-1",
+      { name: "Alice", secret },
+      {},
+    );
+
+    manager.abandonConnection("socket-1");
+
+    expect(manager.getPlayerIdForSocket("socket-1")).toBeUndefined();
+    expect(manager.getSocketIdForSecret(secret)).toBeUndefined();
   });
 });

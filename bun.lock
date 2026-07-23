@@ -77,15 +77,20 @@
       "version": "1.7.13",
       "dependencies": {
         "@couch-kit/core": "workspace:*",
+        "@couch-kit/runtime": "workspace:*",
         "buffer": "^6.0.3",
         "js-sha1": "^0.7.0",
         "react-native-nitro-http-server": "^1.6.1",
       },
       "devDependencies": {
+        "@happy-dom/global-registrator": "^20.10.6",
+        "@testing-library/react": "^16.3.2",
         "@types/react": "^19.2.17",
+        "@types/react-dom": "^19",
         "del-cli": "^7.0.0",
         "jest": "^30.0.0",
         "react": "19.2.7",
+        "react-dom": "19.2.7",
         "react-native": "0.86.0",
       },
       "peerDependencies": {
@@ -95,6 +100,16 @@
         "react": ">=18.2.0",
         "react-native": ">=0.72.0",
         "react-native-nitro-modules": ">=0.33.0",
+      },
+    },
+    "packages/runtime": {
+      "name": "@couch-kit/runtime",
+      "version": "0.0.0",
+      "dependencies": {
+        "@couch-kit/core": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^6.0.0",
       },
     },
   },
@@ -309,6 +324,8 @@
     "@couch-kit/devtools": ["@couch-kit/devtools@workspace:packages/devtools"],
 
     "@couch-kit/host": ["@couch-kit/host@workspace:packages/host"],
+
+    "@couch-kit/runtime": ["@couch-kit/runtime@workspace:packages/runtime"],
 
     "@emnapi/core": ["@emnapi/core@1.10.0", "", { "dependencies": { "@emnapi/wasi-threads": "1.2.1", "tslib": "^2.4.0" } }, "sha512-yq6OkJ4p82CAfPl0u9mQebQHKPJkY7WrIuk205cTYnYe+k2Z8YBh11FrbRG/H6ihirqcacOgl2BIO8oyMQLeXw=="],
 

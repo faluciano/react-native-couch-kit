@@ -4,8 +4,9 @@
     "jsx": "react",
     "skipLibCheck": true,
     "paths": {
-      "@couch-kit/core": ["../core/src"]
+      "@couch-kit/core": ["../core/src"],
+      "@couch-kit/runtime": ["../runtime/src"]
     }
   },
-  "include": ["src/**/*", "../core/src/**/*"]
+  "include": ["src/**/*", "../core/src/**/*", "../runtime/src/**/*"]
 }

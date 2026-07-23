@@ -19,11 +19,12 @@ bun run typecheck  # type-check
 
 ## Monorepo Structure
 
-Five packages under `packages/`:
+Six packages under `packages/`:
 
 | Package               | Description                                 |
 | --------------------- | ------------------------------------------- |
 | `@couch-kit/core`     | Shared types, protocol, reducer             |
+| `@couch-kit/runtime`  | Transport-neutral authoritative game state  |
 | `@couch-kit/client`   | React hooks for phone controllers           |
 | `@couch-kit/host`     | React Native TV host                        |
 | `@couch-kit/cli`      | CLI tools (bundle, simulate, scaffold)      |
@@ -84,7 +85,7 @@ One-time setup per package (maintainer, on npmjs.com):
    - **Repository:** `react-native-couch-kit`
    - **Workflow filename:** `release.yml`
    - **Environment:** leave blank (the release job does not use a GitHub Environment)
-3. Repeat for every published package: `@couch-kit/core`, `@couch-kit/client`, `@couch-kit/host`, `@couch-kit/cli`, `@couch-kit/devtools`
+3. Repeat for every published package: `@couch-kit/core`, `@couch-kit/runtime`, `@couch-kit/client`, `@couch-kit/host`, `@couch-kit/cli`, `@couch-kit/devtools`
 4. (Recommended) After verifying a publish works, set each package's **Publishing access** to **"Require two-factor authentication and disallow tokens"** for maximum security.
 5. Enable "Allow GitHub Actions to create and approve pull requests" in repo Settings → Actions → General → Workflow permissions.
 

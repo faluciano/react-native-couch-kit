@@ -5,7 +5,7 @@ import {
   RATE_LIMIT_WINDOW,
 } from "../src/rate-limiter";
 
-describe("ActionRateLimiter", () => {
+describe("runtime ActionRateLimiter", () => {
   test("allows actions up to the configured limit", () => {
     const now = 1000;
     const limiter = new ActionRateLimiter({ now: () => now });

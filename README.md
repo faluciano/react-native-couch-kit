@@ -11,6 +11,7 @@ Turn an Android TV / Fire TV into a local party-game console and use phones as w
 [![@couch-kit/host](https://img.shields.io/npm/dt/@couch-kit/host?label=%40couch-kit%2Fhost)](https://www.npmjs.com/package/@couch-kit/host)
 [![@couch-kit/client](https://img.shields.io/npm/dt/@couch-kit/client?label=%40couch-kit%2Fclient)](https://www.npmjs.com/package/@couch-kit/client)
 [![@couch-kit/core](https://img.shields.io/npm/dt/@couch-kit/core?label=%40couch-kit%2Fcore)](https://www.npmjs.com/package/@couch-kit/core)
+[![@couch-kit/runtime](https://img.shields.io/npm/dt/@couch-kit/runtime?label=%40couch-kit%2Fruntime)](https://www.npmjs.com/package/@couch-kit/runtime)
 [![@couch-kit/cli](https://img.shields.io/npm/dt/@couch-kit/cli?label=%40couch-kit%2Fcli)](https://www.npmjs.com/package/@couch-kit/cli)
 [![@couch-kit/devtools](https://img.shields.io/npm/dt/@couch-kit/devtools?label=%40couch-kit%2Fdevtools)](https://www.npmjs.com/package/@couch-kit/devtools)
 
@@ -270,7 +271,7 @@ bun install
 
 ### 2. Building the Libraries
 
-The packages (`host`, `client`, `core`, `cli`, `devtools`) are located in `packages/*`. You can build them all at once:
+The packages (`core`, `runtime`, `client`, `host`, `cli`, `devtools`) are located in `packages/*`. You can build them all at once:
 
 ```bash
 bun run build
@@ -313,11 +314,12 @@ Current own-`src/` coverage (lines / functions):
 | Package     | Lines    | Functions |
 | ----------- | -------- | --------- |
 | `core`      | ~85%     | ~91%      |
+| `runtime`   | ~100%    | ~96%      |
 | `client`    | ~36%     | ~75%      |
-| `host`      | ~82%     | ~78%      |
+| `host`      | ~100%    | ~93%      |
 | `cli`       | ~67%     | ~73%      |
 | `devtools`  | ~99%     | ~83%      |
-| **overall** | **~76%** | **~82%**  |
+| **overall** | **~83%** | **~91%**  |
 
 Floors live in `scripts/check-coverage.ts` — ratchet them up as coverage
 improves; never lower them without a good reason.
@@ -339,6 +341,7 @@ bun run build
 
 # Publish each package to local yalc registry
 cd packages/core && yalc publish
+cd ../runtime && yalc publish
 cd ../client && yalc publish
 cd ../host && yalc publish
 ```
@@ -347,7 +350,7 @@ cd ../host && yalc publish
 
 ```bash
 cd ../my-party-game
-yalc add @couch-kit/core @couch-kit/client @couch-kit/host
+yalc add @couch-kit/core @couch-kit/runtime @couch-kit/client @couch-kit/host
 bun install
 ```
 
@@ -374,13 +377,14 @@ When you make changes to the library:
 
 ## 📦 Architecture
 
-| Package                   | Purpose                                                                                    |
-| ------------------------- | ------------------------------------------------------------------------------------------ |
-| **`@couch-kit/host`**     | Runs on the TV. Manages WebSocket server, serves static files, and holds the "True" state. |
-| **`@couch-kit/client`**   | Runs on the phone browser. Connects to the host and renders the controller UI.             |
-| **`@couch-kit/core`**     | Shared TypeScript types and protocol definitions.                                          |
-| **`@couch-kit/cli`**      | CLI tools to scaffold, bundle, and simulate web controllers                                |
-| **`@couch-kit/devtools`** | Optional debug overlay component for web controllers (state inspector).                    |
+| Package                   | Purpose                                                                                            |
+| ------------------------- | -------------------------------------------------------------------------------------------------- |
+| **`@couch-kit/core`**     | Shared TypeScript types, reducer utilities, and protocol definitions.                              |
+| **`@couch-kit/runtime`**  | Owns authoritative game state, sessions, authorization, and transport-neutral protocol processing. |
+| **`@couch-kit/host`**     | React Native adapter that provides the LAN WebSocket/static servers and renders the TV display.    |
+| **`@couch-kit/client`**   | Runs on the phone browser. Connects to the host and renders the controller UI.                     |
+| **`@couch-kit/cli`**      | CLI tools to scaffold, bundle, and simulate web controllers.                                       |
+| **`@couch-kit/devtools`** | Optional debug overlay component for web controllers.                                              |
 
 ## 🔄 Release Flow
 
@@ -406,6 +410,7 @@ Each consumer repo has a `renovate.json` scoped to the `@couch-kit/*` packages (
 - [Host Documentation](./packages/host/README.md)
 - [Client Documentation](./packages/client/README.md)
 - [Core Documentation](./packages/core/README.md)
+- [Runtime Documentation](./packages/runtime/README.md)
 - [CLI Documentation](./packages/cli/README.md)
 - [Devtools Documentation](./packages/devtools/README.md)
 
