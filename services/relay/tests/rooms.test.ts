@@ -1,0 +1,165 @@
+import { describe, expect, test } from "bun:test";
+import {
+  RelayRooms,
+  RelayMessageTypes,
+  RelayErrorCodes,
+  MAX_MESSAGE_BYTES,
+  type RelayConnection,
+} from "../src/rooms";
+
+/** A fake connection that records everything sent to it. */
+function conn(id: string): RelayConnection & { sent: any[] } {
+  const sent: any[] = [];
+  return {
+    id,
+    sent,
+    send(data: string) {
+      sent.push(JSON.parse(data));
+    },
+  };
+}
+
+const dataMsg = (data: string, to?: string) =>
+  JSON.stringify({ type: RelayMessageTypes.DATA, roomId: "R", to, data });
+
+describe("RelayRooms", () => {
+  test("host creates a room and is acknowledged", () => {
+    const rooms = new RelayRooms();
+    const host = conn("h");
+    rooms.handleMessage(host, JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }));
+
+    expect(rooms.roomCount).toBe(1);
+    expect(host.sent).toEqual([
+      { type: RelayMessageTypes.ROOM_CREATED, roomId: "R", peerId: "h" },
+    ]);
+  });
+
+  test("duplicate room creation is rejected", () => {
+    const rooms = new RelayRooms();
+    rooms.handleMessage(conn("h"), JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }));
+    const h2 = conn("h2");
+    rooms.handleMessage(h2, JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }));
+    expect(h2.sent[0].code).toBe(RelayErrorCodes.ROOM_EXISTS);
+  });
+
+  test("joining unknown room errors", () => {
+    const rooms = new RelayRooms();
+    const p = conn("p");
+    rooms.handleMessage(p, JSON.stringify({ type: "JOIN_ROOM", roomId: "nope" }));
+    expect(p.sent[0].code).toBe(RelayErrorCodes.ROOM_NOT_FOUND);
+  });
+
+  test("player join notifies host and joiner", () => {
+    const rooms = new RelayRooms();
+    const host = conn("h");
+    rooms.handleMessage(host, JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }));
+    const p = conn("p");
+    rooms.handleMessage(p, JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
+
+    expect(p.sent).toContainEqual({
+      type: RelayMessageTypes.ROOM_JOINED,
+      roomId: "R",
+      peerId: "p",
+    });
+    expect(host.sent).toContainEqual({
+      type: RelayMessageTypes.PEER_JOINED,
+      roomId: "R",
+      peerId: "p",
+    });
+  });
+
+  test("player DATA is routed to host tagged with sender id", () => {
+    const rooms = new RelayRooms();
+    const host = conn("h");
+    rooms.handleMessage(host, JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }));
+    const p = conn("p");
+    rooms.handleMessage(p, JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
+    host.sent.length = 0;
+
+    rooms.handleMessage(p, dataMsg('{"type":"ACTION"}'));
+    expect(host.sent).toEqual([
+      {
+        type: RelayMessageTypes.DATA,
+        roomId: "R",
+        from: "p",
+        data: '{"type":"ACTION"}',
+      },
+    ]);
+  });
+
+  test("host unicast reaches only the addressed player", () => {
+    const rooms = new RelayRooms();
+    const host = conn("h");
+    rooms.handleMessage(host, JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }));
+    const p1 = conn("p1");
+    const p2 = conn("p2");
+    rooms.handleMessage(p1, JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
+    rooms.handleMessage(p2, JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
+    p1.sent.length = 0;
+    p2.sent.length = 0;
+
+    rooms.handleMessage(host, dataMsg('{"type":"WELCOME"}', "p1"));
+    expect(p1.sent).toHaveLength(1);
+    expect(p2.sent).toHaveLength(0);
+  });
+
+  test("host broadcast reaches all players", () => {
+    const rooms = new RelayRooms();
+    const host = conn("h");
+    rooms.handleMessage(host, JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }));
+    const p1 = conn("p1");
+    const p2 = conn("p2");
+    rooms.handleMessage(p1, JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
+    rooms.handleMessage(p2, JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
+    p1.sent.length = 0;
+    p2.sent.length = 0;
+
+    rooms.handleMessage(host, dataMsg('{"type":"STATE_UPDATE"}'));
+    expect(p1.sent).toHaveLength(1);
+    expect(p2.sent).toHaveLength(1);
+  });
+
+  test("player disconnect notifies host with PEER_LEFT", () => {
+    const rooms = new RelayRooms();
+    const host = conn("h");
+    rooms.handleMessage(host, JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }));
+    const p = conn("p");
+    rooms.handleMessage(p, JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
+    host.sent.length = 0;
+
+    rooms.handleClose(p);
+    expect(host.sent).toEqual([
+      { type: RelayMessageTypes.PEER_LEFT, roomId: "R", peerId: "p" },
+    ]);
+  });
+
+  test("host disconnect tears down the room", () => {
+    const rooms = new RelayRooms();
+    const host = conn("h");
+    rooms.handleMessage(host, JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }));
+    const p = conn("p");
+    rooms.handleMessage(p, JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
+
+    rooms.handleClose(host);
+    expect(rooms.roomCount).toBe(0);
+    // The former player is now orphaned; its DATA is rejected.
+    p.sent.length = 0;
+    rooms.handleMessage(p, dataMsg("{}"));
+    expect(p.sent[0].code).toBe(RelayErrorCodes.NOT_IN_ROOM);
+  });
+
+  test("oversized messages are rejected", () => {
+    const rooms = new RelayRooms();
+    const c = conn("c");
+    const huge = "x".repeat(MAX_MESSAGE_BYTES + 1);
+    rooms.handleMessage(c, huge);
+    expect(c.sent[0].code).toBe(RelayErrorCodes.MESSAGE_TOO_LARGE);
+  });
+
+  test("malformed JSON is rejected", () => {
+    const rooms = new RelayRooms();
+    const c = conn("c");
+    rooms.handleMessage(c, "{not json");
+    expect(c.sent[0].code).toBe(RelayErrorCodes.MALFORMED);
+  });
+});

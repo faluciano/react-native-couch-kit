@@ -19,6 +19,12 @@ import {
   resolveSessionSecret,
   interpretHostMessage,
 } from "./connection";
+import {
+  TransportReadyState,
+  createWebSocketTransport,
+  type ClientTransport,
+  type CreateClientTransport,
+} from "./transport";
 
 export interface ClientConfig<S extends IGameState, A extends IAction> {
   url?: string; // Full WebSocket URL (overrides auto-detection)
@@ -36,6 +42,13 @@ export interface ClientConfig<S extends IGameState, A extends IAction> {
   onConnect?: () => void;
   onDisconnect?: () => void;
   debug?: boolean;
+  /**
+   * Provide a custom transport factory (e.g. a cross-network relay). When
+   * omitted, the client connects over the default LAN WebSocket derived from
+   * `url`/`wsPort`. Called on every (re)connect, so it must return a fresh,
+   * already-connecting transport each time.
+   */
+  createTransport?: CreateClientTransport;
 }
 
 /**
@@ -71,7 +84,7 @@ export function useGameClient<S extends IGameState, A extends IAction>(
     config.initialState,
   );
 
-  const socketRef = useRef<WebSocket | null>(null);
+  const socketRef = useRef<ClientTransport | null>(null);
   const reconnectAttempts = useRef(0);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const intentionalClose = useRef(false);
@@ -98,26 +111,34 @@ export function useGameClient<S extends IGameState, A extends IAction>(
     const cfg = configRef.current;
     intentionalClose.current = false;
 
-    // 1. Magic Client: Determine URL
-    // If explicit URL provided, use it.
-    // Otherwise, assume we are being served by the Host's static server,
-    // so derive the WebSocket URL from window.location.
-    // Convention: WS port = HTTP port + 2 (e.g., HTTP 8080 -> WS 8082)
-    // Port + 1 is skipped to avoid conflicts with Metro bundler (which uses 8081)
-    const wsUrl = resolveWebSocketUrl(
-      { url: cfg.url, wsPort: cfg.wsPort },
-      typeof window !== "undefined" ? window.location : null,
-    );
+    // 1. Build the transport.
+    // If a custom transport factory is provided (e.g. a cross-network relay),
+    // use it. Otherwise fall back to the default LAN WebSocket:
+    //   - If an explicit URL is provided, use it.
+    //   - Otherwise derive the WebSocket URL from window.location, assuming we
+    //     are served by the Host's static server.
+    //   Convention: WS port = HTTP port + 2 (e.g., HTTP 8080 -> WS 8082).
+    //   Port + 1 is skipped to avoid conflicts with Metro bundler (uses 8081).
+    let transport: ClientTransport;
+    if (cfg.createTransport) {
+      if (cfg.debug) console.log("[GameClient] Connecting via custom transport");
+      transport = cfg.createTransport();
+    } else {
+      const wsUrl = resolveWebSocketUrl(
+        { url: cfg.url, wsPort: cfg.wsPort },
+        typeof window !== "undefined" ? window.location : null,
+      );
 
-    if (!wsUrl) return;
+      if (!wsUrl) return;
 
-    if (cfg.debug) console.log(`[GameClient] Connecting to ${wsUrl}`);
+      if (cfg.debug) console.log(`[GameClient] Connecting to ${wsUrl}`);
+      transport = createWebSocketTransport(wsUrl);
+    }
+
+    socketRef.current = transport;
     setStatus("connecting");
 
-    const ws = new WebSocket(wsUrl);
-    socketRef.current = ws;
-
-    ws.onopen = () => {
+    transport.onopen = () => {
       const currentCfg = configRef.current;
       setStatus("connected");
       reconnectAttempts.current = 0;
@@ -130,7 +151,7 @@ export function useGameClient<S extends IGameState, A extends IAction>(
 
       // Join with secret
       try {
-        ws.send(
+        transport.send(
           JSON.stringify({
             type: MessageTypes.JOIN,
             payload: {
@@ -146,10 +167,10 @@ export function useGameClient<S extends IGameState, A extends IAction>(
       }
     };
 
-    ws.onmessage = (event) => {
+    transport.onmessage = (data) => {
       let msg: HostMessage;
       try {
-        msg = JSON.parse(event.data) as HostMessage;
+        msg = JSON.parse(data) as HostMessage;
       } catch (e) {
         console.error("Failed to parse message", e);
         return;
@@ -174,7 +195,7 @@ export function useGameClient<S extends IGameState, A extends IAction>(
       }
     };
 
-    ws.onclose = (event) => {
+    transport.onclose = (code) => {
       setStatus("disconnected");
       configRef.current.onDisconnect?.();
 
@@ -183,7 +204,7 @@ export function useGameClient<S extends IGameState, A extends IAction>(
       if (
         !shouldReconnect({
           intentionalClose: intentionalClose.current,
-          closeCode: event.code,
+          closeCode: code,
           attempts: reconnectAttempts.current,
           maxRetries,
         })
@@ -206,12 +227,13 @@ export function useGameClient<S extends IGameState, A extends IAction>(
       }, delay);
     };
 
-    ws.onerror = (e) => {
+    transport.onerror = (e) => {
       if (configRef.current.debug) console.error("[GameClient] Error", e);
       setStatus("error");
     };
     // Only re-create the connect function when URL/port actually changes.
-    // Config values like name, avatar, callbacks are read from configRef.
+    // Config values like name, avatar, callbacks, and createTransport are read
+    // from configRef.
   }, [config.url, config.wsPort, maxRetries, baseDelay, maxDelay]);
 
   // Initial Connection
@@ -258,7 +280,7 @@ export function useGameClient<S extends IGameState, A extends IAction>(
     dispatchLocal(action);
 
     // 2. Send to Host
-    if (socketRef.current?.readyState === WebSocket.OPEN) {
+    if (socketRef.current?.readyState === TransportReadyState.OPEN) {
       socketRef.current.send(
         JSON.stringify({
           type: MessageTypes.ACTION,

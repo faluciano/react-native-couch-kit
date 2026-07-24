@@ -5,6 +5,7 @@ import {
   DEFAULT_SYNC_INTERVAL,
   MAX_PENDING_PINGS,
 } from "@couch-kit/core";
+import { TransportReadyState, type ClientTransport } from "./transport";
 
 interface TimeSyncState {
   offset: number; // Difference between server time and local time
@@ -47,10 +48,10 @@ export function calculateTimeSync(
  * called directly. Access `getServerTime()` and `rtt` from the
  * `useGameClient` return value instead.
  *
- * @param socket - The active WebSocket connection (or `null` if not yet connected).
+ * @param socket - The active client transport (or `null` if not yet connected).
  * @returns An object with `getServerTime` (returns estimated server time), `rtt`, and `handlePong` (callback for PONG messages).
  */
-export function useServerTime(socket: WebSocket | null) {
+export function useServerTime(socket: ClientTransport | null) {
   const [timeSync, setTimeSync] = useState<TimeSyncState>({
     offset: 0,
     rtt: 0,
@@ -85,7 +86,7 @@ export function useServerTime(socket: WebSocket | null) {
 
   // Periodic Sync
   useEffect(() => {
-    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    if (!socket || socket.readyState !== TransportReadyState.OPEN) return;
 
     const sync = () => {
       // Prevent unbounded growth if PONGs are lost
