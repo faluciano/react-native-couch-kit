@@ -25,6 +25,7 @@ interface Floor {
 // coverage improves; never lower them without a very good reason.
 const FLOORS: Record<string, Floor> = {
   core: { lines: 82, functions: 88 },
+  runtime: { lines: 95, functions: 90 },
   client: { lines: 34, functions: 70 },
   host: { lines: 79, functions: 75 },
   cli: { lines: 60, functions: 68 },

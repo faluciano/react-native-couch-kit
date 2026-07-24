@@ -1,12 +1,12 @@
-import { applyMiddleware } from "./middleware";
-import type { Middleware } from "./middleware";
-import { InternalActionTypes } from "./types";
+import { applyMiddleware } from "./middleware.js";
+import type { Middleware } from "./middleware.js";
+import { InternalActionTypes } from "./types.js";
 import type {
   IGameState,
   IAction,
   InternalAction,
   GameReducer,
-} from "./types";
+} from "./types.js";
 
 /** Options for `createGameReducer`. */
 export interface CreateGameReducerOptions<

@@ -6,7 +6,7 @@ import {
   DEFAULT_MAX_MESSAGE_BYTES,
 } from "../src/message-validation";
 
-describe("isValidClientMessage", () => {
+describe("runtime message validation", () => {
   test("accepts valid client messages", () => {
     expect(
       isValidClientMessage({
@@ -103,7 +103,9 @@ describe("frameByteLength", () => {
       type: "JOIN",
       payload: { name: "Alice", avatar: "🎮", secret: "x".repeat(36) },
     });
-    expect(frameByteLength(typicalJoin)).toBeLessThan(DEFAULT_MAX_MESSAGE_BYTES);
+    expect(frameByteLength(typicalJoin)).toBeLessThan(
+      DEFAULT_MAX_MESSAGE_BYTES,
+    );
     expect(frameByteLength("x".repeat(1_000_000))).toBeGreaterThan(
       DEFAULT_MAX_MESSAGE_BYTES,
     );

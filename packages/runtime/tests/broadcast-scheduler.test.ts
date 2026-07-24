@@ -30,7 +30,7 @@ class FakeScheduler implements TimerScheduler<number> {
   }
 }
 
-describe("BroadcastScheduler", () => {
+describe("runtime BroadcastScheduler", () => {
   test("coalesces rapid schedules into the latest pending broadcast", () => {
     const fake = new FakeScheduler();
     const scheduler = new BroadcastScheduler<number>({ scheduler: fake });

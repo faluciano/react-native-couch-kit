@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { InternalActionTypes } from "@couch-kit/core";
 import { authorizeClientAction } from "../src/action-authorization";
 
-describe("authorizeClientAction", () => {
+describe("runtime action authorization", () => {
   test("allows a normal action from a joined socket", () => {
     const result = authorizeClientAction("BUZZ", "player-123");
     expect(result).toEqual({ kind: "allow", playerId: "player-123" });

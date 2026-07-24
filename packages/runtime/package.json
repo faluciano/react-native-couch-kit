@@ -1,11 +1,11 @@
 {
-  "name": "@couch-kit/core",
-  "version": "0.9.3",
+  "name": "@couch-kit/runtime",
+  "version": "0.1.0",
   "publishConfig": {
     "access": "public",
     "provenance": true
   },
-  "description": "Shared types, protocol, and game reducer for Couch Kit party games",
+  "description": "Transport-neutral authoritative game runtime for Couch Kit hosts",
   "license": "MIT",
   "type": "module",
   "engines": {
@@ -14,20 +14,26 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/faluciano/react-native-couch-kit.git",
-    "directory": "packages/core"
+    "directory": "packages/runtime"
   },
   "homepage": "https://github.com/faluciano/react-native-couch-kit#readme",
   "keywords": [
-    "react-native",
     "couch-kit",
     "party-game",
-    "game-state",
-    "reducer"
+    "game-runtime",
+    "websocket",
+    "webrtc"
   ],
   "main": "./dist/index.js",
   "types": "./lib/index.d.ts",
+  "react-native": "./dist/index.js",
+  "source": "./src/index.ts",
   "exports": {
     ".": {
+      "react-native": {
+        "types": "./lib/index.d.ts",
+        "default": "./dist/index.js"
+      },
       "types": "./lib/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs",
@@ -43,12 +49,15 @@
   ],
   "sideEffects": false,
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir ./dist --target browser && bun build ./src/index.ts --outfile ./dist/index.cjs --target browser --format cjs && tsc -p tsconfig.build.json",
+    "build": "bun build ./src/index.ts --outdir ./dist --target browser --external @couch-kit/core && bun build ./src/index.ts --outfile ./dist/index.cjs --target browser --format cjs --external @couch-kit/core && tsc -p tsconfig.build.json",
     "prepublishOnly": "bun run build",
     "test": "bun test",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist lib"
+  },
+  "dependencies": {
+    "@couch-kit/core": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^6.0.0"

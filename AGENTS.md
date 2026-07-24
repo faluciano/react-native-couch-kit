@@ -7,6 +7,7 @@
 | Package    | npm Name              | Purpose                                                                                                          |
 | ---------- | --------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `core`     | `@couch-kit/core`     | Shared types, protocol definitions, `createGameReducer`, middleware, replay                                      |
+| `runtime`  | `@couch-kit/runtime`  | Transport-neutral authoritative state, sessions, authorization, and broadcast scheduling                         |
 | `client`   | `@couch-kit/client`   | React hooks for phone web controllers (`useGameClient`, `useServerTime`, `usePreload`, `useDebugPanel`)          |
 | `host`     | `@couch-kit/host`     | React Native TV host (`GameHostProvider`, `useGameHost`, WebSocket server, static file server, asset extraction) |
 | `cli`      | `@couch-kit/cli`      | CLI tools (`init`, `bundle`, `simulate`, `replay`, `dev`)                                                        |
@@ -24,11 +25,11 @@ bun run lint       # lint all packages
 bun run typecheck  # type-check all packages (core first, then others)
 ```
 
-Build order: `core` must build first — all other packages depend on it. The build script handles this automatically.
+Build order: `core` builds first, followed by `runtime`; transport packages build afterward. The build script handles this automatically.
 
 ## Architecture Invariants
 
-- **Host is authoritative.** The host runs the canonical game state. Clients receive full state snapshots (not diffs).
+- **Host runtime is authoritative.** `@couch-kit/runtime` owns canonical game state; transport adapters deliver full snapshots to clients.
 - **`createGameReducer` wraps user reducers.** It handles internal actions (`__HYDRATE__`, `__PLAYER_JOINED__`, `__PLAYER_LEFT__`, `__PLAYER_RECONNECTED__`, `__PLAYER_REMOVED__`). User reducers must NOT handle these directly.
 - **Player IDs are deterministic**, derived from the client's session secret via SHA-256. They're stable across reconnections.
 - **State broadcasts are throttled** to ~30fps (configurable via `stateThrottleMs`).
@@ -87,6 +88,7 @@ Tests use Bun's built-in test runner. Run `bun run test` from root.
 Key test files:
 
 - `packages/core/tests/` — reducer, protocol, middleware, replay
+- `packages/runtime/tests/` — authoritative state, sessions, authorization, validation, broadcast scheduling
 - `packages/client/tests/` — time-sync, debug-panel
 - `packages/host/tests/` — event-emitter, assets, action-recorder
 - `packages/cli/tests/` — CLI commands, bundle manifest
