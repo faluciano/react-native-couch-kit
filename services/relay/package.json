@@ -1,0 +1,12 @@
+{
+  "name": "couch-kit-relay-server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Game-agnostic WebSocket relay for cross-network Couch Kit displays. Deploy your own; nothing in the SDK points at it by default.",
+  "scripts": {
+    "start": "bun src/server.ts",
+    "dev": "bun --watch src/server.ts",
+    "test": "bun test"
+  }
+}
