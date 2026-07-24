@@ -1,5 +1,21 @@
 # @couch-kit/client
 
+## 0.9.0
+
+### Minor Changes
+
+- [#124](https://github.com/faluciano/react-native-couch-kit/pull/124) [`782d495`](https://github.com/faluciano/react-native-couch-kit/commit/782d4956c73918af35bff73410bf5e39d7261e56) Thanks [@faluciano](https://github.com/faluciano)! - **New features**
+
+  Add an injectable client transport so the web controller can connect over
+  transports other than the default LAN WebSocket. `useGameClient` now accepts a
+  `createTransport` factory, and the package exports a `ClientTransport` interface
+  plus `createWebSocketTransport` (the default).
+
+  Ship a cross-network relay transport (`createRelayTransport`) and the shared
+  relay wire protocol, enabling a hosted browser display to reach phones across
+  networks through a game-agnostic relay server. The default WebSocket behavior is
+  unchanged and fully backward compatible.
+
 ## 0.8.9
 
 ### Patch Changes
