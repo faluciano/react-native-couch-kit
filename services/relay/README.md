@@ -21,6 +21,31 @@ bun test             # routing unit tests
 
 `GET /healthz` returns `200 ok` for health probes.
 
+## Abuse mitigation
+
+The relay is a public endpoint, so it bounds the blast radius of a hostile
+client without any external dependency (all limits are in-memory, per process,
+matching the single-instance model). Defaults are generous for party-game scale:
+
+| Limit                          | Default | Env override             | On breach                                  |
+| ------------------------------ | ------- | ------------------------ | ------------------------------------------ |
+| Messages / connection / second | 30      | _(code: `messagesPerWindow`)_ | `RATE_LIMITED` error, then socket closed (`1008`) |
+| Concurrent rooms               | 1000    | _(code: `maxRooms`)_     | `SERVER_BUSY` error on `CREATE_ROOM`       |
+| Players per room               | 16      | _(code: `maxPlayersPerRoom`)_ | `ROOM_FULL` error on `JOIN_ROOM`      |
+| Concurrent connections / IP    | 50      | `MAX_CONNECTIONS_PER_IP` | `429` on upgrade                           |
+| Message size                   | 256 KiB | _(code: `MAX_MESSAGE_BYTES`)_ | `MESSAGE_TOO_LARGE` error             |
+
+Set `ALLOWED_ORIGINS` (comma-separated) to reject WebSocket upgrades from other
+origins with `403`; unset (the default) allows any origin, since displays run on
+varying Vercel URLs. The rate/room/player limits are constructor options on
+`RelayRooms` (see `DEFAULT_LIMITS`); the connection-per-IP cap and origin
+allowlist are read from env in `server.ts`.
+
+Room codes are chosen by the display, not the relay, so they are only as
+unguessable as the client makes them; the per-connection rate limit plus
+per-IP cap are what throttle brute-force `JOIN_ROOM` scanning. Server-generated
+codes and auth tokens remain future work.
+
 ## Protocol (summary)
 
 Clients speak JSON. `data` is an opaque Couch Kit message string.
