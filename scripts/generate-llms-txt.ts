@@ -13,6 +13,7 @@ const PACKAGE_NAMES = [
   "core",
   "runtime",
   "client",
+  "display",
   "host",
   "cli",
   "devtools",
@@ -47,13 +48,14 @@ function generateLlmsTxt(versions: Record<string, string>): string {
 
 Couch Kit is a TypeScript framework for building local multiplayer party games on Android TV. The TV runs an HTTP static file server and a WebSocket game server on the LAN. Phones connect as web clients — no internet required. Game logic is defined once as a shared reducer and runs on both host and clients for optimistic updates, with the host as the single source of truth.
 
-Current versions: core ${versions.core}, runtime ${versions.runtime}, client ${versions.client}, host ${versions.host}, cli ${versions.cli}, devtools ${versions.devtools}.
+Current versions: core ${versions.core}, runtime ${versions.runtime}, client ${versions.client}, display ${versions.display}, host ${versions.host}, cli ${versions.cli}, devtools ${versions.devtools}.
 
 ## Packages
 
 - [@couch-kit/core](modules/_couch_kit_core.html): Shared types, protocol, constants, middleware, and \`createGameReducer\`
 - [@couch-kit/runtime](modules/_couch_kit_runtime.html): Transport-neutral authoritative state, sessions, authorization, and protocol processing
 - [@couch-kit/client](modules/_couch_kit_client.html): React hooks for phone web controllers — WebSocket client, time sync, asset preloading, debug panel
+- [@couch-kit/display](modules/_couch_kit_display.html): Cross-network browser display host — owns the authoritative runtime and bridges it to a game-agnostic relay
 - [@couch-kit/host](modules/_couch_kit_host.html): React Native TV host — GameHostProvider, WebSocket server, static file server, asset extraction
 - [@couch-kit/cli](modules/_couch_kit_cli.html): CLI tools — bundle, init, simulate, replay, dev
 - [@couch-kit/devtools](modules/_couch_kit_devtools.html): DebugOverlay component for development
@@ -88,7 +90,7 @@ function generateLlmsFullTxt(versions: Record<string, string>): string {
 
 > Turn an Android TV into a local party-game console. Phones join as web controllers over LAN WebSocket.
 
-Versions: @couch-kit/core ${versions.core} · @couch-kit/runtime ${versions.runtime} · @couch-kit/client ${versions.client} · @couch-kit/host ${versions.host} · @couch-kit/cli ${versions.cli} · @couch-kit/devtools ${versions.devtools}
+Versions: @couch-kit/core ${versions.core} · @couch-kit/runtime ${versions.runtime} · @couch-kit/client ${versions.client} · @couch-kit/display ${versions.display} · @couch-kit/host ${versions.host} · @couch-kit/cli ${versions.cli} · @couch-kit/devtools ${versions.devtools}
 
 ---
 

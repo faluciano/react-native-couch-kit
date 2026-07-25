@@ -27,7 +27,7 @@ export interface RelayDisplayHostOptions<S extends IGameState, A extends IAction
 }
 
 /**
- * Reference browser **display host** for the cross-network relay transport.
+ * Browser **display host** for the cross-network relay transport.
  *
  * It owns a {@link GameHostRuntime} (the authoritative game) exactly like the
  * React Native `GameHostProvider` does, but bridges the runtime to a shared,
@@ -40,9 +40,8 @@ export interface RelayDisplayHostOptions<S extends IGameState, A extends IAction
  * - Implements {@link GameRuntimeTransport} by wrapping outbound host messages in
  *   relay `DATA` envelopes (`to` for unicast, absent for room broadcast).
  *
- * This is framework-agnostic reference glue (no React) intended to graduate into
- * a `@couch-kit/display` package; a display UI subscribes via `subscribe` /
- * `getState`.
+ * Framework-agnostic (no React): a display UI subscribes via {@link subscribe} /
+ * {@link getState} (e.g. React's `useSyncExternalStore`).
  */
 export class RelayDisplayHost<S extends IGameState, A extends IAction> {
   private readonly runtime: GameHostRuntime<S, A>;

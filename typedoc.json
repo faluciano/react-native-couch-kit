@@ -4,6 +4,7 @@
     "packages/core",
     "packages/runtime",
     "packages/client",
+    "packages/display",
     "packages/host",
     "packages/cli",
     "packages/devtools"

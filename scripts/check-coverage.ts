@@ -30,6 +30,7 @@ const FLOORS: Record<string, Floor> = {
   host: { lines: 79, functions: 75 },
   cli: { lines: 60, functions: 68 },
   devtools: { lines: 95, functions: 80 },
+  display: { lines: 90, functions: 90 },
 };
 
 const reportOnly = process.argv.includes("--report");

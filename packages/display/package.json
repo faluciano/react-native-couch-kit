@@ -1,0 +1,61 @@
+{
+  "name": "@couch-kit/display",
+  "version": "0.0.0",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "description": "Browser display host for cross-network Couch Kit games — owns the authoritative runtime and bridges it to a game-agnostic relay",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/faluciano/react-native-couch-kit.git",
+    "directory": "packages/display"
+  },
+  "homepage": "https://github.com/faluciano/react-native-couch-kit#readme",
+  "keywords": [
+    "couch-kit",
+    "party-game",
+    "browser-display",
+    "relay",
+    "cross-network",
+    "websocket"
+  ],
+  "main": "./dist/index.js",
+  "types": "./lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "src",
+    "dist",
+    "lib",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target browser --external @couch-kit/core --external @couch-kit/runtime --external @couch-kit/client && tsc -p tsconfig.build.json",
+    "prepublishOnly": "bun run build",
+    "test": "bun test",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist lib"
+  },
+  "dependencies": {
+    "@couch-kit/client": "workspace:*",
+    "@couch-kit/core": "workspace:*",
+    "@couch-kit/runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.0"
+  }
+}
