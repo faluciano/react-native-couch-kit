@@ -32,10 +32,35 @@ export const RelayErrorCodes = {
   NOT_IN_ROOM: "NOT_IN_ROOM",
   MESSAGE_TOO_LARGE: "MESSAGE_TOO_LARGE",
   MALFORMED: "MALFORMED",
+  RATE_LIMITED: "RATE_LIMITED",
+  SERVER_BUSY: "SERVER_BUSY",
 } as const;
 
 /** Matches `@couch-kit/runtime`'s `DEFAULT_MAX_MESSAGE_BYTES`. */
 export const MAX_MESSAGE_BYTES = 256 * 1024;
+
+/**
+ * Abuse-mitigation limits for a public relay. All in-memory and per-process,
+ * matching the single-instance deployment model. Defaults are generous for
+ * party-game scale while bounding the blast radius of a hostile client.
+ */
+export interface RelayLimits {
+  /** Max concurrent rooms across the process (memory bound). */
+  maxRooms: number;
+  /** Max players (phones) per room, excluding the host. */
+  maxPlayersPerRoom: number;
+  /** Messages allowed per connection within {@link RelayLimits.rateWindowMs}. */
+  messagesPerWindow: number;
+  /** Sliding-window length for the per-connection message rate limit, in ms. */
+  rateWindowMs: number;
+}
+
+export const DEFAULT_LIMITS: RelayLimits = {
+  maxRooms: 1000,
+  maxPlayersPerRoom: 16,
+  messagesPerWindow: 30,
+  rateWindowMs: 1000,
+};
 
 /** UTF-8 byte length of a string (Node/Bun `Buffer` or `TextEncoder`). */
 export function byteLength(data: string): number {
@@ -67,16 +92,35 @@ interface Membership {
 export class RelayRooms {
   private readonly rooms = new Map<string, Room>();
   private readonly membership = new Map<string, Membership>();
+  /** Sliding-window message timestamps per connection id (rate limiting). */
+  private readonly rate = new Map<string, number[]>();
+  private readonly limits: RelayLimits;
+  private readonly now: () => number;
+
+  constructor(limits: Partial<RelayLimits> = {}, now: () => number = Date.now) {
+    this.limits = { ...DEFAULT_LIMITS, ...limits };
+    this.now = now;
+  }
 
   get roomCount(): number {
     return this.rooms.size;
   }
 
-  /** Route one raw inbound message from `conn`. */
-  handleMessage(conn: RelayConnection, raw: string): void {
+  /**
+   * Route one raw inbound message from `conn`.
+   *
+   * @returns `false` when the connection has abused the rate limit and the
+   *   transport should close it; `true` to keep it open.
+   */
+  handleMessage(conn: RelayConnection, raw: string): boolean {
+    if (!this.allow(conn.id)) {
+      this.sendError(conn, RelayErrorCodes.RATE_LIMITED, "Too many messages");
+      return false;
+    }
+
     if (byteLength(raw) > MAX_MESSAGE_BYTES) {
       this.sendError(conn, RelayErrorCodes.MESSAGE_TOO_LARGE, "Message too large");
-      return;
+      return true;
     }
 
     let msg: { type?: string; roomId?: string; to?: string; data?: string };
@@ -84,7 +128,7 @@ export class RelayRooms {
       msg = JSON.parse(raw);
     } catch {
       this.sendError(conn, RelayErrorCodes.MALFORMED, "Invalid JSON");
-      return;
+      return true;
     }
 
     switch (msg.type) {
@@ -100,10 +144,26 @@ export class RelayRooms {
       default:
         this.sendError(conn, RelayErrorCodes.MALFORMED, "Unknown message type");
     }
+    return true;
+  }
+
+  /**
+   * Sliding-window rate limit. Records this message's timestamp and returns
+   * `false` once a connection exceeds {@link RelayLimits.messagesPerWindow}
+   * within {@link RelayLimits.rateWindowMs}.
+   */
+  private allow(id: string): boolean {
+    const t = this.now();
+    const cutoff = t - this.limits.rateWindowMs;
+    const hits = (this.rate.get(id) ?? []).filter((ts) => ts > cutoff);
+    hits.push(t);
+    this.rate.set(id, hits);
+    return hits.length <= this.limits.messagesPerWindow;
   }
 
   /** Clean up a closed connection and notify its room. */
   handleClose(conn: RelayConnection): void {
+    this.rate.delete(conn.id);
     const mem = this.membership.get(conn.id);
     if (!mem) return;
     this.membership.delete(conn.id);
@@ -136,6 +196,10 @@ export class RelayRooms {
       this.sendError(conn, RelayErrorCodes.ROOM_EXISTS, "Room already exists");
       return;
     }
+    if (this.rooms.size >= this.limits.maxRooms) {
+      this.sendError(conn, RelayErrorCodes.SERVER_BUSY, "Too many rooms");
+      return;
+    }
     this.rooms.set(roomId, { host: conn, players: new Map() });
     this.membership.set(conn.id, { roomId, role: "host" });
     this.send(conn, {
@@ -153,6 +217,10 @@ export class RelayRooms {
     const room = this.rooms.get(roomId);
     if (!room) {
       this.sendError(conn, RelayErrorCodes.ROOM_NOT_FOUND, "Room not found");
+      return;
+    }
+    if (room.players.size >= this.limits.maxPlayersPerRoom) {
+      this.sendError(conn, RelayErrorCodes.ROOM_FULL, "Room is full");
       return;
     }
     room.players.set(conn.id, conn);

@@ -162,4 +162,70 @@ describe("RelayRooms", () => {
     rooms.handleMessage(c, "{not json");
     expect(c.sent[0].code).toBe(RelayErrorCodes.MALFORMED);
   });
+
+  test("handleMessage returns true for well-behaved traffic", () => {
+    const rooms = new RelayRooms();
+    const host = conn("h");
+    const keepOpen = rooms.handleMessage(
+      host,
+      JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }),
+    );
+    expect(keepOpen).toBe(true);
+  });
+
+  test("exceeding the message rate limit errors and signals disconnect", () => {
+    const rooms = new RelayRooms({ messagesPerWindow: 3, rateWindowMs: 1000 });
+    const c = conn("c");
+    // Unknown-type messages still count toward the rate limit.
+    const noop = JSON.stringify({ type: "NOPE" });
+    expect(rooms.handleMessage(c, noop)).toBe(true);
+    expect(rooms.handleMessage(c, noop)).toBe(true);
+    expect(rooms.handleMessage(c, noop)).toBe(true);
+    // 4th within the window trips the limit.
+    expect(rooms.handleMessage(c, noop)).toBe(false);
+    expect(c.sent.at(-1).code).toBe(RelayErrorCodes.RATE_LIMITED);
+  });
+
+  test("rate limit window slides as time advances", () => {
+    let t = 0;
+    const rooms = new RelayRooms(
+      { messagesPerWindow: 2, rateWindowMs: 1000 },
+      () => t,
+    );
+    const c = conn("c");
+    const noop = JSON.stringify({ type: "NOPE" });
+    expect(rooms.handleMessage(c, noop)).toBe(true);
+    expect(rooms.handleMessage(c, noop)).toBe(true);
+    t = 1001; // old hits fall out of the window
+    expect(rooms.handleMessage(c, noop)).toBe(true);
+  });
+
+  test("room creation is capped at maxRooms", () => {
+    const rooms = new RelayRooms({ maxRooms: 1 });
+    rooms.handleMessage(conn("h1"), JSON.stringify({ type: "CREATE_ROOM", roomId: "A" }));
+    const h2 = conn("h2");
+    rooms.handleMessage(h2, JSON.stringify({ type: "CREATE_ROOM", roomId: "B" }));
+    expect(h2.sent[0].code).toBe(RelayErrorCodes.SERVER_BUSY);
+    expect(rooms.roomCount).toBe(1);
+  });
+
+  test("joining a full room is rejected with ROOM_FULL", () => {
+    const rooms = new RelayRooms({ maxPlayersPerRoom: 1 });
+    rooms.handleMessage(conn("h"), JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }));
+    rooms.handleMessage(conn("p1"), JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
+    const p2 = conn("p2");
+    rooms.handleMessage(p2, JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
+    expect(p2.sent[0].code).toBe(RelayErrorCodes.ROOM_FULL);
+  });
+
+  test("closing a connection clears its rate-limit state", () => {
+    const rooms = new RelayRooms({ messagesPerWindow: 2, rateWindowMs: 1000 });
+    const c = conn("c");
+    const noop = JSON.stringify({ type: "NOPE" });
+    rooms.handleMessage(c, noop);
+    rooms.handleMessage(c, noop);
+    rooms.handleClose(c);
+    // Fresh budget after reconnect (same id): first message is allowed again.
+    expect(rooms.handleMessage(c, noop)).toBe(true);
+  });
 });
