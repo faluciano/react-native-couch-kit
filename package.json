@@ -5,7 +5,7 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "bun run --filter '@couch-kit/core' build && bun run --filter '@couch-kit/runtime' build && bun run --filter '@couch-kit/client' build && bun run --filter '@couch-kit/host' --filter '@couch-kit/cli' --filter '@couch-kit/devtools' build",
+    "build": "bun run --filter '@couch-kit/core' build && bun run --filter '@couch-kit/runtime' build && bun run --filter '@couch-kit/client' build && bun run --filter '@couch-kit/display' build && bun run --filter '@couch-kit/host' --filter '@couch-kit/cli' --filter '@couch-kit/devtools' build",
     "test": "bun run --filter './packages/*' test",
     "coverage": "bun run scripts/check-coverage.ts",
     "lint": "bun run --filter '*' lint",

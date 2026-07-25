@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ESNext", "DOM"],
+    "paths": {
+      "@couch-kit/core": ["../core/src"],
+      "@couch-kit/runtime": ["../runtime/src"],
+      "@couch-kit/client": ["../client/src"]
+    }
+  },
+  "include": [
+    "src/**/*",
+    "../core/src/**/*",
+    "../runtime/src/**/*",
+    "../client/src/**/*"
+  ]
+}

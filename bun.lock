@@ -33,7 +33,7 @@
     },
     "packages/client": {
       "name": "@couch-kit/client",
-      "version": "0.8.9",
+      "version": "0.9.0",
       "dependencies": {
         "@couch-kit/core": "workspace:*",
       },
@@ -54,7 +54,7 @@
     },
     "packages/devtools": {
       "name": "@couch-kit/devtools",
-      "version": "0.2.10",
+      "version": "1.0.0",
       "devDependencies": {
         "@couch-kit/client": "workspace:*",
         "@couch-kit/core": "workspace:*",
@@ -70,6 +70,18 @@
       "peerDependencies": {
         "@couch-kit/client": "workspace:*",
         "react": ">=18.0.0",
+      },
+    },
+    "packages/display": {
+      "name": "@couch-kit/display",
+      "version": "0.0.0",
+      "dependencies": {
+        "@couch-kit/client": "workspace:*",
+        "@couch-kit/core": "workspace:*",
+        "@couch-kit/runtime": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^6.0.0",
       },
     },
     "packages/host": {
@@ -322,6 +334,8 @@
     "@couch-kit/core": ["@couch-kit/core@workspace:packages/core"],
 
     "@couch-kit/devtools": ["@couch-kit/devtools@workspace:packages/devtools"],
+
+    "@couch-kit/display": ["@couch-kit/display@workspace:packages/display"],
 
     "@couch-kit/host": ["@couch-kit/host@workspace:packages/host"],
 
