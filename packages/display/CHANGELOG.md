@@ -1,5 +1,17 @@
 # @couch-kit/display
 
+## 0.1.2
+
+### Patch Changes
+
+- [#136](https://github.com/faluciano/react-native-couch-kit/pull/136) [`973805a`](https://github.com/faluciano/react-native-couch-kit/commit/973805af754a8e22c1c6c81de4c858ffa353556c) Thanks [@faluciano](https://github.com/faluciano)! - **Bundle & tree-shaking**
+
+  - Fix `RelayDisplayHost` resolving as "not exported" for consumers on
+    `moduleResolution: NodeNext`/`Node16`. The package is `type: module`, so the
+    emitted `.d.ts` is read in strict-ESM mode where an extensionless relative
+    re-export (`export * from "./relay-display-host"`) is not resolved. Add the
+    `.js` extension to the barrel specifier, matching the other ESM packages.
+
 ## 0.1.1
 
 ### Patch Changes
