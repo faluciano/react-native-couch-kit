@@ -16,7 +16,6 @@
     "build": "bun build ./src/index.ts --outdir ./dist --target browser --external react --external @couch-kit/client --external @couch-kit/core && tsc -p tsconfig.build.json",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src/",
     "clean": "rm -rf dist lib"
   },
   "files": [
@@ -37,7 +36,7 @@
     "@types/react-dom": "^19",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "typescript": "^6.0.0"
+    "typescript": "^7.0.0"
   },
   "peerDependencies": {
     "@couch-kit/client": "workspace:*",

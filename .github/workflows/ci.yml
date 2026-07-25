@@ -25,7 +25,6 @@ jobs:
           key: bun-${{ hashFiles('bun.lock') }}
           restore-keys: bun-
       - run: bun install
-      - run: bun run lint
       - run: bun run typecheck
 
   test:

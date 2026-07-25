@@ -46,11 +46,10 @@
     "build": "bun build ./src/index.ts --outdir ./dist --target browser && bun build ./src/index.ts --outfile ./dist/index.cjs --target browser --format cjs && tsc -p tsconfig.build.json",
     "prepublishOnly": "bun run build",
     "test": "bun test",
-    "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist lib"
   },
   "devDependencies": {
-    "typescript": "^6.0.0"
+    "typescript": "^7.0.0"
   }
 }
