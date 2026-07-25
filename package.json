@@ -14,7 +14,7 @@
     "version": "bun run scripts/version.ts",
     "release": "bun run scripts/publish.ts",
     "lint:changesets": "bun run scripts/lint-changeset-headers.ts",
-    "docs": "typedoc",
+    "docs": "bun install --cwd docs-tools && docs-tools/node_modules/.bin/typedoc",
     "docs:llms": "bun run scripts/generate-llms-txt.ts"
   },
   "devDependencies": {
@@ -23,7 +23,6 @@
     "@types/bun": "^1.3.14",
     "@types/react": "^19.2.17",
     "prettier": "^3.8.4",
-    "typedoc": "^0.28.19",
     "typescript": "^7.0.0"
   },
   "packageManager": "bun@1.3.14",

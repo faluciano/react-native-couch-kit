@@ -1,0 +1,8 @@
+{
+  "name": "couch-kit-docs-tools",
+  "private": true,
+  "dependencies": {
+    "typedoc": "^0.28.19",
+    "typescript": "^6.0.0"
+  }
+}
