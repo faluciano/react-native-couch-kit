@@ -54,9 +54,9 @@ Settings → Build**:
    Cloudflare GitHub App).
 2. Set **root directory** to `services/relay-worker`.
 3. Set the production **branch** to `main`.
-4. Set the build command to `bun install --frozen-lockfile && bunx tsc --noEmit`
-   so a type error fails the build before it deploys, and the deploy command to
-   `bunx wrangler deploy`.
+4. Leave the build and deploy commands at their defaults (`bun run build` and
+   `bunx wrangler deploy`). `build` is wired to `tsc --noEmit`, so a type error
+   fails the build before anything deploys.
 
 Cloudflare's build image picks the package manager from the lockfile, and this
 package ships a `bun.lock` — the same toolchain as the rest of the repo. If a
