@@ -304,3 +304,58 @@ describe("RelayRooms", () => {
     expect(rooms.handleMessage(c, noop)).toBe(true);
   });
 });
+
+describe("room code case", () => {
+  test("a room created upper-case is joinable lower-case", () => {
+    // Codes are read off a TV and retyped or re-scanned on a phone; some
+    // scanners and keyboards change the case. The room must be the same room.
+    const rooms = new RelayRooms();
+    const host = conn("h");
+    const player = conn("p");
+
+    rooms.handleMessage(host, JSON.stringify({ type: "CREATE_ROOM", roomId: "6DX8" }));
+    rooms.handleMessage(player, JSON.stringify({ type: "JOIN_ROOM", roomId: "6dx8" }));
+
+    expect(player.sent[0].type).toBe(RelayMessageTypes.ROOM_JOINED);
+    expect(host.sent[1]).toMatchObject({ type: RelayMessageTypes.PEER_JOINED, peerId: "p" });
+  });
+
+  test("a room created lower-case is joinable upper-case", () => {
+    const rooms = new RelayRooms();
+    const host = conn("h");
+    const player = conn("p");
+
+    rooms.handleMessage(host, JSON.stringify({ type: "CREATE_ROOM", roomId: "abcd" }));
+    rooms.handleMessage(player, JSON.stringify({ type: "JOIN_ROOM", roomId: "ABCD" }));
+
+    expect(player.sent[0].type).toBe(RelayMessageTypes.ROOM_JOINED);
+  });
+
+  test("codes differing only by case are the same room, not two", () => {
+    const rooms = new RelayRooms();
+    const first = conn("h1");
+    const second = conn("h2");
+
+    rooms.handleMessage(first, JSON.stringify({ type: "CREATE_ROOM", roomId: "ABCD" }));
+    rooms.handleMessage(second, JSON.stringify({ type: "CREATE_ROOM", roomId: "abcd" }));
+
+    expect(second.sent[0].code).toBe(RelayErrorCodes.ROOM_EXISTS);
+    expect(rooms.roomCount).toBe(1);
+  });
+
+  test("membership and routing use the canonical code", () => {
+    const rooms = new RelayRooms();
+    const host = conn("h");
+    const player = conn("p");
+    rooms.handleMessage(host, JSON.stringify({ type: "CREATE_ROOM", roomId: "xy12" }));
+    rooms.handleMessage(player, JSON.stringify({ type: "JOIN_ROOM", roomId: "XY12" }));
+
+    expect(rooms.membershipOf("h")).toEqual({ roomId: "XY12", role: "host" });
+    expect(rooms.membershipOf("p")).toEqual({ roomId: "XY12", role: "player" });
+
+    host.sent.length = 0;
+    player.sent.length = 0;
+    rooms.handleMessage(host, JSON.stringify({ type: "DATA", data: "s" }));
+    expect(player.sent[0]).toMatchObject({ type: RelayMessageTypes.DATA, data: "s" });
+  });
+});
