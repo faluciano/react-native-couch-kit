@@ -44,3 +44,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # generated API docs
 docs/
+
+# isolated typedoc runtime (uses TypeScript 6 for TS7 compat)
+docs-tools/node_modules/
