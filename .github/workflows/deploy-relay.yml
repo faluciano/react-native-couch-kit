@@ -46,9 +46,22 @@ jobs:
               --source services/relay \
               --ingress external \
               --target-port 8787
-            # In-memory rooms: keep a single always-on replica.
+            # Rooms are in-memory, so the relay must never run more than one
+            # replica — a second replica would own a disjoint set of rooms and
+            # silently split games in half.
+            #
+            # min-replicas 0 (scale to zero when idle) is safe *because* rooms
+            # are ephemeral: a replica only stops once no WebSocket is open, and
+            # an open socket is exactly what a live game is. The HTTP scaler
+            # counts held WebSocket connections as active requests, so a table
+            # with players on it keeps the replica alive. The cost is a cold
+            # start (~1-3s) on the first display that opens after an idle
+            # period, paid once, before any game exists to disturb.
             az containerapp update \
               --name couch-kit-relay \
               --resource-group couch-kit-rg \
-              --min-replicas 1 \
-              --max-replicas 1
+              --min-replicas 0 \
+              --max-replicas 1 \
+              --scale-rule-name ws-concurrency \
+              --scale-rule-type http \
+              --scale-rule-http-concurrency 200

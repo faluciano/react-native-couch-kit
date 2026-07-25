@@ -63,6 +63,10 @@ const server = Bun.serve<SocketData, undefined>({
   },
   websocket: {
     maxPayloadLength: 512 * 1024,
+    // Game state broadcasts are JSON and highly repetitive — a card game's
+    // ruleset alone compresses ~84%. The relay forwards opaque envelopes, so
+    // it can compress every payload without understanding any of them.
+    perMessageDeflate: true,
     open(ws) {
       ipCounts.set(ws.data.ip, (ipCounts.get(ws.data.ip) ?? 0) + 1);
       ws.data.conn = { id: ws.data.id, send: (data: string) => ws.send(data) };
