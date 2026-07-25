@@ -1,11 +1,11 @@
 {
   "name": "@couch-kit/display",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "publishConfig": {
     "access": "public",
     "provenance": true
   },
-  "description": "Browser display host for cross-network Couch Kit games \u2014 owns the authoritative runtime and bridges it to a game-agnostic relay",
+  "description": "Browser display host for cross-network Couch Kit games — owns the authoritative runtime and bridges it to a game-agnostic relay",
   "license": "MIT",
   "type": "module",
   "engines": {
@@ -44,7 +44,7 @@
   "sideEffects": false,
   "scripts": {
     "build": "bun build ./src/index.ts --outdir ./dist --target browser --external @couch-kit/core --external @couch-kit/runtime --external @couch-kit/client && tsc -p tsconfig.build.json && bun run verify-build",
-    "verify-build": "node -e \"if(!require('fs').readFileSync('./dist/index.js','utf8').includes('class RelayDisplayHost'))throw new Error('dist/index.js is missing RelayDisplayHost \u2014 empty bundle');\"",
+    "verify-build": "node -e \"if(!require('fs').readFileSync('./dist/index.js','utf8').includes('class RelayDisplayHost'))throw new Error('dist/index.js is missing RelayDisplayHost — empty bundle');\"",
     "prepublishOnly": "bun run build",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
