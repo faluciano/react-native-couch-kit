@@ -37,19 +37,31 @@ npx wrangler dev --local     # http://localhost:8787
 
 ## Deployment
 
-Automatic: pushing to `main` under `services/relay-worker/**` (or the shared
-`rooms.ts`) runs `.github/workflows/deploy-relay-cf.yml`, which tests the core,
-typechecks, deploys, and then health-checks the live URL.
+Deploys run through **Workers Builds**, Cloudflare's native Git integration:
+Cloudflare watches the repository and builds on push, authenticating through its
+GitHub App. There is **no API token and no deploy secret in GitHub** — nothing
+long-lived to leak or rotate, and no credential in CI at all.
 
-Manual, if you need it:
+CI still gates quality: the `relay` job in `.github/workflows/ci.yml` runs the
+routing-core tests and typechecks the Worker on every PR.
+
+### One-time setup
+
+In the Cloudflare dashboard, under **Workers & Pages → couch-kit-relay →
+Settings → Build**:
+
+1. **Connect** the `faluciano/react-native-couch-kit` repository (authorizes the
+   Cloudflare GitHub App).
+2. Set **root directory** to `services/relay-worker`.
+3. Set the production **branch** to `main`.
+4. Optionally set the build command to `npm ci && npx tsc --noEmit` so a type
+   error fails the build before it deploys.
+
+After that, every push to `main` that touches this Worker deploys itself, and
+pull requests get build status reported back on the PR.
+
+Manual deploy, if you ever need one (requires `wrangler login`):
 
 ```bash
 npx wrangler deploy
 ```
-
-### Required repository secrets
-
-| Secret | Where to get it |
-| --- | --- |
-| `CLOUDFLARE_API_TOKEN` | Cloudflare dashboard → My Profile → API Tokens → **Edit Cloudflare Workers** template |
-| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare dashboard → Workers & Pages → Account ID |

@@ -45,6 +45,25 @@ jobs:
       - name: Enforce coverage floors
         run: bun run coverage
 
+  relay:
+    # The relay routing core is shared by the Bun server and the Cloudflare
+    # Worker, but it lives under services/ — outside the `packages/*` filter the
+    # `test` script uses — so it needs its own job to be covered at all.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+      - name: Test relay routing core
+        working-directory: services/relay
+        run: bun test
+      - name: Typecheck Cloudflare Worker
+        working-directory: services/relay-worker
+        run: |
+          npm ci
+          npx tsc --noEmit
+
   build:
     runs-on: ubuntu-latest
     steps:
