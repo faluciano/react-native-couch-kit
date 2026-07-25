@@ -129,3 +129,23 @@ export type RelayServerMessage =
 
 /** Every relay wire message. */
 export type RelayMessage = RelayClientMessage | RelayServerMessage;
+
+/**
+ * Builds the socket URL for a room: the configured relay URL with `/r/<roomId>`
+ * appended.
+ *
+ * The room has to be in the URL, not just in the `CREATE_ROOM` / `JOIN_ROOM`
+ * message, so that a relay can route the connection before reading any frames —
+ * which is exactly what a per-room Cloudflare Durable Object must do. Relays
+ * that keep every room in one process (the Bun reference server) ignore the
+ * path, so this is safe to send to either.
+ *
+ * @param url - Base relay URL, e.g. `wss://relay.example.com`.
+ * @param roomId - Room code to address.
+ */
+export function relayRoomUrl(url: string, roomId: string): string {
+  const trimmed = url.replace(/\/+$/, "");
+  const [base, query] = trimmed.split("?", 2);
+  const path = `${base}/r/${encodeURIComponent(roomId)}`;
+  return query ? `${path}?${query}` : path;
+}

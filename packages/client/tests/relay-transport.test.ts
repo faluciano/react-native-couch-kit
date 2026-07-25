@@ -4,7 +4,7 @@ import {
   createRelayTransport,
 } from "../src/relay-transport";
 import { TransportReadyState } from "../src/transport";
-import { RelayMessageTypes } from "../src/relay-protocol";
+import { RelayMessageTypes, relayRoomUrl } from "../src/relay-protocol";
 
 class MockWebSocket {
   static instances: MockWebSocket[] = [];
@@ -61,7 +61,10 @@ describe("RelayClientTransport", () => {
   test("sends JOIN_ROOM once the relay socket opens", () => {
     new RelayClientTransport({ url: "ws://relay", roomId: "R" });
     const ws = MockWebSocket.last();
-    expect(ws.url).toBe("ws://relay");
+    // The room is in the URL so per-room relays (Durable Objects) can route
+    // the socket before reading a frame; JOIN_ROOM is still sent for relays
+    // that keep all rooms in one process.
+    expect(ws.url).toBe("ws://relay/r/R");
 
     ws.fireOpen();
     expect(JSON.parse(ws.sent[0])).toEqual({
@@ -170,5 +173,29 @@ describe("RelayClientTransport", () => {
     const b = factory();
     expect(a).not.toBe(b);
     expect(a).toBeInstanceOf(RelayClientTransport);
+  });
+});
+
+describe("relayRoomUrl", () => {
+  test("appends the room path", () => {
+    expect(relayRoomUrl("wss://relay.example.com", "ABCD")).toBe(
+      "wss://relay.example.com/r/ABCD",
+    );
+  });
+
+  test("tolerates a trailing slash", () => {
+    expect(relayRoomUrl("wss://relay.example.com/", "ABCD")).toBe(
+      "wss://relay.example.com/r/ABCD",
+    );
+  });
+
+  test("keeps an existing query string after the room path", () => {
+    expect(relayRoomUrl("wss://relay.example.com?token=x", "ABCD")).toBe(
+      "wss://relay.example.com/r/ABCD?token=x",
+    );
+  });
+
+  test("encodes room codes so they cannot alter the path", () => {
+    expect(relayRoomUrl("wss://r", "A/../B")).toBe("wss://r/r/A%2F..%2FB");
   });
 });
