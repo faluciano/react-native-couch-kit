@@ -1,5 +1,27 @@
 # @couch-kit/display
 
+## 0.2.0
+
+### Minor Changes
+
+- [#141](https://github.com/faluciano/react-native-couch-kit/pull/141) [`5142ccd`](https://github.com/faluciano/react-native-couch-kit/commit/5142ccdb2ef37ab85cc57eac1e50f99b567cde70) Thanks [@faluciano](https://github.com/faluciano)! - Relay connections now address the room in the URL: the socket opens against
+  `<relayUrl>/r/<roomId>` instead of `<relayUrl>`, and the new `relayRoomUrl()`
+  helper builds it.
+
+  The `CREATE_ROOM` / `JOIN_ROOM` handshake is unchanged, so relays that hold
+  every room in one process (the Bun reference server in `services/relay`) ignore
+  the path and keep working. Putting the room in the URL lets a relay route a
+  connection _before_ reading any frames, which is what per-room hosting — such as
+  a Cloudflare Durable Object — requires.
+
+  No consumer code changes: both `createRelayTransport` and `RelayDisplayHost`
+  already take `roomId`, and build the URL themselves.
+
+### Patch Changes
+
+- Updated dependencies [[`5142ccd`](https://github.com/faluciano/react-native-couch-kit/commit/5142ccdb2ef37ab85cc57eac1e50f99b567cde70)]:
+  - @couch-kit/client@0.10.0
+
 ## 0.1.2
 
 ### Patch Changes

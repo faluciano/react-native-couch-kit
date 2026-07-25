@@ -1,11 +1,11 @@
 {
   "name": "@couch-kit/client",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "publishConfig": {
     "access": "public",
     "provenance": true
   },
-  "description": "React hooks for phone controllers in Couch Kit party games \u2014 WebSocket client and action dispatch",
+  "description": "React hooks for phone controllers in Couch Kit party games — WebSocket client and action dispatch",
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
