@@ -43,7 +43,8 @@
   ],
   "sideEffects": false,
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir ./dist --target browser --external @couch-kit/core --external @couch-kit/runtime --external @couch-kit/client && tsc -p tsconfig.build.json",
+    "build": "bun build ./src/index.ts --outdir ./dist --target browser --external @couch-kit/core --external @couch-kit/runtime --external @couch-kit/client && tsc -p tsconfig.build.json && bun run verify-build",
+    "verify-build": "node -e \"if(!require('fs').readFileSync('./dist/index.js','utf8').includes('class RelayDisplayHost'))throw new Error('dist/index.js is missing RelayDisplayHost — empty bundle');\"",
     "prepublishOnly": "bun run build",
     "test": "bun test",
     "lint": "eslint src/",
