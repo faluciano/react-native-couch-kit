@@ -8,6 +8,7 @@ import {
 import type { IGameState, IAction, HostMessage } from "@couch-kit/core";
 import {
   RelayMessageTypes,
+  relayRoomUrl,
   type RelayServerMessage,
 } from "@couch-kit/client";
 
@@ -54,7 +55,7 @@ export class RelayDisplayHost<S extends IGameState, A extends IAction> {
     const { url, roomId, ...runtimeConfig } = options;
     this.roomId = roomId;
     this.runtime = new GameHostRuntime<S, A>(runtimeConfig);
-    this.ws = new WebSocket(url);
+    this.ws = new WebSocket(relayRoomUrl(url, roomId));
 
     this.ws.onopen = () => {
       this.ws.send(

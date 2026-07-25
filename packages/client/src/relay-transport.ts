@@ -5,6 +5,7 @@ import {
 } from "./transport";
 import {
   RelayMessageTypes,
+  relayRoomUrl,
   type RelayServerMessage,
 } from "./relay-protocol";
 
@@ -47,7 +48,7 @@ export class RelayClientTransport implements ClientTransport {
 
   constructor(options: RelayTransportOptions) {
     this.roomId = options.roomId;
-    this.ws = new WebSocket(options.url);
+    this.ws = new WebSocket(relayRoomUrl(options.url, options.roomId));
 
     this.ws.onopen = () => {
       // The relay socket is up; ask to join the room. The transport is not yet

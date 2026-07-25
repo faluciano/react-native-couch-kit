@@ -218,6 +218,81 @@ describe("RelayRooms", () => {
     expect(p2.sent[0].code).toBe(RelayErrorCodes.ROOM_FULL);
   });
 
+  test("membershipOf reports room and role, and clears on close", () => {
+    const rooms = new RelayRooms();
+    const host = conn("h");
+    const player = conn("p");
+    rooms.handleMessage(host, JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }));
+    rooms.handleMessage(player, JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
+
+    expect(rooms.membershipOf("h")).toEqual({ roomId: "R", role: "host" });
+    expect(rooms.membershipOf("p")).toEqual({ roomId: "R", role: "player" });
+    expect(rooms.membershipOf("nobody")).toBeUndefined();
+
+    rooms.handleClose(player);
+    expect(rooms.membershipOf("p")).toBeUndefined();
+  });
+
+  test("restore rebuilds routing for existing connections without notifying them", () => {
+    // Models a Durable Object waking from hibernation: the sockets are still
+    // open, but this routing table was evicted and must be rebuilt from them.
+    const rooms = new RelayRooms({ maxRooms: 1 });
+    const host = conn("h");
+    const p1 = conn("p1");
+    const p2 = conn("p2");
+
+    rooms.restore([
+      { conn: host, roomId: "R", role: "host" },
+      { conn: p1, roomId: "R", role: "player" },
+      { conn: p2, roomId: "R", role: "player" },
+    ]);
+
+    // Nothing is re-announced to clients that already know they are connected.
+    expect(host.sent).toEqual([]);
+    expect(p1.sent).toEqual([]);
+
+    // Routing works immediately: broadcast reaches every restored player.
+    rooms.handleMessage(host, JSON.stringify({ type: "DATA", data: "s" }));
+    expect(p1.sent[0]).toMatchObject({ type: RelayMessageTypes.DATA, data: "s" });
+    expect(p2.sent[0]).toMatchObject({ type: RelayMessageTypes.DATA, data: "s" });
+
+    // And player -> host still carries the sender id.
+    rooms.handleMessage(p1, JSON.stringify({ type: "DATA", data: "a" }));
+    expect(host.sent[0]).toMatchObject({ from: "p1", data: "a" });
+  });
+
+  test("restore tolerates players listed before their host", () => {
+    const rooms = new RelayRooms({ maxRooms: 1 });
+    const host = conn("h");
+    const player = conn("p");
+    rooms.restore([
+      { conn: player, roomId: "R", role: "player" },
+      { conn: host, roomId: "R", role: "host" },
+    ]);
+
+    rooms.handleMessage(host, JSON.stringify({ type: "DATA", data: "x" }));
+    expect(player.sent[0]).toMatchObject({ data: "x" });
+  });
+
+  test("restore leaves a room joinable and closable as normal", () => {
+    const rooms = new RelayRooms({ maxRooms: 1 });
+    const host = conn("h");
+    const p1 = conn("p1");
+    rooms.restore([
+      { conn: host, roomId: "R", role: "host" },
+      { conn: p1, roomId: "R", role: "player" },
+    ]);
+
+    const late = conn("p2");
+    rooms.handleMessage(late, JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
+    expect(late.sent[0].type).toBe(RelayMessageTypes.ROOM_JOINED);
+    expect(host.sent[0]).toMatchObject({ type: RelayMessageTypes.PEER_JOINED, peerId: "p2" });
+
+    host.sent.length = 0;
+    rooms.handleClose(p1);
+    expect(host.sent[0]).toMatchObject({ type: RelayMessageTypes.PEER_LEFT, peerId: "p1" });
+  });
+
   test("closing a connection clears its rate-limit state", () => {
     const rooms = new RelayRooms({ messagesPerWindow: 2, rateWindowMs: 1000 });
     const c = conn("c");

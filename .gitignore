@@ -47,3 +47,6 @@ docs/
 
 # isolated typedoc runtime (uses TypeScript 6 for TS7 compat)
 docs-tools/node_modules/
+
+# Cloudflare Worker local state
+.wrangler/

@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "couch-kit-relay",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-22",
+  "observability": { "enabled": true },
+  "durable_objects": {
+    "bindings": [{ "name": "ROOMS", "class_name": "RelayRoom" }]
+  },
+  "migrations": [
+    {
+      // SQLite-backed classes are the ones available on the Workers free plan.
+      "tag": "v1",
+      "new_sqlite_classes": ["RelayRoom"]
+    }
+  ]
+}

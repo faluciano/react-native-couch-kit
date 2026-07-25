@@ -1,0 +1,20 @@
+{
+  "name": "couch-kit-relay-worker",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260724.1",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.114.0"
+  },
+  "private": true
+}

@@ -106,6 +106,44 @@ export class RelayRooms {
     return this.rooms.size;
   }
 
+  /** Current room + role for a connection id, or `undefined` if unknown. */
+  membershipOf(id: string): Readonly<Membership> | undefined {
+    return this.membership.get(id);
+  }
+
+  /**
+   * Rebuild membership for connections that already exist, without emitting any
+   * protocol messages.
+   *
+   * Needed by hosts that can evict this object from memory while its sockets
+   * stay open — a Cloudflare Durable Object waking from hibernation, say. The
+   * sockets survive; this in-memory routing table does not, so it is restored
+   * from what the transport still holds. Replaying CREATE_ROOM / JOIN_ROOM
+   * instead would re-notify clients of things they already know.
+   */
+  restore(
+    entries: readonly {
+      readonly conn: RelayConnection;
+      readonly roomId: string;
+      readonly role: "host" | "player";
+    }[],
+  ): void {
+    for (const { conn, roomId, role } of entries) {
+      let room = this.rooms.get(roomId);
+      if (!room && role === "host") {
+        room = { host: conn, players: new Map() };
+        this.rooms.set(roomId, room);
+      }
+      this.membership.set(conn.id, { roomId, role });
+    }
+    // Players are attached after hosts so a player restored before its host
+    // still lands in the room.
+    for (const { conn, roomId, role } of entries) {
+      if (role !== "player") continue;
+      this.rooms.get(roomId)?.players.set(conn.id, conn);
+    }
+  }
+
   /**
    * Route one raw inbound message from `conn`.
    *
