@@ -1,5 +1,21 @@
 # @couch-kit/client
 
+## 0.10.1
+
+### Patch Changes
+
+- [#143](https://github.com/faluciano/react-native-couch-kit/pull/143) [`050239e`](https://github.com/faluciano/react-native-couch-kit/commit/050239e251b32641b0c754016510b70ae713fcaa) Thanks [@faluciano](https://github.com/faluciano)! - Room codes are now case-insensitive end to end.
+
+  A code created as `6DX8` could not be joined as `6dx8`: the Cloudflare relay
+  uppercased the code to route the connection to the right Durable Object, but the
+  room registry inside still keyed rooms by the raw string from the
+  `CREATE_ROOM` / `JOIN_ROOM` message. The join silently missed and the phone sat
+  on "connecting" forever.
+
+  Room codes get read off a TV and retyped or re-scanned, so case must not matter.
+  They are now canonicalised in one place — the routing core — which fixes both the
+  Bun relay and the Worker.
+
 ## 0.10.0
 
 ### Minor Changes
