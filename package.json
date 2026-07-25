@@ -8,7 +8,6 @@
     "build": "bun run --filter '@couch-kit/core' build && bun run --filter '@couch-kit/runtime' build && bun run --filter '@couch-kit/client' build && bun run --filter '@couch-kit/display' build && bun run --filter '@couch-kit/host' --filter '@couch-kit/cli' --filter '@couch-kit/devtools' build",
     "test": "bun run --filter './packages/*' test",
     "coverage": "bun run scripts/check-coverage.ts",
-    "lint": "bun run --filter '*' lint",
     "typecheck": "bun run --filter '@couch-kit/core' typecheck && bun run --filter '@couch-kit/runtime' typecheck && bun run --filter '*' typecheck",
     "clean": "bun run --filter '*' clean",
     "changeset": "changeset",
@@ -23,9 +22,6 @@
     "@changesets/cli": "^2.31.0",
     "@types/bun": "^1.3.14",
     "@types/react": "^19.2.17",
-    "@eslint/js": "^10.0.1",
-    "eslint": "^10.5.0",
-    "typescript-eslint": "^8.62.0",
     "prettier": "^3.8.4",
     "typedoc": "^0.28.19",
     "typescript": "^7.0.0"

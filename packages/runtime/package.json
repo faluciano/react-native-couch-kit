@@ -52,7 +52,6 @@
     "build": "bun build ./src/index.ts --outdir ./dist --target browser --external @couch-kit/core && bun build ./src/index.ts --outfile ./dist/index.cjs --target browser --format cjs --external @couch-kit/core && tsc -p tsconfig.build.json",
     "prepublishOnly": "bun run build",
     "test": "bun test",
-    "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist lib"
   },

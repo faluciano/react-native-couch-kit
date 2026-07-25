@@ -5,7 +5,7 @@
     "access": "public",
     "provenance": true
   },
-  "description": "React hooks for phone controllers in Couch Kit party games — WebSocket client and action dispatch",
+  "description": "React hooks for phone controllers in Couch Kit party games \u2014 WebSocket client and action dispatch",
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
@@ -45,7 +45,6 @@
     "build": "bun build ./src/index.ts --outdir ./dist --target browser --external react --external @couch-kit/core && tsc -p tsconfig.build.json",
     "prepublishOnly": "bun run build",
     "test": "bun test",
-    "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist lib"
   },

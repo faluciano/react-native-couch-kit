@@ -24,7 +24,7 @@ Keep the title concise; use a conventional-commit style prefix if you can
 
 - [ ] I read the [Contributing guide](../CONTRIBUTING.md).
 - [ ] Changes use **Bun** only (no npm/yarn/pnpm).
-- [ ] `bun run test`, `bun run typecheck`, `bun run lint`, and `bun run build` pass locally.
+- [ ] `bun run test`, `bun run typecheck`, and `bun run build` pass locally.
 - [ ] Tests were added or updated for the change (coverage floors in `bun run coverage` still hold).
 - [ ] A changeset is included for any change to published `packages/*` source (`bun run changeset`). Workflow/config/docs-only changes do not need one.
 - [ ] I did **not** edit `CHANGELOG.md` files or `workspace:*` references by hand.

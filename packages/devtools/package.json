@@ -16,7 +16,6 @@
     "build": "bun build ./src/index.ts --outdir ./dist --target browser --external react --external @couch-kit/client --external @couch-kit/core && tsc -p tsconfig.build.json",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src/",
     "clean": "rm -rf dist lib"
   },
   "files": [

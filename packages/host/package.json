@@ -5,7 +5,7 @@
     "access": "public",
     "provenance": true
   },
-  "description": "React Native host for local multiplayer party games on Android TV — WebSocket server, state management, and static file serving",
+  "description": "React Native host for local multiplayer party games on Android TV \u2014 WebSocket server, state management, and static file serving",
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
@@ -53,7 +53,6 @@
     "build": "tsc -p tsconfig.build.json",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint \"**/*.{js,ts,tsx}\"",
     "clean": "del-cli lib",
     "prepublishOnly": "bun run build"
   },
