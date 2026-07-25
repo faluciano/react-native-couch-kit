@@ -31,8 +31,8 @@ Room codes are case-insensitive; `RelayRooms` canonicalises them.
 No Cloudflare account needed — `wrangler dev` runs the real runtime locally:
 
 ```bash
-npm install
-npx wrangler dev --local     # http://localhost:8787
+bun install
+bunx wrangler dev --local    # http://localhost:8787
 ```
 
 ## Deployment
@@ -54,8 +54,14 @@ Settings → Build**:
    Cloudflare GitHub App).
 2. Set **root directory** to `services/relay-worker`.
 3. Set the production **branch** to `main`.
-4. Optionally set the build command to `npm ci && npx tsc --noEmit` so a type
-   error fails the build before it deploys.
+4. Set the build command to `bun install --frozen-lockfile && bunx tsc --noEmit`
+   so a type error fails the build before it deploys, and the deploy command to
+   `bunx wrangler deploy`.
+
+Cloudflare's build image picks the package manager from the lockfile, and this
+package ships a `bun.lock` — the same toolchain as the rest of the repo. If a
+build ever reports `bun: not found`, the image failed to detect it; `npm` works
+as a fallback.
 
 After that, every push to `main` that touches this Worker deploys itself, and
 pull requests get build status reported back on the PR.
@@ -63,5 +69,5 @@ pull requests get build status reported back on the PR.
 Manual deploy, if you ever need one (requires `wrangler login`):
 
 ```bash
-npx wrangler deploy
+bunx wrangler deploy
 ```

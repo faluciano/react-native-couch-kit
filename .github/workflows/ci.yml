@@ -61,8 +61,8 @@ jobs:
       - name: Typecheck Cloudflare Worker
         working-directory: services/relay-worker
         run: |
-          npm ci
-          npx tsc --noEmit
+          bun install --frozen-lockfile
+          bunx tsc --noEmit
 
   build:
     runs-on: ubuntu-latest
