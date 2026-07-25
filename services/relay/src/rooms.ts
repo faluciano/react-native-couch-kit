@@ -67,6 +67,18 @@ export function byteLength(data: string): number {
   return new TextEncoder().encode(data).length;
 }
 
+/**
+ * Canonical form of a room code.
+ *
+ * Room codes are read off a TV and typed or scanned on a phone, so they are
+ * case-insensitive: `6dx8` and `6DX8` are the same room. Normalizing here — in
+ * the one place that owns room identity — keeps every caller agreeing, whether
+ * the code arrived in a URL or in a `CREATE_ROOM` / `JOIN_ROOM` message.
+ */
+export function normalizeRoomId(roomId: string): string {
+  return roomId.toUpperCase();
+}
+
 /** A single relay connection: an id plus a way to push a raw string to it. */
 export interface RelayConnection {
   id: string;
@@ -128,7 +140,8 @@ export class RelayRooms {
       readonly role: "host" | "player";
     }[],
   ): void {
-    for (const { conn, roomId, role } of entries) {
+    for (const { conn, roomId: raw, role } of entries) {
+      const roomId = normalizeRoomId(raw);
       let room = this.rooms.get(roomId);
       if (!room && role === "host") {
         room = { host: conn, players: new Map() };
@@ -140,7 +153,7 @@ export class RelayRooms {
     // still lands in the room.
     for (const { conn, roomId, role } of entries) {
       if (role !== "player") continue;
-      this.rooms.get(roomId)?.players.set(conn.id, conn);
+      this.rooms.get(normalizeRoomId(roomId))?.players.set(conn.id, conn);
     }
   }
 
@@ -225,11 +238,12 @@ export class RelayRooms {
     }
   }
 
-  private createRoom(conn: RelayConnection, roomId?: string): void {
-    if (!roomId) {
+  private createRoom(conn: RelayConnection, rawRoomId?: string): void {
+    if (!rawRoomId) {
       this.sendError(conn, RelayErrorCodes.MALFORMED, "Missing roomId");
       return;
     }
+    const roomId = normalizeRoomId(rawRoomId);
     if (this.rooms.has(roomId)) {
       this.sendError(conn, RelayErrorCodes.ROOM_EXISTS, "Room already exists");
       return;
@@ -247,11 +261,12 @@ export class RelayRooms {
     });
   }
 
-  private joinRoom(conn: RelayConnection, roomId?: string): void {
-    if (!roomId) {
+  private joinRoom(conn: RelayConnection, rawRoomId?: string): void {
+    if (!rawRoomId) {
       this.sendError(conn, RelayErrorCodes.MALFORMED, "Missing roomId");
       return;
     }
+    const roomId = normalizeRoomId(rawRoomId);
     const room = this.rooms.get(roomId);
     if (!room) {
       this.sendError(conn, RelayErrorCodes.ROOM_NOT_FOUND, "Room not found");
