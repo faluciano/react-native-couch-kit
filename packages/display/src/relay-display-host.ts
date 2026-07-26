@@ -23,8 +23,23 @@ export interface RelayDisplayHostOptions<S extends IGameState, A extends IAction
   extends GameHostRuntimeConfig<S, A> {
   /** WebSocket URL of the shared relay server. */
   url: string;
-  /** Room code phones will use to reach this display. */
-  roomId: string;
+  /**
+   * Room code phones will use to reach this display.
+   *
+   * Omit it — the normal case — and the relay allocates one, reporting it via
+   * {@link RelayDisplayHostOptions.onRoomCode} and {@link RelayDisplayHost.roomCode}.
+   * Only the relay can tell whether a code is already in use, so a code chosen
+   * here may be rejected as `ROOM_EXISTS`; supply one only when something
+   * outside the relay already fixed it.
+   */
+  roomId?: string;
+  /**
+   * Called once the room exists and its code is known.
+   *
+   * A minted code is not available synchronously, so a display renders a
+   * placeholder until this fires — roughly a round trip to the relay.
+   */
+  onRoomCode?: (roomCode: string) => void;
 }
 
 /**
@@ -47,21 +62,27 @@ export interface RelayDisplayHostOptions<S extends IGameState, A extends IAction
 export class RelayDisplayHost<S extends IGameState, A extends IAction> {
   private readonly runtime: GameHostRuntime<S, A>;
   private readonly ws: WebSocket;
-  private readonly roomId: string;
+  /** Null until the relay confirms the room, when the code is relay-assigned. */
+  private assignedRoomId: string | null;
+  private readonly onRoomCode?: (roomCode: string) => void;
   /** Connected phone connection ids (relay peer ids). */
   private readonly peers = new Set<string>();
 
   constructor(options: RelayDisplayHostOptions<S, A>) {
-    const { url, roomId, ...runtimeConfig } = options;
-    this.roomId = roomId;
+    const { url, roomId, onRoomCode, ...runtimeConfig } = options;
+    this.assignedRoomId = roomId ?? null;
+    this.onRoomCode = onRoomCode;
     this.runtime = new GameHostRuntime<S, A>(runtimeConfig);
     this.ws = new WebSocket(relayRoomUrl(url, roomId));
 
     this.ws.onopen = () => {
+      // No roomId asks the relay to allocate one. Sending the field as
+      // undefined omits it from the JSON, which is what the relay reads as
+      // "you pick".
       this.ws.send(
         JSON.stringify({
           type: RelayMessageTypes.CREATE_ROOM,
-          roomId: this.roomId,
+          roomId: this.assignedRoomId ?? undefined,
         }),
       );
     };
@@ -89,6 +110,15 @@ export class RelayDisplayHost<S extends IGameState, A extends IAction> {
     this.runtime.setTransport(transport);
   }
 
+  /**
+   * The room code phones join with, or `null` before the relay has assigned
+   * one. See {@link RelayDisplayHostOptions.onRoomCode} to be told when it
+   * arrives.
+   */
+  get roomCode(): string | null {
+    return this.assignedRoomId;
+  }
+
   /** Current authoritative game state. */
   getState = (): S => this.runtime.getState();
 
@@ -109,7 +139,10 @@ export class RelayDisplayHost<S extends IGameState, A extends IAction> {
   private sendEnvelope(message: HostMessage, to?: string): void {
     const envelope: Record<string, unknown> = {
       type: RelayMessageTypes.DATA,
-      roomId: this.roomId,
+      // The relay routes by the sender's membership, not this field, so it is
+      // only ever informational — and nothing is sent before a peer joins,
+      // which cannot happen until the room exists.
+      roomId: this.assignedRoomId ?? undefined,
       data: JSON.stringify(message),
     };
     if (to !== undefined) envelope.to = to;
@@ -147,10 +180,16 @@ export class RelayDisplayHost<S extends IGameState, A extends IAction> {
           );
         break;
       }
+      case RelayMessageTypes.ROOM_CREATED:
+        // Carries the code when the relay chose it, and confirms the code when
+        // the caller supplied one.
+        this.assignedRoomId = msg.roomId;
+        this.onRoomCode?.(msg.roomId);
+        break;
       case RelayMessageTypes.ERROR:
         this.runtime.handleError(new Error(msg.message));
         break;
-      // ROOM_CREATED / ROOM_JOINED are acknowledgements; no action needed.
+      // ROOM_JOINED is an acknowledgement; no action needed.
     }
   }
 }

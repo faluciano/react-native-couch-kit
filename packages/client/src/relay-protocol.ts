@@ -144,12 +144,27 @@ export type RelayMessage = RelayClientMessage | RelayServerMessage;
  * that keep every room in one process (the Bun reference server) ignore the
  * path, so this is safe to send to either.
  *
+ * Passing no room code addresses {@link RELAY_MINT_PATH} instead, asking the
+ * relay to allocate one; the code comes back in `ROOM_CREATED`.
+ *
  * @param url - Base relay URL, e.g. `wss://relay.example.com`.
- * @param roomId - Room code to address.
+ * @param roomId - Room code to address, or omitted to have one minted.
  */
-export function relayRoomUrl(url: string, roomId: string): string {
+export function relayRoomUrl(url: string, roomId?: string): string {
   const trimmed = url.replace(/\/+$/, "");
   const [base, query] = trimmed.split("?", 2);
-  const path = `${base}/r/${encodeURIComponent(roomId)}`;
+  const path =
+    roomId === undefined
+      ? `${base}${RELAY_MINT_PATH}`
+      : `${base}/r/${encodeURIComponent(roomId)}`;
   return query ? `${path}?${query}` : path;
 }
+
+/**
+ * Path that asks the relay to allocate a room code.
+ *
+ * Reserved, so it can never be mistaken for a room code. Single-process relays
+ * ignore the path and mint from the `CREATE_ROOM` message alone; sharded relays
+ * need it, because they must choose the shard before any frame arrives.
+ */
+export const RELAY_MINT_PATH = "/new";

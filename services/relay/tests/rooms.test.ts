@@ -4,6 +4,9 @@ import {
   RelayMessageTypes,
   RelayErrorCodes,
   MAX_MESSAGE_BYTES,
+  generateRoomCode,
+  ROOM_CODE_ALPHABET,
+  ROOM_CODE_LENGTH,
   type RelayConnection,
 } from "../src/rooms";
 
@@ -357,5 +360,117 @@ describe("room code case", () => {
     player.sent.length = 0;
     rooms.handleMessage(host, JSON.stringify({ type: "DATA", data: "s" }));
     expect(player.sent[0]).toMatchObject({ type: RelayMessageTypes.DATA, data: "s" });
+  });
+});
+
+describe("minted room codes", () => {
+  const create = (rooms: RelayRooms, c: ReturnType<typeof conn>) =>
+    rooms.handleMessage(c, JSON.stringify({ type: "CREATE_ROOM" }));
+
+  test("a CREATE_ROOM with no code gets one from the relay", () => {
+    const rooms = new RelayRooms();
+    const host = conn("h");
+    create(rooms, host);
+
+    expect(rooms.roomCount).toBe(1);
+    expect(host.sent).toHaveLength(1);
+    expect(host.sent[0].type).toBe(RelayMessageTypes.ROOM_CREATED);
+    // The host has no other way to learn the code, so it must come back here.
+    expect(host.sent[0].roomId).toMatch(
+      new RegExp(`^[${ROOM_CODE_ALPHABET}]{${ROOM_CODE_LENGTH}}$`),
+    );
+  });
+
+  test("players can join a minted code", () => {
+    const rooms = new RelayRooms();
+    const host = conn("h");
+    create(rooms, host);
+    const code = host.sent[0].roomId;
+
+    const player = conn("p");
+    rooms.handleMessage(
+      player,
+      JSON.stringify({ type: "JOIN_ROOM", roomId: code }),
+    );
+    expect(player.sent[0]).toEqual({
+      type: RelayMessageTypes.ROOM_JOINED,
+      roomId: code,
+      peerId: "p",
+    });
+  });
+
+  test("minted codes are case-insensitive to join, like typed ones", () => {
+    const rooms = new RelayRooms();
+    const host = conn("h");
+    create(rooms, host);
+
+    const player = conn("p");
+    rooms.handleMessage(
+      player,
+      JSON.stringify({
+        type: "JOIN_ROOM",
+        roomId: host.sent[0].roomId.toLowerCase(),
+      }),
+    );
+    expect(player.sent[0].type).toBe(RelayMessageTypes.ROOM_JOINED);
+  });
+
+  test("does not hand the same code to two rooms", () => {
+    const rooms = new RelayRooms({ maxRooms: 200 });
+    const codes = new Set<string>();
+    for (let i = 0; i < 200; i++) {
+      const host = conn(`h${i}`);
+      create(rooms, host);
+      codes.add(host.sent[0].roomId);
+    }
+    expect(codes.size).toBe(200);
+    expect(rooms.roomCount).toBe(200);
+  });
+
+  test("a relay that cannot find a free code says so instead of colliding", () => {
+    // Mint hook that always returns a code already in use, standing in for a
+    // keyspace so full that every candidate collides.
+    const rooms = new RelayRooms({}, Date.now, () => null);
+    const host = conn("h");
+    create(rooms, host);
+
+    expect(rooms.roomCount).toBe(0);
+    expect(host.sent[0]).toMatchObject({
+      type: RelayMessageTypes.ERROR,
+      code: RelayErrorCodes.SERVER_BUSY,
+    });
+  });
+
+  test("a caller-supplied code still works, and still collides", () => {
+    const rooms = new RelayRooms();
+    rooms.handleMessage(
+      conn("h"),
+      JSON.stringify({ type: "CREATE_ROOM", roomId: "FIXED" }),
+    );
+    const second = conn("h2");
+    rooms.handleMessage(
+      second,
+      JSON.stringify({ type: "CREATE_ROOM", roomId: "FIXED" }),
+    );
+    expect(second.sent[0]).toMatchObject({
+      code: RelayErrorCodes.ROOM_EXISTS,
+    });
+  });
+});
+
+describe("generateRoomCode", () => {
+  test("uses only unambiguous characters", () => {
+    for (let i = 0; i < 200; i++) {
+      // O/0 and I/1 are the pairs people misread off a TV.
+      expect(generateRoomCode()).not.toMatch(/[O0I1]/);
+    }
+  });
+
+  test("does not repeat itself", () => {
+    const codes = new Set(
+      Array.from({ length: 1000 }, () => generateRoomCode()),
+    );
+    // Birthday collisions at 1000 draws from 32^6 are ~0.0005% likely.
+    expect(codes.size).toBe(1000);
   });
 });

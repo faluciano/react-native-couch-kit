@@ -103,8 +103,9 @@ sequenceDiagram
   participant R as 🔀 Relay
   participant D as 🖥️ Display
 
-  D->>R: CREATE_ROOM { roomId }
-  R-->>D: ROOM_CREATED
+  D->>R: CREATE_ROOM
+  Note over R: mints an unused code
+  R-->>D: ROOM_CREATED { roomId }
 
   P->>R: JOIN_ROOM { roomId }
   R-->>P: ROOM_JOINED
@@ -143,6 +144,35 @@ with no default** — the SDK never routes your players through someone else's
 server. Two implementations ship in `services/`: a Cloudflare Worker
 (`relay-worker`, one Durable Object per room) and a single-process Bun server
 (`relay`) for self-hosting.
+
+### Room codes
+
+The relay assigns the code; a display does not invent one. Only the relay can
+tell whether a code is already in use, so a self-chosen code can collide with a
+live game — and it is already on screen by the time anyone finds out.
+
+```ts
+new RelayDisplayHost({
+  url: RELAY_URL,
+  onRoomCode: setRoomCode, // arrives one round trip after connecting
+  reducer,
+  initialState,
+});
+```
+
+Codes are six characters from a 32-character alphabet that omits `O`/`0` and
+`I`/`1`, drawn from the CSPRNG: about 1.07 billion of them, so guessing your way
+into a live game is impractical. Pass `roomId` to keep a fixed code anyway — the
+relay will reject it with `ROOM_EXISTS` if it is taken.
+
+How a code gets reserved differs by relay, and only inside the relay:
+
+- **Bun** holds every room in one table and checks candidates against it.
+- **Workers** has no such table by design. The router offers a candidate to the
+  Durable Object that *would* own it; being single-threaded, that object can
+  answer "already hosting" atomically, and the router retries on a collision.
+  Reservation rides along with the WebSocket upgrade, so there is no extra round
+  trip, and a code frees itself when its object empties.
 
 ## Non-goals
 
@@ -424,7 +454,7 @@ yalc add @couch-kit/core @couch-kit/runtime @couch-kit/client @couch-kit/host
 bun install
 ```
 
-> **Note:** We do not use the `--link` flag. Keeping the default `file:` protocol ensures files are copied _inside_ your project root, which allows Metro Bundler to watch them correctly without extra configuration.
+> **Note:** We do not use the `--link` flag. Keeping the default `file:` protocol ensures files are copied *inside* your project root, which allows Metro Bundler to watch them correctly without extra configuration.
 
 **Iterating:**
 

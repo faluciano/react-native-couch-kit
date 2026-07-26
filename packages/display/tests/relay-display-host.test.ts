@@ -217,3 +217,111 @@ describe("RelayDisplayHost", () => {
     expect(ws.closed).toBe(true);
   });
 });
+
+describe("relay-assigned room codes", () => {
+  /** A host that lets the relay pick the code. */
+  function makeMintingHost() {
+    const codes: string[] = [];
+    const host = new RelayDisplayHost<TestState, TestAction>({
+      url: "wss://relay.test",
+      onRoomCode: (code) => codes.push(code),
+      reducer,
+      initialState,
+      stateThrottleMs: 1,
+    });
+    return { host, ws: MockWebSocket.last!, codes };
+  }
+
+  test("addresses the mint path when no code is supplied", () => {
+    const { ws } = makeMintingHost();
+    // A sharded relay picks the object before reading any frame, so "give me a
+    // room" has to be visible in the URL and cannot look like a room code.
+    expect(ws.url).toBe("wss://relay.test/new");
+  });
+
+  test("asks the relay to choose, rather than naming a code", () => {
+    const { ws } = makeMintingHost();
+    ws.open();
+    // An absent roomId is what the relay reads as "you pick"; sending null or
+    // an empty string would be rejected as malformed.
+    expect(ws.frames()).toEqual([{ type: RelayMessageTypes.CREATE_ROOM }]);
+  });
+
+  test("reports the code once the relay assigns it", () => {
+    const { host, ws, codes } = makeMintingHost();
+    ws.open();
+    expect(host.roomCode).toBeNull();
+
+    ws.fromServer({
+      type: RelayMessageTypes.ROOM_CREATED,
+      roomId: "K7M2QX",
+      peerId: "h",
+    });
+
+    expect(codes).toEqual(["K7M2QX"]);
+    expect(host.roomCode).toBe("K7M2QX");
+  });
+
+  test("still addresses a caller-supplied code directly", () => {
+    const { host, ws } = makeHost();
+    expect(ws.url).toBe("wss://relay.test/r/ROOM");
+    expect(host.roomCode).toBe("ROOM");
+  });
+
+  test("confirms a caller-supplied code when the relay acknowledges it", () => {
+    const seen: string[] = [];
+    const host = new RelayDisplayHost<TestState, TestAction>({
+      url: "wss://relay.test",
+      roomId: "ROOM",
+      onRoomCode: (code) => seen.push(code),
+      reducer,
+      initialState,
+      stateThrottleMs: 1,
+    });
+    const ws = MockWebSocket.last!;
+    ws.open();
+    ws.fromServer({
+      type: RelayMessageTypes.ROOM_CREATED,
+      roomId: "ROOM",
+      peerId: "h",
+    });
+
+    expect(seen).toEqual(["ROOM"]);
+    expect(host.roomCode).toBe("ROOM");
+  });
+
+  test("routes game traffic under the assigned code", async () => {
+    const { ws } = makeMintingHost();
+    ws.open();
+    ws.fromServer({
+      type: RelayMessageTypes.ROOM_CREATED,
+      roomId: "K7M2QX",
+      peerId: "h",
+    });
+    ws.sent.length = 0;
+
+    // Nothing is sent before the room exists, so every envelope carries the
+    // minted code rather than the placeholder it started with.
+    ws.fromServer({
+      type: RelayMessageTypes.PEER_JOINED,
+      roomId: "K7M2QX",
+      peerId: "p1",
+    });
+    ws.fromServer({
+      type: RelayMessageTypes.DATA,
+      roomId: "K7M2QX",
+      from: "p1",
+      data: JSON.stringify({
+        type: "JOIN",
+        payload: { secret: SECRET, name: "P1" },
+      }),
+    });
+    await flush();
+
+    const envelopes = ws.frames().filter((f) => f.type === RelayMessageTypes.DATA);
+    expect(envelopes.length).toBeGreaterThan(0);
+    for (const envelope of envelopes) {
+      expect(envelope.roomId).toBe("K7M2QX");
+    }
+  });
+});
