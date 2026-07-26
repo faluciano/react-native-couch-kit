@@ -482,3 +482,122 @@ describe("GameHostRuntime", () => {
     expect(errors[0]?.message).toContain("onPlayerLeft callback failed");
   });
 });
+
+/**
+ * Hidden information must not reach a device that should not see it. Filtering
+ * in the client is a convention players can ignore; projecting here is a rule
+ * they cannot.
+ */
+describe("GameHostRuntime state projection", () => {
+  interface HandState extends IGameState {
+    hands: Record<string, string[]>;
+  }
+
+  const handsInitial: HandState = {
+    status: "playing",
+    players: {},
+    hands: { seat: ["ACE", "KING"] },
+  };
+
+  const handsReducer = (state: HandState): HandState => state;
+
+  /** Each player sees only their own hand; others' become counts. */
+  const project = (state: HandState, playerId: string) => ({
+    ...state,
+    hands: Object.fromEntries(
+      Object.entries(state.hands).map(([id, cards]) => [
+        id,
+        id === playerId ? cards : cards.map(() => "HIDDEN"),
+      ]),
+    ),
+  });
+
+  function createHandsRuntime(withProjection: boolean) {
+    const transport = new FakeTransport();
+    const runtime = new GameHostRuntime<HandState, { type: "NOOP" }>(
+      {
+        initialState: handsInitial,
+        reducer: handsReducer,
+        stateThrottleMs: 0,
+        disconnectTimeout: 60_000,
+        ...(withProjection ? { project } : {}),
+      },
+      transport,
+    );
+    return { runtime, transport };
+  }
+
+  async function joinHands(
+    runtime: GameHostRuntime<HandState, { type: "NOOP" }>,
+    connectionId: string,
+  ) {
+    runtime.handleConnection(connectionId);
+    await runtime.handleMessage(connectionId, {
+      type: MessageTypes.JOIN,
+      payload: { name: "P", avatar: "gamepad", secret: generateId() },
+    });
+  }
+
+  test("WELCOME carries the projection, not the whole state", async () => {
+    const { runtime, transport } = createHandsRuntime(true);
+    await joinHands(runtime, "conn-1");
+
+    const welcome = transport
+      .sent.get("conn-1")
+      ?.find((m) => m.type === MessageTypes.WELCOME);
+    const state = (welcome?.payload as { state: HandState }).state;
+
+    // The joining player is not "seat", so that hand must be masked.
+    expect(state.hands.seat).toEqual(["HIDDEN", "HIDDEN"]);
+    expect(JSON.stringify(state)).not.toContain("ACE");
+  });
+
+  test("a player's own data survives the projection", async () => {
+    const { runtime, transport } = createHandsRuntime(true);
+    await joinHands(runtime, "conn-1");
+
+    const welcome = transport
+      .sent.get("conn-1")
+      ?.find((m) => m.type === MessageTypes.WELCOME);
+    const { playerId, state } = welcome?.payload as {
+      playerId: string;
+      state: HandState;
+    };
+
+    runtime.dispatch({ type: "NOOP" });
+    // The projection keys off the player id, so their own entry is untouched.
+    expect(project(handsInitial, playerId).hands[playerId]).toBeUndefined();
+    expect(state.hands.seat).toEqual(["HIDDEN", "HIDDEN"]);
+  });
+
+  test("updates are sent per connection, never broadcast", async () => {
+    const { runtime, transport } = createHandsRuntime(true);
+    await joinHands(runtime, "conn-1");
+    await joinHands(runtime, "conn-2");
+
+    transport.broadcasts.length = 0;
+    runtime.dispatch({ type: "NOOP" });
+    // Force a state change so a broadcast is scheduled.
+    await runtime.handleMessage("conn-1", {
+      type: MessageTypes.ACTION,
+      payload: { type: "NOOP" },
+    });
+    await flushBroadcast();
+
+    // A shared frame cannot carry different views, so nothing may be broadcast.
+    expect(transport.broadcasts).toHaveLength(0);
+  });
+
+  test("without a projection, state is broadcast unchanged", async () => {
+    const { runtime, transport } = createHandsRuntime(false);
+    await joinHands(runtime, "conn-1");
+
+    const welcome = transport
+      .sent.get("conn-1")
+      ?.find((m) => m.type === MessageTypes.WELCOME);
+    const state = (welcome?.payload as { state: HandState }).state;
+
+    // Games with no hidden information are unaffected.
+    expect(state.hands.seat).toEqual(["ACE", "KING"]);
+  });
+});

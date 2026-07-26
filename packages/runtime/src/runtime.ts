@@ -36,6 +36,26 @@ export interface GameHostRuntimeConfig<
 > {
   initialState: S;
   reducer: GameReducer<S, A>;
+  /**
+   * Narrows the authoritative state to what one player is allowed to see.
+   *
+   * Without it, every player receives the whole state and any hiding is left to
+   * the client — which makes hidden information a convention rather than a
+   * rule. With it, the data a player must not see never reaches their device:
+   * the runtime sends each connection its own projection instead of one shared
+   * broadcast.
+   *
+   * Omit for games with no hidden information; state is broadcast as before.
+   *
+   * The projection is what clients receive, so their state type is the *view*,
+   * not `S`. A client cannot run the game reducer over a partial view, so
+   * `useGameClient` must be used without a `reducer` (no optimistic updates)
+   * when a projection is configured.
+   *
+   * @param state - Current authoritative state.
+   * @param playerId - Player the projection is for.
+   */
+  project?: (state: S, playerId: string) => unknown;
   debug?: boolean;
   /** Timeout before a disconnected player is permanently removed. */
   disconnectTimeout?: number;
@@ -215,7 +235,7 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
               type: MessageTypes.RECONNECTED,
               payload: {
                 playerId,
-                state: this.state,
+                state: this.viewFor(playerId),
               },
             });
           } else {
@@ -223,7 +243,7 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
               type: MessageTypes.WELCOME,
               payload: {
                 playerId,
-                state: this.state,
+                state: this.viewFor(playerId),
                 serverTime: Date.now(),
               },
             });
@@ -374,13 +394,38 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
     this.broadcastScheduler.schedule(this.broadcastState);
   }
 
+  /**
+   * What `playerId` is allowed to see. Identity unless a projection is
+   * configured, so games without hidden information are unaffected.
+   */
+  private viewFor(playerId: string): unknown {
+    const project = this.config.project;
+    return project ? project(this.state, playerId) : this.state;
+  }
+
   private readonly broadcastState = (): void => {
     if (!this.transport) return;
 
     const actions = this.actionQueue;
     this.actionQueue = [];
     this.stateDirty = false;
-    this.transport.broadcast(createStateUpdateMessage(this.state, actions));
+
+    if (!this.config.project) {
+      this.transport.broadcast(createStateUpdateMessage(this.state, actions));
+      return;
+    }
+
+    // Projected games get one message per connection rather than a broadcast:
+    // a shared frame cannot carry different views. Costs N sends instead of 1,
+    // which is bounded by players-per-room.
+    for (const connectionId of this.joinedConnections) {
+      const playerId = this.sessionManager.getPlayerIdForSocket(connectionId);
+      if (!playerId) continue;
+      this.send(
+        connectionId,
+        createStateUpdateMessage(this.viewFor(playerId), actions),
+      );
+    }
   };
 
   private send(connectionId: string, message: HostMessage): void {
