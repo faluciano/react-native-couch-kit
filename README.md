@@ -11,6 +11,7 @@ Turn an Android TV / Fire TV into a local party-game console and use phones as w
 [![@couch-kit/host](https://img.shields.io/npm/dt/@couch-kit/host?label=%40couch-kit%2Fhost)](https://www.npmjs.com/package/@couch-kit/host)
 [![@couch-kit/client](https://img.shields.io/npm/dt/@couch-kit/client?label=%40couch-kit%2Fclient)](https://www.npmjs.com/package/@couch-kit/client)
 [![@couch-kit/core](https://img.shields.io/npm/dt/@couch-kit/core?label=%40couch-kit%2Fcore)](https://www.npmjs.com/package/@couch-kit/core)
+[![@couch-kit/display](https://img.shields.io/npm/dt/@couch-kit/display?label=%40couch-kit%2Fdisplay)](https://www.npmjs.com/package/@couch-kit/display)
 [![@couch-kit/runtime](https://img.shields.io/npm/dt/@couch-kit/runtime?label=%40couch-kit%2Fruntime)](https://www.npmjs.com/package/@couch-kit/runtime)
 [![@couch-kit/cli](https://img.shields.io/npm/dt/@couch-kit/cli?label=%40couch-kit%2Fcli)](https://www.npmjs.com/package/@couch-kit/cli)
 [![@couch-kit/devtools](https://img.shields.io/npm/dt/@couch-kit/devtools?label=%40couch-kit%2Fdevtools)](https://www.npmjs.com/package/@couch-kit/devtools)
@@ -29,6 +30,10 @@ Turn an Android TV / Fire TV into a local party-game console and use phones as w
 - **Dev workflow:** Iterate on the controller without constantly rebuilding the TV app.
 
 ## How It Works
+
+### LAN mode (default)
+
+The TV serves the controller and owns the game; phones connect to it directly.
 
 ```mermaid
 graph LR
@@ -66,6 +71,50 @@ sequenceDiagram
   loop Heartbeat
     TV-->>P: PING
     P->>TV: PONG
+  end
+```
+
+### Relay mode (cross-network)
+
+A browser display owns the game. Phones reach it by room code, so nobody needs
+to share a network. The relay only routes by room — it never inspects payloads.
+
+```mermaid
+graph LR
+  subgraph PHONES["📱 Phones"]
+    P1["Player 1"]
+    P2["Player 2"]
+  end
+
+  RELAY["🔀 Relay<br/>(one room each)"]
+  DISPLAY["🖥️ Browser display<br/>(owns the game)"]
+
+  P1 & P2 -- "actions ➡" --> RELAY
+  RELAY -- "➡ by room" --> DISPLAY
+  DISPLAY -- "⬅ state updates" --> RELAY
+  RELAY -- "⬅ to the room" --> P1 & P2
+```
+
+The same game protocol runs inside relay envelopes, so the reducer is unchanged:
+
+```mermaid
+sequenceDiagram
+  participant P as 📱 Phone
+  participant R as 🔀 Relay
+  participant D as 🖥️ Display
+
+  D->>R: CREATE_ROOM { roomId }
+  R-->>D: ROOM_CREATED
+
+  P->>R: JOIN_ROOM { roomId }
+  R-->>P: ROOM_JOINED
+  R-->>D: PEER_JOINED { peerId }
+
+  loop Game Loop
+    P->>R: DATA { ACTION }
+    R-->>D: DATA { ACTION, from }
+    D->>R: DATA { STATE_UPDATE }
+    R-->>P: DATA { STATE_UPDATE }
   end
 ```
 
