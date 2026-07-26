@@ -646,6 +646,7 @@ function useGameClient<S extends IGameState, A extends IAction>(
   status: "connecting" | "connected" | "disconnected" | "error";
   state: S;
   playerId: string | null;
+  disconnectReason: string | null;  // relay error code (ROOM_NOT_FOUND, ...) on terminal failures
   sendAction: (action: A) => void;
   getServerTime: () => number;
   rtt: number;
@@ -663,6 +664,51 @@ function useGameClient<S extends IGameState, A extends IAction>(
 5. \`sendAction()\` applies optimistic local update then sends to host
 6. On close, automatically reconnects with exponential backoff (up to \`maxRetries\`)
 7. \`disconnect()\` prevents auto-reconnect; \`reconnect()\` resets attempts and reconnects
+
+### Cross-network play (relay)
+
+By default the controller talks to the TV over the LAN. To let phones join a
+**browser display** from any network, pass a relay transport instead. The relay
+is game-agnostic and routes opaque envelopes by room code; the \`url\` is
+required and has no default.
+
+\`\`\`typescript
+import {
+  useGameClient,
+  createRelayTransport,
+  useRelayRoom,
+  describeRelayError,
+} from "@couch-kit/client";
+
+function App() {
+  const { roomId, setRoomId } = useRelayRoom();  // reads ?room=CODE, syncs the URL
+
+  // Only mount the client once a room exists: with no relay transport it falls
+  // back to the LAN socket and retries a host that a hosted controller cannot have.
+  if (!roomId) return <JoinScreen onJoin={setRoomId} />;
+  return <Controller roomId={roomId} onRejoin={setRoomId} />;
+}
+
+function Controller({ roomId, onRejoin }) {
+  const { state, sendAction, disconnectReason } = useGameClient({
+    reducer, initialState,
+    createTransport: createRelayTransport({ url: RELAY_URL, roomId }),
+  });
+
+  // Terminal room failures are worth explaining; ordinary drops are retried.
+  const joinError = describeRelayError(disconnectReason);
+  if (joinError) return <JoinScreen onJoin={onRejoin} error={joinError} />;
+  // ...
+}
+\`\`\`
+
+- \`useRelayRoom()\` → \`{ roomId, setRoomId, clearRoomId }\`, seeded from \`?room=CODE\` and written back to the URL so reloads and shared links keep it.
+- \`normalizeRoomCode(input)\` canonicalises what people type (\`"ab 12"\`, \`"AB-12"\` → \`"AB12"\`); room codes are case-insensitive end to end.
+- \`describeRelayError(reason)\` turns a relay error code into player-facing text, or \`null\` for an ordinary drop.
+- \`relayRoomUrl(url, roomId)\` builds the socket URL (\`<url>/r/<ROOM>\`); the transports call it for you.
+
+The display side is \`@couch-kit/display\`'s \`RelayDisplayHost\`, which owns the
+authoritative runtime in the browser and speaks the same reducer.
 
 ### calculateTimeSync
 
