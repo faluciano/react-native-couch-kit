@@ -40,6 +40,10 @@ export const RelayErrorCodes = {
   NOT_IN_ROOM: "NOT_IN_ROOM",
   MESSAGE_TOO_LARGE: "MESSAGE_TOO_LARGE",
   MALFORMED: "MALFORMED",
+  /** Connection exceeded the relay's per-connection message rate limit. */
+  RATE_LIMITED: "RATE_LIMITED",
+  /** Relay is at its room capacity. */
+  SERVER_BUSY: "SERVER_BUSY",
 } as const;
 
 export type RelayErrorCode =
