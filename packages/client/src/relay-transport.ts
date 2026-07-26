@@ -40,6 +40,12 @@ export class RelayClientTransport implements ClientTransport {
   private state: number = TransportReadyState.CONNECTING;
   /** When set, the code reported to `onclose` instead of the raw socket code. */
   private pendingCloseCode: number | null = null;
+  /**
+   * Relay error code (e.g. `ROOM_NOT_FOUND`) behind a terminal close, reported
+   * as the close `reason` so the UI can say what actually went wrong instead of
+   * showing an indefinite "connecting".
+   */
+  private pendingCloseReason: string | null = null;
 
   onopen?: () => void;
   onmessage?: (data: string) => void;
@@ -74,7 +80,7 @@ export class RelayClientTransport implements ClientTransport {
     this.ws.onclose = (event: CloseEvent) => {
       this.state = TransportReadyState.CLOSED;
       const code = this.pendingCloseCode ?? event.code;
-      this.onclose?.(code, event.reason);
+      this.onclose?.(code, this.pendingCloseReason ?? event.reason);
     };
 
     this.ws.onerror = (event) => this.onerror?.(event);
@@ -116,8 +122,11 @@ export class RelayClientTransport implements ClientTransport {
         break;
       case RelayMessageTypes.ERROR:
         // Room-level failures are terminal: report a policy close so the client
-        // does not attempt to reconnect, then close the underlying socket.
+        // does not attempt to reconnect, then close the underlying socket. The
+        // relay's code travels along as the reason — "ROOM_NOT_FOUND" is
+        // actionable ("check the code"), a silent hang is not.
         this.pendingCloseCode = POLICY_CLOSE_CODE;
+        this.pendingCloseReason = msg.code;
         this.ws.close();
         break;
       // PEER_JOINED / PEER_LEFT / ROOM_CREATED are host-facing; ignored here.
