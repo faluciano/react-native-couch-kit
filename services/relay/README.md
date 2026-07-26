@@ -61,32 +61,30 @@ Clients speak JSON. `data` is an opaque Couch Kit message string.
 Message constants mirror `@couch-kit/client`'s `relay-protocol.ts`; they are
 duplicated in `src/rooms.ts` to keep this service self-contained.
 
-## Deploy to Azure Container Apps
+## Which relay should I run?
+
+For a hosted, cross-network relay, prefer **[`../relay-worker`](../relay-worker)**
+— Cloudflare Workers + Durable Objects, one object per room. That is what Couch
+Kit itself runs. It has no single-replica ceiling, deploys without dropping live
+games, and hibernates when idle.
+
+This Bun server remains the **reference implementation and the self-host / LAN
+option**: one process, zero dependencies, easy to read and to run anywhere.
+
+## Self-hosting this server
 
 ```bash
-# From this directory:
-az acr build --registry <yourRegistry> --image couch-kit-relay:latest .
-
-az containerapp create \
-  --name couch-kit-relay \
-  --resource-group <rg> \
-  --environment <env> \
-  --image <yourRegistry>.azurecr.io/couch-kit-relay:latest \
-  --target-port 8787 \
-  --ingress external \
-  --transport auto \
-  --min-replicas 1 \
-  --max-replicas 1
+docker build -t couch-kit-relay .
+docker run -p 8787:8787 couch-kit-relay
 ```
 
 Notes:
 
-- **`--min-replicas 1`**: rooms live in memory, so the instance must stay warm
-  (no scale-to-zero) and, for this first slice, run as a **single instance**.
-  Multiple replicas would split rooms across processes — a Redis/Azure Web PubSub
-  backplane is future work.
-- **`--transport auto`** keeps WebSocket upgrades working through the ingress.
-- Point your display + phones at `wss://<app-fqdn>` via the relay `url`.
+- **Run exactly one instance.** Rooms live in memory, so the process must stay
+  warm (no scale-to-zero) and must not be replicated — multiple replicas would
+  split rooms across processes. A backplane is future work; the Durable Object
+  relay sidesteps this entirely by giving each room its own object.
+- Ensure your ingress passes WebSocket upgrades through.
+- Point your display + phones at `wss://<host>` via the relay `url`.
 
-Any container host works (App Service for Containers, Fly, Railway, …); Azure is
-the reference here.
+Any container host works (Fly, Railway, App Service for Containers, …).
