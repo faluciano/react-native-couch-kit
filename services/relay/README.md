@@ -36,8 +36,8 @@ matching the single-instance model). Defaults are generous for party-game scale:
 | Message size                   | 256 KiB | _(code: `MAX_MESSAGE_BYTES`)_ | `MESSAGE_TOO_LARGE` error             |
 
 Set `ALLOWED_ORIGINS` (comma-separated) to reject WebSocket upgrades from other
-origins with `403`; unset (the default) allows any origin, since displays run on
-varying Vercel URLs. The rate/room/player limits are constructor options on
+origins with `403`; unset (the default) allows any origin, since displays are
+hosted at whatever URL each game happens to use. The rate/room/player limits are constructor options on
 `RelayRooms` (see `DEFAULT_LIMITS`); the connection-per-IP cap and origin
 allowlist are read from env in `server.ts`.
 
@@ -48,7 +48,14 @@ codes and auth tokens remain future work.
 
 ## Protocol (summary)
 
-Clients speak JSON. `data` is an opaque Couch Kit message string.
+Clients connect to **`wss://<host>/r/<ROOM>`** and then speak JSON; `data` is an
+opaque Couch Kit message string. The room appears in both the URL and the
+handshake because a per-room relay (the Durable Object one) has to route the
+socket before reading any frame — this server ignores the path, so both work.
+
+**Room codes are case-insensitive.** They get read off a TV and retyped or
+re-scanned, so `ab12` and `AB12` are the same room; `RelayRooms` canonicalises
+them in one place.
 
 | From    | Message                                   | Effect                                  |
 | ------- | ----------------------------------------- | --------------------------------------- |

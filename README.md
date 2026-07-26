@@ -21,6 +21,8 @@ Turn an Android TV / Fire TV into a local party-game console and use phones as w
 
 - **Local-first:** TV runs HTTP (controller) + WebSocket (game) on your LAN.
 - **TV-as-server:** Single source of truth lives on the TV.
+- **Or play cross-network:** a browser display owns the game and phones join by
+  room code through a small, game-agnostic relay — same reducer, no LAN needed.
 - **Shared reducer:** One reducer shared between host + controller.
 - **Time sync + preloading:** Helpers for timing-sensitive games and heavy assets.
 - **Session recovery:** Players automatically get their state back after refreshing or reconnecting.
@@ -69,14 +71,33 @@ sequenceDiagram
 
 ## Prerequisites / Supported
 
-- **Devices:** Android TV / Fire TV (host). Phones run any modern mobile browser (client).
-- **Network:** TV + phones on the same LAN/Wi-Fi. This is not an internet relay.
-- **Ports:** `8080` (HTTP) and `8082` (WebSocket) reachable on the LAN (configurable).
+- **Devices:** Android TV / Fire TV (host), or any browser as the display. Phones run any modern mobile browser (client).
+- **Network:** LAN mode needs TV + phones on the same Wi-Fi. Relay mode does not — see [Two ways to play](#two-ways-to-play).
+- **Ports:** LAN mode uses `8080` (HTTP) and `8082` (WebSocket) on the LAN (configurable).
 - **Native deps:** `@couch-kit/host` requires Expo modules and React Native native modules; it is not a pure-JS package.
+
+## Two ways to play
+
+Both run the **same reducer**; only who hosts the runtime and how phones reach it differ.
+
+| | LAN (default) | Relay (cross-network) |
+| --- | --- | --- |
+| Display | Android TV app (`@couch-kit/host`) | Any browser (`@couch-kit/display`) |
+| Runtime owner | the TV | the browser display |
+| Phones reach it via | direct WebSocket on the LAN | room code through a relay |
+| Same Wi-Fi required | yes | no |
+| Extra infrastructure | none | one relay deployment, shared by every game |
+
+Relay mode is opt-in: pass `createRelayTransport({ url, roomId })` to `useGameClient`
+and run the display with `RelayDisplayHost`. The relay `url` is **required config
+with no default** — the SDK never routes your players through someone else's
+server. Two implementations ship in `services/`: a Cloudflare Worker
+(`relay-worker`, one Durable Object per room) and a single-process Bun server
+(`relay`) for self-hosting.
 
 ## Non-goals
 
-- Internet matchmaking / relay servers
+- Matchmaking or lobby discovery — relay rooms are reached by a code you share, not browsed
 - Anti-cheat, account systems, payments
 - Hard security guarantees on untrusted networks
 
@@ -383,8 +404,16 @@ When you make changes to the library:
 | **`@couch-kit/runtime`**  | Owns authoritative game state, sessions, authorization, and transport-neutral protocol processing. |
 | **`@couch-kit/host`**     | React Native adapter that provides the LAN WebSocket/static servers and renders the TV display.    |
 | **`@couch-kit/client`**   | Runs on the phone browser. Connects to the host and renders the controller UI.                     |
+| **`@couch-kit/display`**  | Browser display that owns the runtime and reaches phones through the relay (`RelayDisplayHost`).   |
 | **`@couch-kit/cli`**      | CLI tools to scaffold, bundle, and simulate web controllers.                                       |
 | **`@couch-kit/devtools`** | Optional debug overlay component for web controllers.                                              |
+
+Not published, but part of the repo:
+
+| Service | Purpose |
+| --- | --- |
+| **`services/relay-worker`** | The relay on Cloudflare Workers — one Durable Object per room. What Couch Kit runs. |
+| **`services/relay`** | The same relay as a single-process Bun server: reference implementation and self-host option. |
 
 ## 🔄 Release Flow
 
