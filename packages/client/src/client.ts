@@ -29,7 +29,17 @@ import {
 export interface ClientConfig<S extends IGameState, A extends IAction> {
   url?: string; // Full WebSocket URL (overrides auto-detection)
   wsPort?: number; // WebSocket port (default: auto-detected as HTTP port + 2)
-  reducer: (state: S, action: A) => S;
+  /**
+   * Applies actions locally for an optimistic update before the host confirms.
+   *
+   * **Omit it when the host projects state per player** (`project` in
+   * `GameHostRuntimeConfig`): the client then holds a *view* rather than the
+   * whole state, and the game reducer cannot run over a partial view. Without a
+   * reducer the client simply renders what the host sends — a round trip that
+   * is imperceptible for turn-based games, and the price of hidden information
+   * never reaching the device.
+   */
+  reducer?: (state: S, action: A) => S;
   initialState: S;
   name?: string; // Player display name (default: "Player")
   avatar?: string; // Player avatar emoji (default: "\u{1F600}")
@@ -83,9 +93,11 @@ export function useGameClient<S extends IGameState, A extends IAction>(
   const [disconnectReason, setDisconnectReason] = useState<string | null>(null);
 
   // Local Optimistic State
-  // Wrap the user's reducer with createGameReducer to handle HYDRATE automatically
+  // Wrap the user's reducer with createGameReducer to handle HYDRATE automatically.
+  // With no reducer (server-projected views) the identity function keeps HYDRATE
+  // working while local application becomes a no-op.
   const [state, dispatchLocal] = useReducer(
-    createGameReducer(config.reducer),
+    createGameReducer(config.reducer ?? ((current: S) => current)),
     config.initialState,
   );
 
