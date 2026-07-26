@@ -15,11 +15,25 @@
 
 import { RelayRooms, type RelayConnection } from "../../relay/src/rooms";
 
+/**
+ * Header carrying a candidate room code from the router to the object that
+ * would own it. Declared here, with the object that answers it, because the
+ * router already imports this module.
+ */
+export const ASSIGNED_CODE_HEADER = "X-Assigned-Room";
+
 /** Per-socket state that must outlive hibernation. */
 interface Attachment {
   peerId: string;
   roomId?: string;
   role?: "host" | "player";
+  /**
+   * Code the router claimed for this socket, before the core has seen a
+   * `CREATE_ROOM`. Kept on the socket rather than in storage so an object that
+   * hibernates and wakes still knows what it was called, with no writes and
+   * nothing to clean up.
+   */
+  assignedCode?: string;
 }
 
 export class RelayRoom implements DurableObject {
@@ -37,7 +51,12 @@ export class RelayRoom implements DurableObject {
   private rooms(): RelayRooms {
     if (this.core) return this.core;
 
-    const core = new RelayRooms({ maxRooms: 1 });
+    // The core's default minting scans a table of every room, which a single
+    // room cannot do. The router already claimed a code for us, so hand that
+    // back instead.
+    const core = new RelayRooms({ maxRooms: 1 }, Date.now, () =>
+      this.claimedCode(),
+    );
     const entries: {
       conn: RelayConnection;
       roomId: string;
@@ -58,6 +77,27 @@ export class RelayRoom implements DurableObject {
 
     this.core = core;
     return core;
+  }
+
+  /** The code the router claimed for this object, read back off the sockets. */
+  private claimedCode(): string | null {
+    for (const ws of this.ctx.getWebSockets()) {
+      const code = this.attachment(ws)?.assignedCode;
+      if (code) return code;
+    }
+    return null;
+  }
+
+  /**
+   * Whether this object already represents a live room.
+   *
+   * Hibernated sockets are still returned here, so a room that is merely idle
+   * — a lobby waiting for players — correctly counts as occupied. When the last
+   * socket goes, the object empties and its code becomes available again, which
+   * is what keeps the keyspace from filling up with nothing.
+   */
+  private occupied(): boolean {
+    return this.ctx.getWebSockets().length > 0;
   }
 
   private attachment(ws: WebSocket): Attachment | null {
@@ -86,13 +126,25 @@ export class RelayRoom implements DurableObject {
       return new Response("Expected WebSocket upgrade", { status: 426 });
     }
 
+    // A claim for a code this object cannot give out. Refusing here — before
+    // any socket is accepted — is the whole collision check: this object runs
+    // single-threaded, so no concurrent claim can slip between the test and
+    // the accept below.
+    const assignedCode = request.headers.get(ASSIGNED_CODE_HEADER);
+    if (assignedCode !== null && this.occupied()) {
+      return new Response("Room code taken", { status: 409 });
+    }
+
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
 
     // acceptWebSocket (not server.accept) is what opts this object into
     // hibernation: the runtime keeps the socket while evicting us.
     this.ctx.acceptWebSocket(server);
-    server.serializeAttachment({ peerId: crypto.randomUUID() } satisfies Attachment);
+    server.serializeAttachment({
+      peerId: crypto.randomUUID(),
+      ...(assignedCode !== null ? { assignedCode } : {}),
+    } satisfies Attachment);
 
     return new Response(null, { status: 101, webSocket: client });
   }

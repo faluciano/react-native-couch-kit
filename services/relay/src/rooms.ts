@@ -79,6 +79,47 @@ export function normalizeRoomId(roomId: string): string {
   return roomId.toUpperCase();
 }
 
+/**
+ * Room-code alphabet: no O/0 or I/1, which people confuse when copying a code
+ * off a TV across the room.
+ */
+export const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+/**
+ * Length of a minted room code. 32^6 ≈ 1.07e9, so even a relay hosting a
+ * million concurrent rooms leaves a blind guess ~0.1% likely to reach a live
+ * game. The code is the only credential a player needs, so the keyspace has to
+ * stay far larger than the number of live rooms.
+ */
+export const ROOM_CODE_LENGTH = 6;
+
+/**
+ * A random room code.
+ *
+ * Uses the CSPRNG rather than `Math.random`, whose output is predictable from
+ * previous draws — codes are guessable enough without handing out the sequence.
+ * The alphabet is 32 characters and 256 is a whole multiple of it, so taking
+ * bytes modulo the length is unbiased.
+ */
+export function generateRoomCode(length: number = ROOM_CODE_LENGTH): string {
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
+  let code = "";
+  for (const byte of bytes) {
+    code += ROOM_CODE_ALPHABET[byte % ROOM_CODE_ALPHABET.length];
+  }
+  return code;
+}
+
+/**
+ * How many codes to try before giving up on minting.
+ *
+ * Each attempt fails only on a collision, so with the keyspace far larger than
+ * the live-room count the first attempt essentially always wins; this bound
+ * only matters if a relay is somehow near capacity.
+ */
+const MINT_ATTEMPTS = 5;
+
 /** A single relay connection: an id plus a way to push a raw string to it. */
 export interface RelayConnection {
   id: string;
@@ -109,9 +150,35 @@ export class RelayRooms {
   private readonly limits: RelayLimits;
   private readonly now: () => number;
 
-  constructor(limits: Partial<RelayLimits> = {}, now: () => number = Date.now) {
+  /** Supplies the code for a `CREATE_ROOM` that did not name one. */
+  private readonly mintRoomCode: () => string | null;
+
+  constructor(
+    limits: Partial<RelayLimits> = {},
+    now: () => number = Date.now,
+    /**
+     * Overrides how an unnamed room gets its code.
+     *
+     * The default suits a relay that holds every room in one table: generate a
+     * code and check it against that table. A sharded relay cannot do that —
+     * a Cloudflare Durable Object *is* a single room and has no view of the
+     * others — so it claims the code before the socket ever reaches the core
+     * and passes the result in here.
+     */
+    mintRoomCode?: () => string | null,
+  ) {
     this.limits = { ...DEFAULT_LIMITS, ...limits };
     this.now = now;
+    this.mintRoomCode = mintRoomCode ?? (() => this.mintUnusedCode());
+  }
+
+  /** A code no room in this table is using, or `null` if repeated tries collided. */
+  private mintUnusedCode(): string | null {
+    for (let attempt = 0; attempt < MINT_ATTEMPTS; attempt++) {
+      const code = generateRoomCode();
+      if (!this.rooms.has(code)) return code;
+    }
+    return null;
   }
 
   get roomCount(): number {
@@ -239,8 +306,16 @@ export class RelayRooms {
   }
 
   private createRoom(conn: RelayConnection, rawRoomId?: string): void {
+    // No code named: the relay picks one. This is the path displays use — a
+    // client-chosen code cannot be checked for collisions before it is already
+    // on screen, and lets a caller squat on a code someone else is using.
     if (!rawRoomId) {
-      this.sendError(conn, RelayErrorCodes.MALFORMED, "Missing roomId");
+      const minted = this.mintRoomCode();
+      if (minted === null) {
+        this.sendError(conn, RelayErrorCodes.SERVER_BUSY, "Could not mint a room code");
+        return;
+      }
+      this.openRoom(conn, minted);
       return;
     }
     const roomId = normalizeRoomId(rawRoomId);
@@ -252,6 +327,11 @@ export class RelayRooms {
       this.sendError(conn, RelayErrorCodes.SERVER_BUSY, "Too many rooms");
       return;
     }
+    this.openRoom(conn, roomId);
+  }
+
+  /** Registers the room and tells the host its code. */
+  private openRoom(conn: RelayConnection, roomId: string): void {
     this.rooms.set(roomId, { host: conn, players: new Map() });
     this.membership.set(conn.id, { roomId, role: "host" });
     this.send(conn, {
