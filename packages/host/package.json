@@ -1,11 +1,11 @@
 {
   "name": "@couch-kit/host",
-  "version": "1.7.14",
+  "version": "1.7.15",
   "publishConfig": {
     "access": "public",
     "provenance": true
   },
-  "description": "React Native host for local multiplayer party games on Android TV \u2014 WebSocket server, state management, and static file serving",
+  "description": "React Native host for local multiplayer party games on Android TV — WebSocket server, state management, and static file serving",
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
