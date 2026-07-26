@@ -76,6 +76,11 @@ export function useGameClient<S extends IGameState, A extends IAction>(
     "connecting" | "connected" | "disconnected" | "error"
   >("disconnected");
   const [playerId, setPlayerId] = useState<string | null>(null);
+  /**
+   * Why the last connection ended, when the transport knows. For the relay this
+   * is a {@link RelayErrorCodes} value such as `ROOM_NOT_FOUND`.
+   */
+  const [disconnectReason, setDisconnectReason] = useState<string | null>(null);
 
   // Local Optimistic State
   // Wrap the user's reducer with createGameReducer to handle HYDRATE automatically
@@ -195,8 +200,12 @@ export function useGameClient<S extends IGameState, A extends IAction>(
       }
     };
 
-    transport.onclose = (code) => {
+    transport.onclose = (code, reason) => {
       setStatus("disconnected");
+      // Terminal room-level failures carry a relay error code (ROOM_NOT_FOUND,
+      // ROOM_FULL, …). Surfacing it lets the UI explain the failure rather than
+      // sit on "connecting" forever.
+      setDisconnectReason(reason ? reason : null);
       configRef.current.onDisconnect?.();
 
       // Don't reconnect if the close was intentional or if the server
@@ -294,6 +303,12 @@ export function useGameClient<S extends IGameState, A extends IAction>(
     status,
     state,
     playerId,
+    /**
+     * Why the last connection ended, if the transport reported a cause — for
+     * the relay, a `RelayErrorCodes` value like `ROOM_NOT_FOUND` or `ROOM_FULL`.
+     * `null` when connected or when the cause is unknown.
+     */
+    disconnectReason,
     sendAction,
     getServerTime,
     /** Round-trip time (ms) to the server. Updated periodically via PING/PONG. */

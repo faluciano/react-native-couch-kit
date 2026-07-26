@@ -3,6 +3,7 @@ export * from "./connection";
 export * from "./transport";
 export * from "./relay-protocol";
 export * from "./relay-transport";
+export * from "./relay-room";
 export * from "./time-sync";
 export * from "./assets";
 export * from "./debug-panel";
