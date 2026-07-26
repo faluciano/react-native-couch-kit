@@ -125,8 +125,27 @@ export class RelayRoom implements DurableObject {
     if (!keepOpen) ws.close(1008, "Rate limited");
   }
 
-  async webSocketClose(ws: WebSocket): Promise<void> {
+  async webSocketClose(
+    ws: WebSocket,
+    code: number,
+    reason: string,
+  ): Promise<void> {
     this.drop(ws);
+
+    // Complete the closing handshake. When a client calls close(), the
+    // hibernation API hands us the frame and expects *us* to close our side; if
+    // we don't, the client sits in CLOSING until its own timeout and never gets
+    // an onclose. That is what made a wrong room code look like an endless
+    // "connecting" instead of a prompt, explainable failure.
+    //
+    // 1005 (no status) and 1006 (abnormal) are not sendable on the wire.
+    try {
+      const sendable = code >= 1000 && code !== 1005 && code !== 1006;
+      if (sendable) ws.close(code, reason);
+      else ws.close();
+    } catch {
+      // Already closed from the other side; nothing to complete.
+    }
   }
 
   async webSocketError(ws: WebSocket): Promise<void> {
