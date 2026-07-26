@@ -12,10 +12,17 @@
 
 export { RelayRoom } from "./room";
 
+/** Cloudflare's rate-limiting binding (see `unsafe.bindings` in wrangler.jsonc). */
+interface RateLimiter {
+  limit(options: { key: string }): Promise<{ success: boolean }>;
+}
+
 export interface Env {
   ROOMS: DurableObjectNamespace;
   /** Optional comma-separated origin allowlist. Empty/unset = open. */
   ALLOWED_ORIGINS?: string;
+  /** Caps new connections per IP. Absent in local dev. */
+  CONNECT_LIMITER?: RateLimiter;
 }
 
 /**
@@ -62,6 +69,18 @@ export default {
     const code = roomCodeFrom(url);
     if (code === null) {
       return new Response("Missing or invalid room code", { status: 400 });
+    }
+
+    // Cap how fast one address can open rooms/connections. This is the
+    // replacement for the Bun relay's per-IP connection cap; Cloudflare's own
+    // DDoS protection sits in front of it. Absent locally, where the binding
+    // does not exist.
+    const ip = request.headers.get("CF-Connecting-IP");
+    if (env.CONNECT_LIMITER && ip) {
+      const { success } = await env.CONNECT_LIMITER.limit({ key: ip });
+      if (!success) {
+        return new Response("Too many connections", { status: 429 });
+      }
     }
 
     // idFromName maps a room code to a stable object. The object exists

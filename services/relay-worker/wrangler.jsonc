@@ -13,5 +13,24 @@
       "tag": "v1",
       "new_sqlite_classes": ["RelayRoom"]
     }
-  ]
+  ],
+  "vars": {
+    // Hygiene, not a security boundary: `Origin` stops a random web page from
+    // opening sockets to this relay, but any non-browser client can forge it.
+    // Local dev ports are included so testing against the deployed relay works.
+    "ALLOWED_ORIGINS": "https://buzz-display.pages.dev,https://buzz-controller.pages.dev,https://card-game-display.pages.dev,https://card-game-controller.pages.dev,https://domino-display.pages.dev,https://domino-controller.pages.dev,http://localhost:5173,http://localhost:5174"
+  },
+  "unsafe": {
+    "bindings": [
+      {
+        // Replaces the per-IP connection cap the Bun relay had
+        // (MAX_CONNECTIONS_PER_IP), which was lost in the port to Workers.
+        // Caps new connections per IP; established sockets are unaffected.
+        "name": "CONNECT_LIMITER",
+        "type": "ratelimit",
+        "namespace_id": "1001",
+        "simple": { "limit": 60, "period": 60 }
+      }
+    ]
+  }
 }
