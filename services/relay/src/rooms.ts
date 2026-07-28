@@ -22,6 +22,7 @@ export const RelayMessageTypes = {
   PEER_JOINED: "PEER_JOINED",
   PEER_LEFT: "PEER_LEFT",
   DATA: "DATA",
+  DATA_MULTI: "DATA_MULTI",
   ERROR: "ERROR",
 } as const;
 
@@ -255,11 +256,21 @@ export class RelayRooms {
     }
 
     if (byteLength(raw) > MAX_MESSAGE_BYTES) {
-      this.sendError(conn, RelayErrorCodes.MESSAGE_TOO_LARGE, "Message too large");
+      this.sendError(
+        conn,
+        RelayErrorCodes.MESSAGE_TOO_LARGE,
+        "Message too large",
+      );
       return null;
     }
 
-    let msg: { type?: string; roomId?: string; to?: string; data?: string };
+    let msg: {
+      type?: string;
+      roomId?: string;
+      to?: string;
+      data?: string;
+      payloads?: Record<string, string>;
+    };
     try {
       msg = JSON.parse(raw);
     } catch {
@@ -275,6 +286,9 @@ export class RelayRooms {
         return this.joinRoom(conn, msg.roomId);
       case RelayMessageTypes.DATA:
         this.routeData(conn, msg.data, msg.to);
+        break;
+      case RelayMessageTypes.DATA_MULTI:
+        this.routeMulti(conn, msg.payloads);
         break;
       default:
         this.sendError(conn, RelayErrorCodes.MALFORMED, "Unknown message type");
@@ -329,7 +343,11 @@ export class RelayRooms {
     if (!rawRoomId) {
       const minted = this.mintRoomCode();
       if (minted === null) {
-        this.sendError(conn, RelayErrorCodes.SERVER_BUSY, "Could not mint a room code");
+        this.sendError(
+          conn,
+          RelayErrorCodes.SERVER_BUSY,
+          "Could not mint a room code",
+        );
         return;
       }
       this.openRoom(conn, minted);
@@ -443,11 +461,74 @@ export class RelayRooms {
     }
   }
 
+  /**
+   * Host → many players in one frame: `payloads` maps a player's peer id to the
+   * payload meant for that player alone.
+   *
+   * This exists because a projected game (one where each phone sees a different
+   * view) otherwise sends one frame per player for every state change, and a
+   * relay bills — and rate-limits — per inbound frame. Fanning out here turns
+   * an N-player broadcast into a single inbound message.
+   *
+   * Players are delivered ordinary {@link RelayMessageTypes.DATA} frames, so
+   * nothing on the phone side knows this type exists and no client needs to be
+   * upgraded to benefit.
+   */
+  private routeMulti(
+    conn: RelayConnection,
+    payloads?: Record<string, string>,
+  ): void {
+    const mem = this.membership.get(conn.id);
+    if (!mem) {
+      this.sendError(conn, RelayErrorCodes.NOT_IN_ROOM, "Not in a room");
+      return;
+    }
+    // Only the host addresses players individually. A player reaching for this
+    // would be routing around the star topology to message the room directly.
+    if (mem.role !== "host") {
+      this.sendError(conn, RelayErrorCodes.MALFORMED, "Not the host");
+      return;
+    }
+    if (payloads === null || typeof payloads !== "object") {
+      this.sendError(conn, RelayErrorCodes.MALFORMED, "Missing payloads");
+      return;
+    }
+    const room = this.rooms.get(mem.roomId);
+    if (!room) return;
+
+    for (const [peerId, data] of Object.entries(payloads)) {
+      // A non-string payload is the one thing that would put malformed data on
+      // a phone's wire, since everything else here is opaque to us.
+      if (typeof data !== "string") {
+        this.sendError(
+          conn,
+          RelayErrorCodes.MALFORMED,
+          "Payload is not a string",
+        );
+        return;
+      }
+      // Unknown peer: skip, don't error. A projection built moments before a
+      // player left is routine, and the host already learns about the departure
+      // from PEER_LEFT.
+      const player = room.players.get(peerId);
+      if (!player) continue;
+      this.send(player, {
+        type: RelayMessageTypes.DATA,
+        roomId: mem.roomId,
+        data,
+      });
+    }
+  }
+
   private send(conn: RelayConnection, message: unknown): void {
     conn.send(JSON.stringify(message));
   }
 
-  private sendError(conn: RelayConnection, code: string, message: string): void {
+  private sendError(
+    conn: RelayConnection,
+    code: string,
+    message: string,
+  ): void {
     this.send(conn, { type: RelayMessageTypes.ERROR, code, message });
   }
 }

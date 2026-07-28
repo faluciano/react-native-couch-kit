@@ -8,6 +8,7 @@ import {
 } from "@couch-kit/core";
 import {
   GameHostRuntime,
+  type AddressedMessage,
   type GameHostRuntimeConfig,
   type GameRuntimeTransport,
 } from "../src/runtime";
@@ -542,8 +543,8 @@ describe("GameHostRuntime state projection", () => {
     const { runtime, transport } = createHandsRuntime(true);
     await joinHands(runtime, "conn-1");
 
-    const welcome = transport
-      .sent.get("conn-1")
+    const welcome = transport.sent
+      .get("conn-1")
       ?.find((m) => m.type === MessageTypes.WELCOME);
     const state = (welcome?.payload as { state: HandState }).state;
 
@@ -556,8 +557,8 @@ describe("GameHostRuntime state projection", () => {
     const { runtime, transport } = createHandsRuntime(true);
     await joinHands(runtime, "conn-1");
 
-    const welcome = transport
-      .sent.get("conn-1")
+    const welcome = transport.sent
+      .get("conn-1")
       ?.find((m) => m.type === MessageTypes.WELCOME);
     const { playerId, state } = welcome?.payload as {
       playerId: string;
@@ -592,12 +593,91 @@ describe("GameHostRuntime state projection", () => {
     const { runtime, transport } = createHandsRuntime(false);
     await joinHands(runtime, "conn-1");
 
-    const welcome = transport
-      .sent.get("conn-1")
+    const welcome = transport.sent
+      .get("conn-1")
       ?.find((m) => m.type === MessageTypes.WELCOME);
     const state = (welcome?.payload as { state: HandState }).state;
 
     // Games with no hidden information are unaffected.
     expect(state.hands.seat).toEqual(["ACE", "KING"]);
+  });
+
+  /**
+   * A projected update is one message per player. On a relay each of those is
+   * separately billed and rate-limited, so a transport that can carry the batch
+   * in one frame is offered the whole set at once.
+   */
+  describe("batched delivery", () => {
+    class BatchingTransport extends FakeTransport {
+      readonly batches: (readonly AddressedMessage[])[] = [];
+
+      sendMany(entries: readonly AddressedMessage[]): void {
+        this.batches.push(entries);
+        for (const { connectionId, message } of entries) {
+          this.send(connectionId, message);
+        }
+      }
+    }
+
+    async function joinTwo(transport: FakeTransport) {
+      const runtime = new GameHostRuntime<HandState, { type: "NOOP" }>(
+        {
+          initialState: handsInitial,
+          reducer: handsReducer,
+          stateThrottleMs: 0,
+          disconnectTimeout: 60_000,
+          project,
+        },
+        transport,
+      );
+      await joinHands(runtime, "conn-1");
+      await joinHands(runtime, "conn-2");
+      return runtime;
+    }
+
+    test("a projected update is offered to sendMany as one batch", async () => {
+      const transport = new BatchingTransport();
+      const runtime = await joinTwo(transport);
+
+      transport.batches.length = 0;
+      runtime.dispatch({ type: "NOOP" });
+      await flushBroadcast();
+
+      expect(transport.batches).toHaveLength(1);
+      expect(transport.batches[0]!.map((e) => e.connectionId).sort()).toEqual([
+        "conn-1",
+        "conn-2",
+      ]);
+    });
+
+    test("each entry still carries that connection's own view", async () => {
+      const transport = new BatchingTransport();
+      const runtime = await joinTwo(transport);
+
+      transport.batches.length = 0;
+      runtime.dispatch({ type: "NOOP" });
+      await flushBroadcast();
+
+      // Batching is a delivery detail; it must not leak one player's hand into
+      // the frame another player receives.
+      for (const { message } of transport.batches[0]!) {
+        const { newState } = message.payload as { newState: HandState };
+        expect(newState.hands.seat).toEqual(["HIDDEN", "HIDDEN"]);
+      }
+    });
+
+    test("a transport without sendMany still gets one send per connection", async () => {
+      const transport = new FakeTransport();
+      const runtime = await joinTwo(transport);
+
+      transport.sent.clear();
+      runtime.dispatch({ type: "NOOP" });
+      await flushBroadcast();
+
+      // The LAN WebSocket transport implements no batching and must be
+      // unaffected by the seam existing.
+      expect(transport.sent.get("conn-1")).toHaveLength(1);
+      expect(transport.sent.get("conn-2")).toHaveLength(1);
+    });
   });
 });

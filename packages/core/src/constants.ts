@@ -23,8 +23,22 @@ export const DEFAULT_BASE_DELAY = 1000;
 /** Default maximum delay (ms) cap for reconnection backoff. */
 export const DEFAULT_MAX_DELAY = 10000;
 
-/** Default time sync ping interval (ms). */
+/** Default time sync ping interval (ms) — the interval a fresh socket starts at. */
 export const DEFAULT_SYNC_INTERVAL = 5000;
+
+/**
+ * Ceiling (ms) the time-sync interval backs off to once the clock estimate has
+ * settled.
+ *
+ * Pings are the only traffic an idle table generates, and on a relay transport
+ * every one of them is a billed message for the ping *and* the host's pong. The
+ * offset they measure is a clock difference that does not drift on a human
+ * timescale, so the fast interval only earns its cost right after connecting.
+ */
+export const MAX_SYNC_INTERVAL = 30000;
+
+/** Multiplier applied to the time-sync interval after each ping, up to {@link MAX_SYNC_INTERVAL}. */
+export const SYNC_BACKOFF_FACTOR = 2;
 
 /** Maximum number of outstanding pings before cleanup. */
 export const MAX_PENDING_PINGS = 50;

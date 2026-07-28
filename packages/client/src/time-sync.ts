@@ -3,6 +3,8 @@ import {
   MessageTypes,
   generateId,
   DEFAULT_SYNC_INTERVAL,
+  MAX_SYNC_INTERVAL,
+  SYNC_BACKOFF_FACTOR,
   MAX_PENDING_PINGS,
 } from "@couch-kit/core";
 import { TransportReadyState, type ClientTransport } from "./transport";
@@ -36,6 +38,22 @@ export function calculateTimeSync(
   const offset = expectedServerTime - clientReceiveTime;
 
   return { offset, rtt };
+}
+
+/**
+ * The interval to wait before the next PING, given the one just used.
+ *
+ * Grows geometrically to {@link MAX_SYNC_INTERVAL}: the first pings after
+ * connecting are what converge the offset, and re-measuring it every few
+ * seconds forever buys nothing — the clock difference does not move, while on a
+ * relay transport each ping is a billed message in both directions and the only
+ * traffic an idle table generates at all.
+ *
+ * @param current - Interval (ms) used for the ping just sent.
+ * @returns The next interval, capped at {@link MAX_SYNC_INTERVAL}.
+ */
+export function nextSyncInterval(current: number): number {
+  return Math.min(current * SYNC_BACKOFF_FACTOR, MAX_SYNC_INTERVAL);
 }
 
 /**
@@ -85,8 +103,18 @@ export function useServerTime(socket: ClientTransport | null) {
   );
 
   // Periodic Sync
+  //
+  // The interval backs off from DEFAULT_SYNC_INTERVAL to MAX_SYNC_INTERVAL
+  // rather than staying fast forever: the first few pings are what converge the
+  // offset, and after that we are re-measuring a clock difference that does not
+  // move. A self-rescheduling timeout is used instead of setInterval because
+  // the delay changes between ticks. Backoff state lives inside the effect, so
+  // a new socket — including a reconnect — starts fast again.
   useEffect(() => {
     if (!socket || socket.readyState !== TransportReadyState.OPEN) return;
+
+    let delay = DEFAULT_SYNC_INTERVAL;
+    let timer: ReturnType<typeof setTimeout> | null = null;
 
     const sync = () => {
       // Prevent unbounded growth if PONGs are lost
@@ -105,13 +133,17 @@ export function useServerTime(socket: ClientTransport | null) {
           payload: { id, timestamp },
         }),
       );
+
+      delay = nextSyncInterval(delay);
+      timer = setTimeout(sync, delay);
     };
 
     // Initial sync
     sync();
 
-    const interval = setInterval(sync, DEFAULT_SYNC_INTERVAL);
-    return () => clearInterval(interval);
+    return () => {
+      if (timer !== null) clearTimeout(timer);
+    };
   }, [socket]);
 
   return { getServerTime, rtt: timeSync.rtt, handlePong };

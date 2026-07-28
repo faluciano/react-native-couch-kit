@@ -2,6 +2,7 @@ import {
   GameHostRuntime,
   frameByteLength,
   DEFAULT_MAX_MESSAGE_BYTES,
+  type AddressedMessage,
   type GameHostRuntimeConfig,
   type GameRuntimeTransport,
 } from "@couch-kit/runtime";
@@ -19,8 +20,10 @@ import {
  * object used by the RN-TV host) and the shared relay coordinates; the display
  * host owns the authoritative runtime and the relay socket.
  */
-export interface RelayDisplayHostOptions<S extends IGameState, A extends IAction>
-  extends GameHostRuntimeConfig<S, A> {
+export interface RelayDisplayHostOptions<
+  S extends IGameState,
+  A extends IAction,
+> extends GameHostRuntimeConfig<S, A> {
   /** WebSocket URL of the shared relay server. */
   url: string;
   /**
@@ -103,9 +106,9 @@ export class RelayDisplayHost<S extends IGameState, A extends IAction> {
       );
 
     const transport: GameRuntimeTransport = {
-      send: (connectionId, message) =>
-        this.sendEnvelope(message, connectionId),
+      send: (connectionId, message) => this.sendEnvelope(message, connectionId),
       broadcast: (message) => this.sendEnvelope(message),
+      sendMany: (entries) => this.sendMultiEnvelope(entries),
     };
     this.runtime.setTransport(transport);
   }
@@ -134,6 +137,42 @@ export class RelayDisplayHost<S extends IGameState, A extends IAction> {
     this.runtime.setTransport(null);
     this.runtime.stop();
     this.ws.close();
+  }
+
+  /**
+   * Sends per-connection messages as one `DATA_MULTI` frame, which the relay
+   * unpacks into an ordinary `DATA` frame per phone.
+   *
+   * A projected game re-sends every player's view on every state change, so on
+   * a four-player table this is the difference between one billed relay message
+   * and four — and between one and four against the relay's per-connection rate
+   * limit, which the display shares across all its fan-out.
+   *
+   * Falls back to individual sends if the combined frame would exceed the
+   * relay's message ceiling: N views in one envelope is N times the bytes, and
+   * a frame the relay rejects delivers nothing to anyone. Splitting costs
+   * messages; being dropped costs the game.
+   */
+  private sendMultiEnvelope(entries: readonly AddressedMessage[]): void {
+    const payloads: Record<string, string> = {};
+    for (const { connectionId, message } of entries) {
+      payloads[connectionId] = JSON.stringify(message);
+    }
+
+    const frame = JSON.stringify({
+      type: RelayMessageTypes.DATA_MULTI,
+      roomId: this.assignedRoomId ?? undefined,
+      payloads,
+    });
+
+    if (frameByteLength(frame) > DEFAULT_MAX_MESSAGE_BYTES) {
+      for (const { connectionId, message } of entries) {
+        this.sendEnvelope(message, connectionId);
+      }
+      return;
+    }
+
+    this.ws.send(frame);
   }
 
   private sendEnvelope(message: HostMessage, to?: string): void {

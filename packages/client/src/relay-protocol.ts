@@ -28,6 +28,8 @@ export const RelayMessageTypes = {
   PEER_LEFT: "PEER_LEFT",
   /** Bidirectional: carries an opaque Couch Kit JSON message as `data`. */
   DATA: "DATA",
+  /** Display → relay: one frame carrying a different payload per phone. */
+  DATA_MULTI: "DATA_MULTI",
   /** Relay → client: a protocol/room error. */
   ERROR: "ERROR",
 } as const;
@@ -109,6 +111,23 @@ export interface DataMessage {
   data: string;
 }
 
+/**
+ * Display → relay: one envelope carrying a different payload per phone.
+ *
+ * `payloads` maps a phone's `peerId` to the already-serialized Couch Kit
+ * message for that phone. The relay unpacks it into ordinary
+ * {@link DataMessage} frames, so phones never see this type — it exists purely
+ * so a projected game costs one inbound relay message per state change instead
+ * of one per player. Peer ids the room does not know are skipped.
+ *
+ * Host-only: the relay rejects it from a phone.
+ */
+export interface DataMultiMessage {
+  type: typeof RelayMessageTypes.DATA_MULTI;
+  roomId: string;
+  payloads: Record<string, string>;
+}
+
 /** Relay → client: a protocol/room error. */
 export interface RelayErrorMessage {
   type: typeof RelayMessageTypes.ERROR;
@@ -118,9 +137,7 @@ export interface RelayErrorMessage {
 
 /** Any message a client may send to the relay. */
 export type RelayClientMessage =
-  | CreateRoomMessage
-  | JoinRoomMessage
-  | DataMessage;
+  CreateRoomMessage | JoinRoomMessage | DataMessage | DataMultiMessage;
 
 /** Any message the relay may send to a client. */
 export type RelayServerMessage =
