@@ -39,6 +39,23 @@ export const RelayErrorCodes = {
 /** Matches `@couch-kit/runtime`'s `DEFAULT_MAX_MESSAGE_BYTES`. */
 export const MAX_MESSAGE_BYTES = 256 * 1024;
 
+/** RFC 6455 "policy violation" — the client did something it isn't allowed to. */
+export const RELAY_CLOSE_POLICY = 1008;
+
+/**
+ * A close the transport should perform after the core has finished with a
+ * message.
+ *
+ * The core cannot close sockets itself — it has no transport — so it says what
+ * should happen and `server.ts` / `room.ts` do it.
+ */
+export interface RelayClose {
+  /** WebSocket close code. */
+  code: number;
+  /** Human-readable close reason, for logs and devtools. */
+  reason: string;
+}
+
 /**
  * Abuse-mitigation limits for a public relay. All in-memory and per-process,
  * matching the single-instance deployment model. Defaults are generous for
@@ -227,18 +244,19 @@ export class RelayRooms {
   /**
    * Route one raw inbound message from `conn`.
    *
-   * @returns `false` when the connection has abused the rate limit and the
-   *   transport should close it; `true` to keep it open.
+   * @returns `null` to keep the connection open, or the close the transport
+   *   should perform. The error frame is always sent first, so a client learns
+   *   *why* before the socket goes.
    */
-  handleMessage(conn: RelayConnection, raw: string): boolean {
+  handleMessage(conn: RelayConnection, raw: string): RelayClose | null {
     if (!this.allow(conn.id)) {
       this.sendError(conn, RelayErrorCodes.RATE_LIMITED, "Too many messages");
-      return false;
+      return { code: RELAY_CLOSE_POLICY, reason: "Rate limited" };
     }
 
     if (byteLength(raw) > MAX_MESSAGE_BYTES) {
       this.sendError(conn, RelayErrorCodes.MESSAGE_TOO_LARGE, "Message too large");
-      return true;
+      return null;
     }
 
     let msg: { type?: string; roomId?: string; to?: string; data?: string };
@@ -246,7 +264,7 @@ export class RelayRooms {
       msg = JSON.parse(raw);
     } catch {
       this.sendError(conn, RelayErrorCodes.MALFORMED, "Invalid JSON");
-      return true;
+      return null;
     }
 
     switch (msg.type) {
@@ -254,15 +272,14 @@ export class RelayRooms {
         this.createRoom(conn, msg.roomId);
         break;
       case RelayMessageTypes.JOIN_ROOM:
-        this.joinRoom(conn, msg.roomId);
-        break;
+        return this.joinRoom(conn, msg.roomId);
       case RelayMessageTypes.DATA:
         this.routeData(conn, msg.data, msg.to);
         break;
       default:
         this.sendError(conn, RelayErrorCodes.MALFORMED, "Unknown message type");
     }
-    return true;
+    return null;
   }
 
   /**
@@ -341,20 +358,32 @@ export class RelayRooms {
     });
   }
 
-  private joinRoom(conn: RelayConnection, rawRoomId?: string): void {
+  /**
+   * @returns the close to perform, or `null` to keep the socket open. A join
+   *   against a room that does not exist is terminal: the code is wrong and no
+   *   later message on this socket can fix it. Closing keeps a mistyped or
+   *   sprayed code from parking a connection — and, on the Workers relay, from
+   *   holding open a Durable Object for a room that was never created.
+   */
+  private joinRoom(
+    conn: RelayConnection,
+    rawRoomId?: string,
+  ): RelayClose | null {
     if (!rawRoomId) {
       this.sendError(conn, RelayErrorCodes.MALFORMED, "Missing roomId");
-      return;
+      return null;
     }
     const roomId = normalizeRoomId(rawRoomId);
     const room = this.rooms.get(roomId);
     if (!room) {
       this.sendError(conn, RelayErrorCodes.ROOM_NOT_FOUND, "Room not found");
-      return;
+      return { code: RELAY_CLOSE_POLICY, reason: "Room not found" };
     }
     if (room.players.size >= this.limits.maxPlayersPerRoom) {
+      // Not terminal, unlike a bad code: a slot can open up, so let the client
+      // decide whether to wait.
       this.sendError(conn, RelayErrorCodes.ROOM_FULL, "Room is full");
-      return;
+      return null;
     }
     room.players.set(conn.id, conn);
     this.membership.set(conn.id, { roomId, role: "player" });
@@ -368,6 +397,7 @@ export class RelayRooms {
       roomId,
       peerId: conn.id,
     });
+    return null;
   }
 
   private routeData(conn: RelayConnection, data?: string, to?: string): void {

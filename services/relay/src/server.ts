@@ -73,12 +73,13 @@ const server = Bun.serve<SocketData, undefined>({
     },
     message(ws, message) {
       if (!ws.data.conn) return;
-      const keepOpen = rooms.handleMessage(
+      const close = rooms.handleMessage(
         ws.data.conn,
         typeof message === "string" ? message : message.toString(),
       );
-      // A connection that trips the rate limit is dropped to shed abusive load.
-      if (!keepOpen) ws.close(1008, "Rate limited");
+      // Abusive load and dead-end joins are both shed by closing the socket;
+      // the core already sent the matching ERROR frame.
+      if (close) ws.close(close.code, close.reason);
     },
     close(ws) {
       const next = (ipCounts.get(ws.data.ip) ?? 1) - 1;
