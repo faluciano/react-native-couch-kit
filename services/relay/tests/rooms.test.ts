@@ -330,6 +330,91 @@ describe("RelayRooms", () => {
   });
 });
 
+describe("DATA_MULTI", () => {
+  /** A room with a host and two joined players, each connection recording. */
+  function room() {
+    const rooms = new RelayRooms();
+    const host = conn("h");
+    const p1 = conn("p1");
+    const p2 = conn("p2");
+    rooms.handleMessage(host, JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }));
+    rooms.handleMessage(p1, JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
+    rooms.handleMessage(p2, JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
+    host.sent.length = 0;
+    p1.sent.length = 0;
+    p2.sent.length = 0;
+    return { rooms, host, p1, p2 };
+  }
+
+  const multi = (payloads: unknown) =>
+    JSON.stringify({ type: RelayMessageTypes.DATA_MULTI, roomId: "R", payloads });
+
+  test("each player receives only its own payload, as a plain DATA frame", () => {
+    const { rooms, host, p1, p2 } = room();
+
+    rooms.handleMessage(host, multi({ p1: "one", p2: "two" }));
+
+    // Phones must not be able to tell this from a unicast DATA: that is what
+    // lets the batch ship without upgrading a single client.
+    expect(p1.sent).toEqual([{ type: RelayMessageTypes.DATA, roomId: "R", data: "one" }]);
+    expect(p2.sent).toEqual([{ type: RelayMessageTypes.DATA, roomId: "R", data: "two" }]);
+  });
+
+  test("counts as one message against the rate limit, not one per player", () => {
+    const rooms = new RelayRooms({ messagesPerWindow: 3, rateWindowMs: 1000 });
+    const host = conn("h");
+    rooms.handleMessage(host, JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }));
+    for (const id of ["p1", "p2", "p3", "p4"]) {
+      rooms.handleMessage(conn(id), JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
+    }
+
+    // Two four-player fan-outs would be 8 sends the old way, over the budget of
+    // 3; batched they are 2 messages. This saving is the point of the type.
+    const payloads = { p1: "a", p2: "a", p3: "a", p4: "a" };
+    expect(rooms.handleMessage(host, multi(payloads))).toBeNull();
+    expect(rooms.handleMessage(host, multi(payloads))).toBeNull();
+  });
+
+  test("unknown peer ids are skipped, not errors", () => {
+    const { rooms, host, p1 } = room();
+
+    // A projection built just before a player left is routine.
+    rooms.handleMessage(host, multi({ p1: "one", gone: "two" }));
+
+    expect(p1.sent).toHaveLength(1);
+    expect(host.sent).toEqual([]);
+  });
+
+  test("a player cannot address other players", () => {
+    const { rooms, p1, p2 } = room();
+
+    rooms.handleMessage(p1, multi({ p2: "spoofed" }));
+
+    expect(p2.sent).toEqual([]);
+    expect(p1.sent[0].code).toBe(RelayErrorCodes.MALFORMED);
+  });
+
+  test("missing or non-object payloads are rejected", () => {
+    const { rooms, host } = room();
+
+    rooms.handleMessage(host, JSON.stringify({ type: RelayMessageTypes.DATA_MULTI, roomId: "R" }));
+    expect(host.sent[0].code).toBe(RelayErrorCodes.MALFORMED);
+
+    host.sent.length = 0;
+    rooms.handleMessage(host, multi("not an object"));
+    expect(host.sent[0].code).toBe(RelayErrorCodes.MALFORMED);
+  });
+
+  test("a non-string payload is rejected rather than put on a phone's wire", () => {
+    const { rooms, host, p1 } = room();
+
+    rooms.handleMessage(host, multi({ p1: { nested: true } }));
+
+    expect(p1.sent).toEqual([]);
+    expect(host.sent[0].code).toBe(RelayErrorCodes.MALFORMED);
+  });
+});
+
 describe("room code case", () => {
   test("a room created upper-case is joinable lower-case", () => {
     // Codes are read off a TV and retyped or re-scanned on a phone; some

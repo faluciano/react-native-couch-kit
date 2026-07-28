@@ -23,10 +23,27 @@ import {
   type JoinSessionPayload,
 } from "./session-manager.js";
 
+/** One connection's share of a {@link GameRuntimeTransport.sendMany} delivery. */
+export interface AddressedMessage {
+  connectionId: string;
+  message: HostMessage;
+}
+
 /** Minimal message-delivery surface required by the authoritative runtime. */
 export interface GameRuntimeTransport {
   send(connectionId: string, message: HostMessage): void;
   broadcast(message: HostMessage): void;
+  /**
+   * Delivers a batch of per-connection messages, for transports that can carry
+   * them in one frame.
+   *
+   * Optional: the runtime falls back to a {@link GameRuntimeTransport.send} per
+   * entry, which is what a plain LAN WebSocket transport wants anyway. It earns
+   * its keep on the relay, where each frame the display sends is separately
+   * billed and rate-limited, so a projected state update costs one message
+   * rather than one per player.
+   */
+  sendMany?(entries: readonly AddressedMessage[]): void;
 }
 
 /** Configuration shared by every authoritative Couch Kit host transport. */
@@ -404,27 +421,39 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
   }
 
   private readonly broadcastState = (): void => {
-    if (!this.transport) return;
+    const transport = this.transport;
+    if (!transport) return;
 
     const actions = this.actionQueue;
     this.actionQueue = [];
     this.stateDirty = false;
 
     if (!this.config.project) {
-      this.transport.broadcast(createStateUpdateMessage(this.state, actions));
+      transport.broadcast(createStateUpdateMessage(this.state, actions));
       return;
     }
 
     // Projected games get one message per connection rather than a broadcast:
-    // a shared frame cannot carry different views. Costs N sends instead of 1,
-    // which is bounded by players-per-room.
+    // a shared frame cannot carry different views. Transports that can batch
+    // (see GameRuntimeTransport.sendMany) still put them on the wire as a
+    // single frame; the rest fall back to N sends, bounded by players-per-room.
+    const entries: AddressedMessage[] = [];
     for (const connectionId of this.joinedConnections) {
       const playerId = this.sessionManager.getPlayerIdForSocket(connectionId);
       if (!playerId) continue;
-      this.send(
+      entries.push({
         connectionId,
-        createStateUpdateMessage(this.viewFor(playerId), actions),
-      );
+        message: createStateUpdateMessage(this.viewFor(playerId), actions),
+      });
+    }
+    if (entries.length === 0) return;
+
+    if (transport.sendMany) {
+      transport.sendMany(entries);
+      return;
+    }
+    for (const { connectionId, message } of entries) {
+      this.send(connectionId, message);
     }
   };
 

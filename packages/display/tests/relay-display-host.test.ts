@@ -218,6 +218,101 @@ describe("RelayDisplayHost", () => {
   });
 });
 
+/**
+ * A projected game re-sends every player's own view on each state change. Those
+ * go out as one `DATA_MULTI` frame rather than one frame per player, because a
+ * relay bills and rate-limits per inbound frame.
+ */
+describe("projected state updates", () => {
+  interface HandState extends IGameState {
+    hands: Record<string, string>;
+  }
+
+  function makeProjectedHost(project: (s: HandState, id: string) => unknown) {
+    const host = new RelayDisplayHost<HandState, TestAction>({
+      url: "wss://relay.test",
+      roomId: "ROOM",
+      reducer: (state) => ({ ...state, hands: { ...state.hands } }),
+      initialState: { status: "lobby", players: {}, hands: { seat: "ACE" } },
+      project,
+      stateThrottleMs: 1,
+    });
+    return { host, ws: MockWebSocket.last! };
+  }
+
+  /** Brings a phone all the way to joined, so it is in `joinedConnections`. */
+  async function join(ws: MockWebSocket, peerId: string) {
+    ws.fromServer({ type: RelayMessageTypes.PEER_JOINED, roomId: "ROOM", peerId });
+    ws.fromServer({
+      type: RelayMessageTypes.DATA,
+      roomId: "ROOM",
+      from: peerId,
+      // A distinct secret per phone, or the second one resumes the first's
+      // session instead of taking a seat of its own.
+      data: JSON.stringify({
+        type: "JOIN",
+        payload: { secret: peerId.slice(-1).repeat(32), name: peerId },
+      }),
+    });
+    await flush();
+  }
+
+  const multiFrames = (ws: MockWebSocket) =>
+    ws.frames().filter((f) => f.type === RelayMessageTypes.DATA_MULTI);
+
+  test("two players cost one frame, keyed by peer id", async () => {
+    const { host, ws } = makeProjectedHost((state, id) => ({ ...state, me: id }));
+    ws.open();
+    await join(ws, "p1");
+    await join(ws, "p2");
+    ws.sent.length = 0;
+
+    host.dispatch({ type: "BUMP" });
+    await flush();
+
+    const frames = multiFrames(ws);
+    expect(frames).toHaveLength(1);
+    expect(Object.keys(frames[0].payloads).sort()).toEqual(["p1", "p2"]);
+    // And no per-player DATA frames alongside it.
+    expect(ws.dataMessages().filter((d) => d.msg.type === "STATE_UPDATE")).toEqual([]);
+  });
+
+  test("each payload carries that player's own projection", async () => {
+    const { host, ws } = makeProjectedHost((state, id) => ({ ...state, me: id }));
+    ws.open();
+    await join(ws, "p1");
+    await join(ws, "p2");
+    ws.sent.length = 0;
+
+    host.dispatch({ type: "BUMP" });
+    await flush();
+
+    const { payloads } = multiFrames(ws)[0];
+    // The projection is keyed off the player id, not the peer id, so assert the
+    // two phones got *different* views rather than guessing the id.
+    expect(payloads.p1).not.toEqual(payloads.p2);
+  });
+
+  test("falls back to per-player frames when the batch would be rejected", async () => {
+    // Each view fits the relay's 256KB ceiling; two in one envelope do not.
+    const bulk = "x".repeat(200 * 1024);
+    const { host, ws } = makeProjectedHost((state) => ({ ...state, bulk }));
+    ws.open();
+    await join(ws, "p1");
+    await join(ws, "p2");
+    ws.sent.length = 0;
+
+    host.dispatch({ type: "BUMP" });
+    await flush();
+
+    // Splitting costs an extra billed message; being dropped by the relay would
+    // cost the game.
+    expect(multiFrames(ws)).toHaveLength(0);
+    const updates = ws.dataMessages().filter((d) => d.msg.type === "STATE_UPDATE");
+    expect(updates.map((u) => u.to).sort()).toEqual(["p1", "p2"]);
+  });
+});
+
 describe("relay-assigned room codes", () => {
   /** A host that lets the relay pick the code. */
   function makeMintingHost() {
