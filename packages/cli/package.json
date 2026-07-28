@@ -1,11 +1,11 @@
 {
   "name": "@couch-kit/cli",
-  "version": "0.3.9",
+  "version": "0.3.10",
   "publishConfig": {
     "access": "public",
     "provenance": true
   },
-  "description": "CLI tools for Couch Kit party games \u2014 bundle web controllers, simulate clients, and scaffold projects",
+  "description": "CLI tools for Couch Kit party games — bundle web controllers, simulate clients, and scaffold projects",
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
