@@ -160,7 +160,7 @@ export class RelayRoom implements DurableObject {
       typeof message === "string" ? message : new TextDecoder().decode(message);
 
     const core = this.rooms();
-    const keepOpen = core.handleMessage(this.connection(ws, att.peerId), raw);
+    const close = core.handleMessage(this.connection(ws, att.peerId), raw);
 
     // The role is only known once CREATE_ROOM / JOIN_ROOM has been handled.
     // Persist it so a wake can rebuild the routing table.
@@ -173,8 +173,11 @@ export class RelayRoom implements DurableObject {
       } satisfies Attachment);
     }
 
-    // A connection that trips the rate limit is dropped to shed abusive load.
-    if (!keepOpen) ws.close(1008, "Rate limited");
+    // Abusive load and dead-end joins are both shed by closing the socket. This
+    // matters more here than on the Bun relay: a join against a code no display
+    // ever created still routes to a Durable Object, and leaving that socket
+    // open would keep the object alive for a room that does not exist.
+    if (close) ws.close(close.code, close.reason);
   }
 
   async webSocketClose(

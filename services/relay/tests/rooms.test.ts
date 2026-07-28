@@ -45,11 +45,30 @@ describe("RelayRooms", () => {
     expect(h2.sent[0].code).toBe(RelayErrorCodes.ROOM_EXISTS);
   });
 
-  test("joining unknown room errors", () => {
+  test("joining unknown room errors and closes the socket", () => {
     const rooms = new RelayRooms();
     const p = conn("p");
-    rooms.handleMessage(p, JSON.stringify({ type: "JOIN_ROOM", roomId: "nope" }));
+    const close = rooms.handleMessage(
+      p,
+      JSON.stringify({ type: "JOIN_ROOM", roomId: "nope" }),
+    );
+    // The error frame goes first, so the client can show "wrong code" rather
+    // than a bare disconnect.
     expect(p.sent[0].code).toBe(RelayErrorCodes.ROOM_NOT_FOUND);
+    expect(close).toEqual({ code: 1008, reason: "Room not found" });
+  });
+
+  test("a full room errors but stays open", () => {
+    const rooms = new RelayRooms({ maxPlayersPerRoom: 1 });
+    rooms.handleMessage(conn("h"), JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }));
+    rooms.handleMessage(conn("p1"), JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
+    const p2 = conn("p2");
+    const close = rooms.handleMessage(
+      p2,
+      JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }),
+    );
+    expect(p2.sent[0].code).toBe(RelayErrorCodes.ROOM_FULL);
+    expect(close).toBeNull();
   });
 
   test("player join notifies host and joiner", () => {
@@ -166,14 +185,14 @@ describe("RelayRooms", () => {
     expect(c.sent[0].code).toBe(RelayErrorCodes.MALFORMED);
   });
 
-  test("handleMessage returns true for well-behaved traffic", () => {
+  test("handleMessage returns null for well-behaved traffic", () => {
     const rooms = new RelayRooms();
     const host = conn("h");
-    const keepOpen = rooms.handleMessage(
+    const close = rooms.handleMessage(
       host,
       JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }),
     );
-    expect(keepOpen).toBe(true);
+    expect(close).toBeNull();
   });
 
   test("exceeding the message rate limit errors and signals disconnect", () => {
@@ -181,11 +200,14 @@ describe("RelayRooms", () => {
     const c = conn("c");
     // Unknown-type messages still count toward the rate limit.
     const noop = JSON.stringify({ type: "NOPE" });
-    expect(rooms.handleMessage(c, noop)).toBe(true);
-    expect(rooms.handleMessage(c, noop)).toBe(true);
-    expect(rooms.handleMessage(c, noop)).toBe(true);
+    expect(rooms.handleMessage(c, noop)).toBeNull();
+    expect(rooms.handleMessage(c, noop)).toBeNull();
+    expect(rooms.handleMessage(c, noop)).toBeNull();
     // 4th within the window trips the limit.
-    expect(rooms.handleMessage(c, noop)).toBe(false);
+    expect(rooms.handleMessage(c, noop)).toEqual({
+      code: 1008,
+      reason: "Rate limited",
+    });
     expect(c.sent.at(-1).code).toBe(RelayErrorCodes.RATE_LIMITED);
   });
 
@@ -197,10 +219,10 @@ describe("RelayRooms", () => {
     );
     const c = conn("c");
     const noop = JSON.stringify({ type: "NOPE" });
-    expect(rooms.handleMessage(c, noop)).toBe(true);
-    expect(rooms.handleMessage(c, noop)).toBe(true);
+    expect(rooms.handleMessage(c, noop)).toBeNull();
+    expect(rooms.handleMessage(c, noop)).toBeNull();
     t = 1001; // old hits fall out of the window
-    expect(rooms.handleMessage(c, noop)).toBe(true);
+    expect(rooms.handleMessage(c, noop)).toBeNull();
   });
 
   test("room creation is capped at maxRooms", () => {
@@ -304,7 +326,7 @@ describe("RelayRooms", () => {
     rooms.handleMessage(c, noop);
     rooms.handleClose(c);
     // Fresh budget after reconnect (same id): first message is allowed again.
-    expect(rooms.handleMessage(c, noop)).toBe(true);
+    expect(rooms.handleMessage(c, noop)).toBeNull();
   });
 });
 
