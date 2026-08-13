@@ -3,6 +3,6 @@
   "private": true,
   "dependencies": {
     "typedoc": "^0.28.19",
-    "typescript": "^6.0.0"
+    "typescript": "^7.0.0"
   }
 }
