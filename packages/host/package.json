@@ -70,7 +70,7 @@
     "@types/react-dom": "^19",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "react-native": "0.87.0",
+    "react-native": "0.87.1",
     "del-cli": "^7.0.0",
     "jest": "^30.0.0"
   },
