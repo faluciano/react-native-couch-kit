@@ -49,10 +49,12 @@ jobs:
 
       - name: Create Release Pull Request or Publish
         id: changesets
-        uses: changesets/action@v2.1.1
+        uses: changesets/action@v2.1.2
         with:
-          version: bun run version
-          publish: bun run release
+          # changesets/action 2.1 renamed `version` and `publish` to the
+          # `-script` forms; the old names hard-fail the step.
+          version-script: bun run version
+          publish-script: bun run release
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
 
