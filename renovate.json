@@ -28,6 +28,11 @@
       "description": "Hold every major update for manual review — these can carry breaking changes for consumers.",
       "matchUpdateTypes": ["major"],
       "automerge": false
+    },
+    {
+      "description": "react-native-nitro-http-server declares peer react-native-nitro-modules ^0.35 and Nitro minors change the generated C++ ABI. Hold the dev pin within 0.35 so the workspace tests against what consumers install.",
+      "matchPackageNames": ["react-native-nitro-modules"],
+      "allowedVersions": "<0.36.0"
     }
   ]
 }
