@@ -1,6 +1,6 @@
 {
   "name": "@couch-kit/host",
-  "version": "1.7.16",
+  "version": "1.7.17",
   "publishConfig": {
     "access": "public",
     "provenance": true
