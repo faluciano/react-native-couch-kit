@@ -25,6 +25,11 @@
       "automerge": true
     },
     {
+      "description": "react-native-nitro-http-server 1.7+ regenerates its C++ against react-native-nitro-modules 0.35, but @couch-kit/host only asks consumers for >= 0.33, so a bump breaks their Android native builds (#188). Hold it on 1.6.x until the nitro peer range moves to 0.35 in a major.",
+      "matchPackageNames": ["react-native-nitro-http-server"],
+      "enabled": false
+    },
+    {
       "description": "Hold every major update for manual review — these can carry breaking changes for consumers.",
       "matchUpdateTypes": ["major"],
       "automerge": false
