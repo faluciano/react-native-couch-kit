@@ -24,7 +24,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.4.0"
+          bun-version: "1.4.2"
 
       # Trusted publishing (OIDC) requires a recent npm CLI (>= 11.5.1). The
       # runner's bundled npm may be older, so upgrade it before publishing.
@@ -55,8 +55,9 @@ jobs:
           # `-script` forms; the old names hard-fail the step.
           version-script: bun run version
           publish-script: bun run release
-        env:
-          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          # 2.1 refuses a GITHUB_TOKEN env var that differs from this input,
+          # so the App token has to go here rather than in `env`.
+          github-token: ${{ steps.app-token.outputs.token }}
 
       - name: Create GitHub Releases
         if: steps.changesets.outputs.published == 'true'
