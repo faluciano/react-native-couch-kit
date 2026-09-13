@@ -89,7 +89,7 @@
       "dependencies": {
         "@couch-kit/core": "workspace:*",
         "@couch-kit/runtime": "workspace:*",
-        "react-native-nitro-http-server": "~1.6.1",
+        "react-native-nitro-http-server": "~1.9.0",
       },
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.10.6",
@@ -1318,7 +1318,7 @@
 
     "react-native-nitro-buffer": ["react-native-nitro-buffer@0.0.15", "", { "peerDependencies": { "react": "*", "react-native": "*", "react-native-nitro-modules": "^0.32.0" } }, "sha512-AafYtMRS3PE13ppFUxi/mbRXCLzwDYwuefHGrNLxNF+NAz0wYXkbuugCtsFQLMGtWCuKidt4DRkzUhPa3Pr2Qw=="],
 
-    "react-native-nitro-http-server": ["react-native-nitro-http-server@1.6.1", "", { "dependencies": { "eventemitter3": "^5.0.1", "react-native-nitro-buffer": "~0.0.14" }, "peerDependencies": { "react-native-nitro-modules": "^0.32.0" } }, "sha512-1GfCmz0wj61msUyU0Wq5dHmmTQBHRBDhSGlr3vBGEQR8yQqGJVUVHvrsHRL7BTpobq5SfcyfxqsnIOE6ymfC7w=="],
+    "react-native-nitro-http-server": ["react-native-nitro-http-server@1.9.2", "", { "dependencies": { "eventemitter3": "^5.0.1", "react-native-nitro-buffer": ">=0.0.14" }, "peerDependencies": { "react-native": "*", "react-native-nitro-modules": "^0.35.0" } }, "sha512-XTjrhq1ZlaeVoXjfw69fShD2yjhsPFDeKVX6JDkLZrwPKQR0GZLARx8vNUgnY9DWozXPY/0EuFfX/AmnFIGcpQ=="],
 
     "react-native-nitro-modules": ["react-native-nitro-modules@0.37.1", "", { "peerDependencies": { "react": "*", "react-native": "*" } }, "sha512-KpW6EQVQ/bfegpCGxN9Be+ndvsfj56t4IESEvCASu9gWpJa/NDfHpIeIwCOvZQ3eXmLEj6YD4wCLqcC1FJPr2w=="],
 

@@ -59,7 +59,7 @@
   "dependencies": {
     "@couch-kit/core": "workspace:*",
     "@couch-kit/runtime": "workspace:*",
-    "react-native-nitro-http-server": "~1.6.1"
+    "react-native-nitro-http-server": "~1.9.0"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.10.6",
