@@ -1,5 +1,5 @@
 import { join } from "path";
-import { readFileSync, writeFileSync } from "fs";
+import { appendFileSync, readFileSync, writeFileSync } from "fs";
 import { spawnSync } from "child_process";
 
 const PACKAGES_DIR = join(process.cwd(), "packages");
@@ -137,8 +137,20 @@ for (const pkg of PACKAGES) {
         console.warn(`   ⚠️  Could not create tag ${tag}: ${tagErr.trim()}`);
       }
 
-      // Emit changeset-compatible format so changesets/action@v1 detects published packages
+      // changesets/action@v1 detected publishes by parsing this stdout line.
       console.log(`🦋  New tag:  ${tag}`);
+
+      // changesets/action@v2 no longer reads stdout: it passes CHANGESETS_OUTPUT,
+      // a path to an NDJSON file, and expects one `git-tag` event per published
+      // package. Without these events `published` stays false, so git tags are
+      // not pushed and no GitHub Release is created (this is why host 1.7.17
+      // and 2.0.0 published to npm with no release).
+      const outputPath = process.env.CHANGESETS_OUTPUT;
+      if (outputPath) {
+        const event = { type: "git-tag", tag, packageName: json.name };
+        appendFileSync(outputPath, `${JSON.stringify(event)}\n`);
+        console.log(`   📝 Recorded ${tag} in CHANGESETS_OUTPUT`);
+      }
     }
   } catch (e) {
     console.error(`   ❌ Error publishing ${pkg}:`, e);
