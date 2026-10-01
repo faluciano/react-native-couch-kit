@@ -13,7 +13,9 @@
   },
   "sideEffects": false,
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir ./dist --target browser --external react --external @couch-kit/client --external @couch-kit/core && tsc -p tsconfig.build.json",
+    "build": "NODE_ENV=production bun build ./src/index.ts --outdir ./dist --target browser --external react --external @couch-kit/client --external @couch-kit/core && tsc -p tsconfig.build.json && bun run verify-build",
+    "verify-build": "node -e \"const s=require('fs').readFileSync('./dist/index.js','utf8');if(!s.includes('function DebugOverlay'))throw new Error('dist/index.js is missing DebugOverlay — empty bundle');if(s.includes('jsx-dev-runtime'))throw new Error('dist/index.js uses react/jsx-dev-runtime — build with NODE_ENV=production');\"",
+    "prepublishOnly": "bun run build",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist lib"
