@@ -1,5 +1,13 @@
 # @couch-kit/devtools
 
+## 3.0.3
+
+### Patch Changes
+
+- [#206](https://github.com/faluciano/react-native-couch-kit/pull/206) [`cfe5bbb`](https://github.com/faluciano/react-native-couch-kit/commit/cfe5bbb1ac46eca0cb006b07473fbfab32e0182b) Thanks [@faluciano](https://github.com/faluciano)! - Publish a bundle that actually contains `DebugOverlay`.
+
+  Every previous release shipped a 27-byte `dist/index.js` that exported `DebugOverlay` without defining it: with `sideEffects: false`, the bundler tree-shook the named re-export of the package's only value. The build also targeted React's development JSX runtime, which does not work in a production build. The entry point now uses `export *`, the bundle is built against `react/jsx-runtime`, and the build fails if either regresses.
+
 ## 3.0.2
 
 ### Patch Changes
