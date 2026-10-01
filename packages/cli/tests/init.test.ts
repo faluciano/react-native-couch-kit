@@ -97,6 +97,68 @@ describe("init command", () => {
     ).not.toThrow();
   });
 
+  test("declares every @couch-kit package the scaffold imports", async () => {
+    const { initCommand } = await import("../src/commands/init");
+    await initCommand.parseAsync(["my-controller"], { from: "user" });
+
+    const projectDir = path.join(tmpDir, "my-controller");
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(projectDir, "package.json"), "utf-8"),
+    );
+
+    const imported = new Set<string>();
+    for (const file of fs.readdirSync(path.join(projectDir, "src"))) {
+      const source = fs.readFileSync(
+        path.join(projectDir, "src", file),
+        "utf-8",
+      );
+      for (const match of source.matchAll(/from ["'](@couch-kit\/[\w-]+)["']/g))
+        imported.add(match[1]!);
+    }
+
+    // The sample reducer imports core and App.tsx imports client.
+    expect([...imported].sort()).toEqual([
+      "@couch-kit/client",
+      "@couch-kit/core",
+    ]);
+    for (const name of imported) {
+      expect(
+        pkg.dependencies,
+        `expected ${name} to be a dependency of the scaffold`,
+      ).toHaveProperty([name]);
+    }
+  });
+
+  test("tracks the latest @couch-kit releases instead of a stale range", async () => {
+    const { initCommand } = await import("../src/commands/init");
+    await initCommand.parseAsync(["my-controller"], { from: "user" });
+
+    const pkg = JSON.parse(
+      fs.readFileSync(
+        path.join(tmpDir, "my-controller", "package.json"),
+        "utf-8",
+      ),
+    );
+    // A 0.x caret range (e.g. ^0.8.0) never reaches later 0.x minors.
+    expect(pkg.dependencies["@couch-kit/client"]).toBe("latest");
+    expect(pkg.dependencies["@couch-kit/core"]).toBe("latest");
+  });
+
+  test("pins a vite major that @vitejs/plugin-react supports", async () => {
+    const { initCommand } = await import("../src/commands/init");
+    await initCommand.parseAsync(["my-controller"], { from: "user" });
+
+    const pkg = JSON.parse(
+      fs.readFileSync(
+        path.join(tmpDir, "my-controller", "package.json"),
+        "utf-8",
+      ),
+    );
+    // @vitejs/plugin-react 6 has a peer dependency on vite ^8.
+    expect(pkg.devDependencies["@vitejs/plugin-react"]).toBe("^6.0.0");
+    expect(pkg.devDependencies.vite).toBe("^8.0.0");
+  });
+
   test("sample reducer references @couch-kit/core and handles SCORE", async () => {
     const { initCommand } = await import("../src/commands/init");
     await initCommand.parseAsync(["my-controller"], { from: "user" });

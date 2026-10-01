@@ -47,11 +47,11 @@ android/app/src/main/assets/www/
 Spawns headless WebSocket bots to simulate players (useful for load testing and quick iteration).
 
 ```bash
-# Default: 4 bots, ws://localhost:8082
+# Default: 4 bots, ws://localhost:8082/ws
 bunx couch-kit simulate
 
-# Custom host + count
-bunx couch-kit simulate --url ws://192.168.1.99:8082 --count 8
+# Custom host + count (the host serves WebSockets on the /ws path)
+bunx couch-kit simulate --url ws://192.168.1.99:8082/ws --count 8
 
 # Action interval (ms)
 bunx couch-kit simulate --interval 250

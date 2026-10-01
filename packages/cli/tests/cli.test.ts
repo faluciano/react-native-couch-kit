@@ -1,5 +1,7 @@
 import { describe, expect, test, mock } from "bun:test";
 import { Command } from "commander";
+import fs from "node:fs";
+import path from "node:path";
 
 // Mock the dependencies
 mock.module("ora", () => {
@@ -13,6 +15,59 @@ mock.module("ora", () => {
       }),
     }),
   };
+});
+
+const PACKAGE_ROOT = path.resolve(import.meta.dir, "..");
+
+/** Recursively collects every `.ts` file under `dir`. */
+function collectSourceFiles(dir: string): string[] {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const entryPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) return collectSourceFiles(entryPath);
+    return entry.name.endsWith(".ts") ? [entryPath] : [];
+  });
+}
+
+/**
+ * The CLI is built with `bun build --target node` and ships with a
+ * `#!/usr/bin/env node` shebang, so it must run under plain Node.
+ */
+describe("Node compatibility", () => {
+  const pkg = JSON.parse(
+    fs.readFileSync(path.join(PACKAGE_ROOT, "package.json"), "utf-8"),
+  );
+
+  test("package.json marks the ESM build output as a module", () => {
+    // dist/index.js is ESM; without this Node warns (or fails on older
+    // versions) when it has to guess the module format.
+    expect(pkg.type).toBe("module");
+    expect(pkg.bin["couch-kit"]).toBe("./dist/index.js");
+  });
+
+  test("package.json requires a Node with a global WebSocket", () => {
+    // `simulate` uses the global WebSocket, which is stable from Node 22.
+    expect(pkg.engines.node).toBe(">=22.0.0");
+  });
+
+  test("source never uses Bun-only APIs unguarded", () => {
+    const files = collectSourceFiles(path.join(PACKAGE_ROOT, "src"));
+    expect(files.length).toBeGreaterThan(0);
+
+    for (const file of files) {
+      const source = fs.readFileSync(file, "utf-8");
+      const relative = path.relative(PACKAGE_ROOT, file);
+
+      // `typeof Bun !== "undefined"` is a safe guard; `Bun.<member>` is not.
+      expect(
+        /\bBun\s*\./.test(source),
+        `${relative} uses the Bun global, which does not exist under Node`,
+      ).toBe(false);
+      expect(
+        /from\s+["']bun(?::[\w-]+)?["']/.test(source),
+        `${relative} imports a bun: module, which does not exist under Node`,
+      ).toBe(false);
+    }
+  });
 });
 
 describe("CLI Structure", () => {
