@@ -69,12 +69,33 @@ plus the relay coordinates:
 | `reducer`   | The shared game reducer                        |
 | `initialState` | The shared initial state                    |
 
-Instance methods:
+| `onStatusChange` | Called when the relay connection changes: `connecting` → `open` → `closed` |
+| `onError`   | Receives runtime and relay errors; relay errors are `RelayError` with a `code` |
+| `stateThrottleMs` | Minimum interval between state broadcasts. Defaults to 50ms here (not the LAN default of 33ms) so a continuously updating game stays inside the relay's per-connection rate limit |
+
+Instance members:
 
 - `getState()` — current authoritative state.
 - `subscribe(listener)` — subscribe to state changes; returns an unsubscribe fn.
 - `dispatch(action)` — dispatch a trusted host-side action.
+- `status` — `connecting` until the relay confirms the room, then `open`;
+  `closed` once the relay connection is gone.
 - `stop()` — tear down the runtime and close the relay socket.
+
+### When the relay connection drops
+
+A relay room lives exactly as long as its display's socket. If that socket
+closes — the tab loses its network, the relay restarts — the relay closes every
+phone in the room, and the display host:
+
+- marks every player `connected: false` in the game state,
+- moves to `status: "closed"` and calls `onStatusChange("closed")`,
+- reports the loss through `onError`.
+
+It does not reconnect: a new connection is a new room with a new code. The game
+state stays readable, so the display can show what happened rather than a board
+that silently stopped updating. Phones see `disconnectReason: "HOST_LEFT"`,
+which `describeRelayError` turns into a message for the join screen.
 
 The host maps relay `PEER_JOINED` / `DATA` / `PEER_LEFT` to the runtime's
 `handleConnection` / `handleMessage` / `handleDisconnect`, and implements the
