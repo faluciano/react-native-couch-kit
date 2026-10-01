@@ -79,12 +79,38 @@ export class HostSessionManager<TTimer = ReturnType<typeof setTimeout>> {
       options.derivePlayerIdLegacy ?? derivePlayerIdLegacy;
   }
 
+  /**
+   * Derives the public player ID for a secret without touching session state.
+   *
+   * Split from {@link HostSessionManager.registerJoin} so a caller can check
+   * that the connection is still alive after the (asynchronous) hash and before
+   * anything is recorded — a join for a socket that already closed must not
+   * displace the player's live session or cancel their pending removal.
+   */
+  derivePlayerIdFor(secret: string): Promise<string> {
+    return this.derivePlayerIdFn(secret);
+  }
+
   async handleJoin<S extends IGameState>(
     socketId: string,
     payload: JoinSessionPayload,
     playersSource: PlayersSource<S>,
   ): Promise<JoinSessionResult<S>> {
     const hashedId = await this.derivePlayerIdFn(payload.secret);
+    return this.registerJoin<S>(socketId, payload, hashedId, playersSource);
+  }
+
+  /**
+   * Records a join whose player ID was already derived with
+   * {@link HostSessionManager.derivePlayerIdFor}. Synchronous, so the session
+   * maps and the removal timer change atomically with the caller's own checks.
+   */
+  registerJoin<S extends IGameState>(
+    socketId: string,
+    payload: JoinSessionPayload,
+    hashedId: string,
+    playersSource: PlayersSource<S>,
+  ): JoinSessionResult<S> {
     const players =
       typeof playersSource === "function" ? playersSource() : playersSource;
     let playerId = hashedId;

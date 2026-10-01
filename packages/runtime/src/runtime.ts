@@ -16,12 +16,23 @@ import {
   DEFAULT_STATE_THROTTLE_MS,
   createStateUpdateMessage,
 } from "./broadcast-scheduler.js";
-import { isValidClientMessage } from "./message-validation.js";
+import {
+  isValidClientMessage,
+  sanitizePlayerAvatar,
+  sanitizePlayerName,
+} from "./message-validation.js";
 import { ActionRateLimiter } from "./rate-limiter.js";
 import {
   HostSessionManager,
   type JoinSessionPayload,
 } from "./session-manager.js";
+
+/**
+ * Most client actions kept for the next `STATE_UPDATE`. A transport that is
+ * detached for a while must not grow the queue without bound; the newest
+ * actions are the ones a debug log wants.
+ */
+const MAX_QUEUED_ACTIONS = 64;
 
 /** One connection's share of a {@link GameRuntimeTransport.sendMany} delivery. */
 export interface AddressedMessage {
@@ -192,7 +203,7 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
 
     switch (message.type) {
       case MessageTypes.JOIN: {
-        const { secret, ...payload } = message.payload;
+        const { secret } = message.payload;
 
         if (!secret || typeof secret !== "string" || !isValidSecret(secret)) {
           this.send(connectionId, {
@@ -221,19 +232,29 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
 
         this.pendingJoins.add(connectionId);
         try {
-          const { playerId, isReconnect, action } =
-            await this.sessionManager.handleJoin<S>(
-              connectionId,
-              message.payload as JoinSessionPayload,
-              () => this.state.players,
-            );
+          const joinPayload: JoinSessionPayload = {
+            name: sanitizePlayerName(message.payload.name),
+            avatar: sanitizePlayerAvatar(message.payload.avatar),
+            secret,
+          };
+          const hashedId = await this.sessionManager.derivePlayerIdFor(secret);
 
+          // The socket closed while the ID was being derived. Nothing has been
+          // recorded yet, so the player's previous session and any pending
+          // removal are left exactly as they were.
           if (
             this.activeConnections.get(connectionId) !== connectionGeneration
           ) {
-            this.sessionManager.abandonConnection(connectionId);
             return;
           }
+
+          const { playerId, isReconnect, action } =
+            this.sessionManager.registerJoin<S>(
+              connectionId,
+              joinPayload,
+              hashedId,
+              this.state.players,
+            );
 
           this.applyAction(action);
           this.joinedConnections.add(connectionId);
@@ -242,7 +263,7 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
             "onPlayerJoined",
             this.config.onPlayerJoined
               ? () => {
-                  this.config.onPlayerJoined?.(playerId, payload.name);
+                  this.config.onPlayerJoined?.(playerId, joinPayload.name);
                 }
               : undefined,
           );
@@ -316,11 +337,20 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
           return;
         }
 
-        this.applyAction({
+        const changed = this.applyAction({
           ...actionPayload,
           playerId: authorization.playerId,
         } as A);
-        this.actionQueue.push(actionPayload);
+        // Only actions that changed state ride along with the next update: a
+        // no-op schedules no broadcast, so queueing it would grow the queue
+        // until some unrelated change flushed the lot. Projected games never
+        // attach actions (see broadcastState), so nothing is queued for them.
+        if (changed && !this.config.project) {
+          this.actionQueue.push(actionPayload);
+          if (this.actionQueue.length > MAX_QUEUED_ACTIONS) {
+            this.actionQueue.shift();
+          }
+        }
         break;
       }
 
@@ -397,9 +427,10 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
     this.transport = null;
   }
 
-  private applyAction(action: A | InternalAction<S>): void {
+  /** @returns whether the action changed the canonical state. */
+  private applyAction(action: A | InternalAction<S>): boolean {
     const nextState = this.reducer(this.state, action);
-    if (Object.is(nextState, this.state)) return;
+    if (Object.is(nextState, this.state)) return false;
 
     this.state = nextState;
     this.stateDirty = true;
@@ -409,6 +440,7 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
     }
 
     this.broadcastScheduler.schedule(this.broadcastState);
+    return true;
   }
 
   /**
@@ -437,13 +469,16 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
     // a shared frame cannot carry different views. Transports that can batch
     // (see GameRuntimeTransport.sendMany) still put them on the wire as a
     // single frame; the rest fall back to N sends, bounded by players-per-room.
+    //
+    // No actions are attached: a player's action payload is exactly the kind
+    // of thing a projection exists to hide from everyone else.
     const entries: AddressedMessage[] = [];
     for (const connectionId of this.joinedConnections) {
       const playerId = this.sessionManager.getPlayerIdForSocket(connectionId);
       if (!playerId) continue;
       entries.push({
         connectionId,
-        message: createStateUpdateMessage(this.viewFor(playerId), actions),
+        message: createStateUpdateMessage(this.viewFor(playerId), []),
       });
     }
     if (entries.length === 0) return;

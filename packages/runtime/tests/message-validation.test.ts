@@ -4,6 +4,11 @@ import {
   isValidClientMessage,
   frameByteLength,
   DEFAULT_MAX_MESSAGE_BYTES,
+  DEFAULT_PLAYER_NAME,
+  MAX_PLAYER_AVATAR_LENGTH,
+  MAX_PLAYER_NAME_LENGTH,
+  sanitizePlayerAvatar,
+  sanitizePlayerName,
 } from "../src/message-validation";
 
 describe("runtime message validation", () => {
@@ -55,6 +60,8 @@ describe("runtime message validation", () => {
       { type: MessageTypes.JOIN },
       { type: MessageTypes.JOIN, payload: null },
       { type: MessageTypes.JOIN, payload: { name: 123 } },
+      { type: MessageTypes.JOIN, payload: { name: "Al", avatar: { a: 1 } } },
+      { type: MessageTypes.JOIN, payload: { name: "Al", avatar: 7 } },
       { type: MessageTypes.ACTION, payload: null },
       { type: MessageTypes.ACTION, payload: { type: 123 } },
       { type: MessageTypes.PING, payload: { id: "ping-1" } },
@@ -109,5 +116,32 @@ describe("frameByteLength", () => {
     expect(frameByteLength("x".repeat(1_000_000))).toBeGreaterThan(
       DEFAULT_MAX_MESSAGE_BYTES,
     );
+  });
+});
+
+describe("JOIN field sanitizing", () => {
+  test("trims, caps, and never returns a blank name", () => {
+    expect(sanitizePlayerName("  Alice  ")).toBe("Alice");
+    expect(sanitizePlayerName("   ")).toBe(DEFAULT_PLAYER_NAME);
+    expect(sanitizePlayerName("x".repeat(100_000))).toHaveLength(
+      MAX_PLAYER_NAME_LENGTH,
+    );
+  });
+
+  test("does not split a surrogate pair when truncating", () => {
+    const name = sanitizePlayerName("😀".repeat(MAX_PLAYER_NAME_LENGTH + 5));
+    expect(Array.from(name)).toHaveLength(MAX_PLAYER_NAME_LENGTH);
+    expect(name.endsWith("😀")).toBe(true);
+  });
+
+  test("keeps small string avatars and drops everything else", () => {
+    expect(sanitizePlayerAvatar("🎮")).toBe("🎮");
+    expect(sanitizePlayerAvatar(undefined)).toBeUndefined();
+    expect(sanitizePlayerAvatar(null)).toBeUndefined();
+    expect(sanitizePlayerAvatar("")).toBeUndefined();
+    expect(sanitizePlayerAvatar({ evil: true })).toBeUndefined();
+    expect(
+      sanitizePlayerAvatar("x".repeat(MAX_PLAYER_AVATAR_LENGTH + 1)),
+    ).toBeUndefined();
   });
 });

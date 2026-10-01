@@ -47,6 +47,40 @@ describe("runtime BroadcastScheduler", () => {
     expect(scheduler.hasPendingBroadcast()).toBe(false);
   });
 
+  test("later schedules do not extend the window opened by the first", () => {
+    const fake = new FakeScheduler();
+    const scheduler = new BroadcastScheduler<number>({ scheduler: fake });
+    let broadcasts = 0;
+
+    scheduler.schedule(() => broadcasts++);
+    const [timer] = Array.from(fake.tasks.keys());
+
+    // A host that updates faster than the throttle keeps scheduling. Resetting
+    // the timer each time would starve clients until the updates paused.
+    for (let i = 0; i < 20; i++) scheduler.schedule(() => broadcasts++);
+
+    expect(Array.from(fake.tasks.keys())).toEqual([timer]);
+    fake.run(timer);
+    expect(broadcasts).toBe(1);
+
+    // The next change opens a fresh window.
+    scheduler.schedule(() => broadcasts++);
+    expect(fake.tasks.size).toBe(1);
+  });
+
+  test("cancel drops the pending broadcast", () => {
+    const fake = new FakeScheduler();
+    const scheduler = new BroadcastScheduler<number>({ scheduler: fake });
+    let broadcasts = 0;
+
+    scheduler.schedule(() => broadcasts++);
+    scheduler.cancel();
+
+    expect(fake.tasks.size).toBe(0);
+    expect(scheduler.hasPendingBroadcast()).toBe(false);
+    expect(broadcasts).toBe(0);
+  });
+
   test("uses the default throttle interval and accepts custom intervals", () => {
     const defaultFake = new FakeScheduler();
     const defaultScheduler = new BroadcastScheduler<number>({
