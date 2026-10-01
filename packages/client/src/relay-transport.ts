@@ -4,6 +4,8 @@ import {
   type CreateClientTransport,
 } from "./transport";
 import {
+  RELAY_CLOSE_HOST_LEFT,
+  RelayErrorCodes,
   RelayMessageTypes,
   relayRoomUrl,
   type RelayServerMessage,
@@ -79,6 +81,16 @@ export class RelayClientTransport implements ClientTransport {
 
     this.ws.onclose = (event: CloseEvent) => {
       this.state = TransportReadyState.CLOSED;
+      // The host leaving ends the room: retrying the same code can only come
+      // back ROOM_NOT_FOUND, so report it as terminal with a reason the UI can
+      // explain.
+      if (
+        this.pendingCloseCode === null &&
+        event.code === RELAY_CLOSE_HOST_LEFT
+      ) {
+        this.pendingCloseCode = POLICY_CLOSE_CODE;
+        this.pendingCloseReason = RelayErrorCodes.HOST_LEFT;
+      }
       const code = this.pendingCloseCode ?? event.code;
       this.onclose?.(code, this.pendingCloseReason ?? event.reason);
     };
@@ -104,7 +116,10 @@ export class RelayClientTransport implements ClientTransport {
   close(code?: number, reason?: string): void {
     this.state = TransportReadyState.CLOSING;
     // WebSocket.close only permits 1000 or 3000-4999; pass through only those.
-    if (code !== undefined && (code === 1000 || (code >= 3000 && code <= 4999))) {
+    if (
+      code !== undefined &&
+      (code === 1000 || (code >= 3000 && code <= 4999))
+    ) {
       this.ws.close(code, reason);
     } else {
       this.ws.close();

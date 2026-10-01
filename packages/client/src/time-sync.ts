@@ -66,7 +66,9 @@ export function nextSyncInterval(current: number): number {
  * called directly. Access `getServerTime()` and `rtt` from the
  * `useGameClient` return value instead.
  *
- * @param socket - The active client transport (or `null` if not yet connected).
+ * @param socket - The **open** client transport, or `null` while there is none.
+ *   Syncing starts when this becomes an open transport, so pass a value that
+ *   changes identity on open (state, not a ref read during render).
  * @returns An object with `getServerTime` (returns estimated server time), `rtt`, and `handlePong` (callback for PONG messages).
  */
 export function useServerTime(socket: ClientTransport | null) {
@@ -141,8 +143,11 @@ export function useServerTime(socket: ClientTransport | null) {
     // Initial sync
     sync();
 
+    const pending = pings.current;
     return () => {
       if (timer !== null) clearTimeout(timer);
+      // PONGs for this socket's pings can no longer arrive.
+      pending.clear();
     };
   }, [socket]);
 

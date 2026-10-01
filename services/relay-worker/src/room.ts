@@ -118,6 +118,13 @@ export class RelayRoom implements DurableObject {
           // Socket died between routing and send; the close handler cleans up.
         }
       },
+      close: (code: number, reason: string) => {
+        try {
+          ws.close(code, reason);
+        } catch {
+          // Already closed from the other side.
+        }
+      },
     };
   }
 

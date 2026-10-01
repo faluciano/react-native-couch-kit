@@ -41,10 +41,17 @@ hosted at whatever URL each game happens to use. The rate/room/player limits are
 `RelayRooms` (see `DEFAULT_LIMITS`); the connection-per-IP cap and origin
 allowlist are read from env in `server.ts`.
 
-Room codes are chosen by the display, not the relay, so they are only as
-unguessable as the client makes them; the per-connection rate limit plus
-per-IP cap are what throttle brute-force `JOIN_ROOM` scanning. Server-generated
-codes and auth tokens remain future work.
+Room codes are minted by the relay (six characters from a 32-character
+alphabet, drawn from the CSPRNG) when a display sends `CREATE_ROOM` without one;
+a display may still name its own code, which is then only as unguessable as it
+chose. The code is the only credential a phone needs, so the per-connection
+rate limit plus per-IP cap are what throttle brute-force `JOIN_ROOM` scanning.
+Auth tokens remain future work.
+
+A room lives exactly as long as its host's socket. When the host disconnects,
+the relay drops the room and closes every phone in it with code `4001`
+(`HOST_LEFT`), so no phone is left connected to a room that no longer exists.
+There is no host resumption: a display that reconnects creates a new room.
 
 ## Protocol (summary)
 

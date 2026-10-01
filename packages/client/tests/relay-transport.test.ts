@@ -4,7 +4,12 @@ import {
   createRelayTransport,
 } from "../src/relay-transport";
 import { TransportReadyState } from "../src/transport";
-import { RelayMessageTypes, relayRoomUrl } from "../src/relay-protocol";
+import {
+  RELAY_CLOSE_HOST_LEFT,
+  RelayErrorCodes,
+  RelayMessageTypes,
+  relayRoomUrl,
+} from "../src/relay-protocol";
 
 class MockWebSocket {
   static instances: MockWebSocket[] = [];
@@ -153,6 +158,20 @@ describe("RelayClientTransport", () => {
     ws.fireClose(1006);
     expect(closeCode).toBe(1006);
     expect(t.readyState).toBe(TransportReadyState.CLOSED);
+  });
+
+  test("the host leaving is reported as a terminal HOST_LEFT close", () => {
+    const t = new RelayClientTransport({ url: "ws://relay", roomId: "R" });
+    const ws = MockWebSocket.last();
+    ws.fireOpen();
+    ws.fireMessage(joined());
+
+    let closed: { code: number; reason?: string } | null = null;
+    t.onclose = (code, reason) => (closed = { code, reason });
+    ws.fireClose(RELAY_CLOSE_HOST_LEFT, "HOST_LEFT");
+
+    // 1008 keeps the client from retrying a room that no longer exists.
+    expect(closed).toEqual({ code: 1008, reason: RelayErrorCodes.HOST_LEFT });
   });
 
   test("close() only forwards reserved-safe codes to the socket", () => {

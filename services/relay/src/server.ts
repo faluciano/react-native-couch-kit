@@ -69,7 +69,11 @@ const server = Bun.serve<SocketData, undefined>({
     perMessageDeflate: true,
     open(ws) {
       ipCounts.set(ws.data.ip, (ipCounts.get(ws.data.ip) ?? 0) + 1);
-      ws.data.conn = { id: ws.data.id, send: (data: string) => ws.send(data) };
+      ws.data.conn = {
+        id: ws.data.id,
+        send: (data: string) => ws.send(data),
+        close: (code: number, reason: string) => ws.close(code, reason),
+      };
     },
     message(ws, message) {
       if (!ws.data.conn) return;

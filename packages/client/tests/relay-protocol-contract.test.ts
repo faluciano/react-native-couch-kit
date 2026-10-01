@@ -2,11 +2,13 @@ import { describe, expect, test } from "bun:test";
 import {
   RelayMessageTypes as ClientMessageTypes,
   RelayErrorCodes as ClientErrorCodes,
+  RELAY_CLOSE_HOST_LEFT as CLIENT_CLOSE_HOST_LEFT,
 } from "../src/relay-protocol";
 import {
   RelayMessageTypes as ServerMessageTypes,
   RelayErrorCodes as ServerErrorCodes,
   MAX_MESSAGE_BYTES as SERVER_MAX_MESSAGE_BYTES,
+  RELAY_CLOSE_HOST_LEFT as SERVER_CLOSE_HOST_LEFT,
 } from "../../../services/relay/src/rooms";
 
 /**
@@ -26,6 +28,12 @@ describe("relay protocol contract (client ↔ relay)", () => {
 
   test("error codes match exactly", () => {
     expect(ClientErrorCodes).toEqual(ServerErrorCodes);
+  });
+
+  test("the host-left close code matches", () => {
+    // The relay closes phones with it; the client transport has to recognize
+    // it to report HOST_LEFT instead of retrying a room that is gone.
+    expect(CLIENT_CLOSE_HOST_LEFT).toBe(SERVER_CLOSE_HOST_LEFT);
   });
 
   test("both sides bound messages at the same size", () => {
