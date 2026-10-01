@@ -1,4 +1,7 @@
+import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { Command } from "commander";
 import { replayActions, toErrorMessage } from "@couch-kit/core";
 import type { Recording } from "@couch-kit/core";
@@ -19,16 +22,18 @@ export const replay = new Command("replay")
       options: { snapshots: boolean; json: boolean },
     ) => {
       try {
+        // Node APIs only: the published CLI runs under Node (`--target node`),
+        // where the `Bun` global does not exist.
         const resolvedRecordingPath = resolve(recordingPath);
-        const recordingFile = Bun.file(resolvedRecordingPath);
-        const exists = await recordingFile.exists();
 
-        if (!exists) {
+        if (!existsSync(resolvedRecordingPath)) {
           console.error(`Error: Recording file not found: ${recordingPath}`);
           process.exit(1);
         }
 
-        const recording: Recording = await recordingFile.json();
+        const recording: Recording = JSON.parse(
+          await readFile(resolvedRecordingPath, "utf-8"),
+        );
 
         if (!recording.initialState || !Array.isArray(recording.actions)) {
           console.error(
@@ -37,9 +42,12 @@ export const replay = new Command("replay")
           process.exit(1);
         }
 
-        // Load reducer module
+        // Load reducer module. Import by file URL: Node's ESM loader rejects
+        // bare absolute paths on Windows and misparses `#`/`?`/`%` in them.
         const resolvedReducerPath = resolve(reducerPath);
-        const reducerModule = await import(resolvedReducerPath);
+        const reducerModule = await import(
+          pathToFileURL(resolvedReducerPath).href
+        );
         const reducer = reducerModule.default ?? reducerModule.reducer;
 
         if (typeof reducer !== "function") {

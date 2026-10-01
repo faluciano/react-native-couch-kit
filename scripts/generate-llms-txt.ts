@@ -213,7 +213,7 @@ When generating code for Couch Kit projects, follow these guidelines:
 - **The host is the single source of truth.** Clients receive state via hydration. Optimistic updates run locally but are overridden by the host's authoritative state.
 - **User reducers only handle custom action types.** The \`createGameReducer\` wrapper handles all internal actions before falling through to the user reducer.
 - **On Android, use \`useExtractAssets()\`** to extract bundled web assets from the APK before passing \`staticDir\` to \`GameHostProvider\`.
-- **In dev mode, pass \`url: "ws://TV_IP:8082"\`** to \`useGameClient()\` when serving the controller from a laptop.
+- **In dev mode, pass \`url: "ws://TV_IP:8082/ws"\`** to \`useGameClient()\` when serving the controller from a laptop.
 
 ### Deprecated exports to avoid
 
@@ -576,7 +576,7 @@ function replayActions<S extends IGameState = IGameState, A extends IAction = IA
 1. Client opens WebSocket to \`ws://TV_IP:8082/ws\`
 2. Client sends \`JOIN\` with \`{ name, avatar?, secret }\`
 3. Host derives \`playerId\` from \`secret\`, dispatches \`__PLAYER_JOINED__\` (or \`__PLAYER_RECONNECTED__\` for returning players)
-4. Host responds with \`WELCOME\` (or \`RECONNECTED\`) containing \`{ playerId, state, serverTime }\`
+4. Host responds with \`WELCOME\` containing \`{ playerId, state, serverTime }\` — or, for a returning player, \`RECONNECTED\` containing \`{ playerId, state }\`
 5. Client sends \`ACTION\` with \`{ type, payload? }\` — host validates and dispatches
 6. Host broadcasts \`STATE_UPDATE\` with \`{ newState, timestamp, action? }\` to all clients
 7. Client periodically sends \`PING\`, host replies with \`PONG\` for time sync
@@ -997,7 +997,7 @@ Spawns headless bots to simulate players.
 \`\`\`
 Options:
   -n, --count <number>     Number of bots (default: 4)
-  -u, --url <url>          WebSocket URL of host (default: "ws://localhost:8082")
+  -u, --url <url>          WebSocket URL of host (default: "ws://localhost:8082/ws")
   -i, --interval <ms>      Action interval in ms (default: 1000)
 \`\`\`
 
@@ -1119,7 +1119,7 @@ The framework dispatches these internal actions automatically. User reducers do 
 
 1. Run the TV app with \`devMode: true\` and \`devServerUrl: "http://LAPTOP_IP:5173"\`
 2. Run \`couch-kit dev\` (or \`vite\`) in the web controller directory
-3. On the controller, pass \`url: "ws://TV_IP:8082"\` to \`useGameClient()\`
+3. On the controller, pass \`url: "ws://TV_IP:8082/ws"\` to \`useGameClient()\`
 4. The TV will redirect phones to the laptop's dev server for hot reload
 5. Iterate on the controller without rebuilding the TV app
 
@@ -1131,7 +1131,7 @@ The framework dispatches these internal actions automatically. User reducers do 
 |---------|----------|
 | Phone can't open the controller page | Confirm TV and phone are on the same Wi-Fi; verify \`serverUrl\` is not null |
 | Phone opens page but actions do nothing | Check that your reducer handles your custom action types |
-| Dev mode WS fails | Pass \`url: "ws://TV_IP:8082"\` to \`useGameClient()\` |
+| Dev mode WS fails | Pass \`url: "ws://TV_IP:8082/ws"\` to \`useGameClient()\` |
 | Connection is flaky | Enable \`debug: true\` in host/client and watch logs; keep TV from sleeping |
 | Duplicate React / Invalid Hook Call | Ensure library packages treat \`react\` as peerDependency; don't bundle it |
 | Changes not showing up after yalc push | Stop Metro and run \`bun start --reset-cache\` |

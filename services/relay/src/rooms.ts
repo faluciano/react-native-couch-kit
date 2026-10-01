@@ -35,6 +35,8 @@ export const RelayErrorCodes = {
   MALFORMED: "MALFORMED",
   RATE_LIMITED: "RATE_LIMITED",
   SERVER_BUSY: "SERVER_BUSY",
+  /** Reported by clients for a {@link RELAY_CLOSE_HOST_LEFT} close; never sent as an ERROR frame. */
+  HOST_LEFT: "HOST_LEFT",
 } as const;
 
 /** Matches `@couch-kit/runtime`'s `DEFAULT_MAX_MESSAGE_BYTES`. */
@@ -42,6 +44,14 @@ export const MAX_MESSAGE_BYTES = 256 * 1024;
 
 /** RFC 6455 "policy violation" — the client did something it isn't allowed to. */
 export const RELAY_CLOSE_POLICY = 1008;
+
+/**
+ * The room's host disconnected, taking the room with it. Application-defined
+ * (4000-4999). No ERROR frame precedes it: clients that predate this code just
+ * see an ordinary drop, retry, and are told ROOM_NOT_FOUND — the right answer,
+ * one round trip later.
+ */
+export const RELAY_CLOSE_HOST_LEFT = 4001;
 
 /**
  * A close the transport should perform after the core has finished with a
@@ -142,6 +152,13 @@ const MINT_ATTEMPTS = 5;
 export interface RelayConnection {
   id: string;
   send(data: string): void;
+  /**
+   * Closes the underlying socket. Optional so a fake connection in a test need
+   * not supply it; both real transports do. Used when the core must end a
+   * connection it is not currently handling a message for — a player whose
+   * host just left.
+   */
+  close?(code: number, reason: string): void;
 }
 
 interface Room {
@@ -321,11 +338,19 @@ export class RelayRooms {
     if (!room) return;
 
     if (mem.role === "host") {
-      // Host is gone: the room is dead. Drop it and detach players.
-      for (const player of room.players.values()) {
+      // Host is gone: the room is dead. Drop it and its players with it. A
+      // phone left connected would sit on "connected" showing stale state, with
+      // nothing to tell it the game is over — and on the Workers relay its
+      // socket would keep the room's Durable Object occupied.
+      const players = Array.from(room.players.values());
+      for (const player of players) {
         this.membership.delete(player.id);
+        this.rate.delete(player.id);
       }
       this.rooms.delete(mem.roomId);
+      for (const player of players) {
+        player.close?.(RELAY_CLOSE_HOST_LEFT, RelayErrorCodes.HOST_LEFT);
+      }
     } else {
       room.players.delete(conn.id);
       this.send(room.host, {

@@ -13,6 +13,8 @@
     "changeset": "changeset",
     "version": "bun run scripts/version.ts",
     "release": "bun run scripts/publish.ts",
+    "lint": "prettier --check \"packages/*/src/**/*.{ts,tsx}\" \"packages/*/tests/**/*.{ts,tsx}\" \"services/*/src/**/*.ts\" \"services/*/tests/**/*.ts\" \"scripts/**/*.ts\" && bun run lint:changesets",
+    "format": "prettier --write \"packages/*/src/**/*.{ts,tsx}\" \"packages/*/tests/**/*.{ts,tsx}\" \"services/*/src/**/*.ts\" \"services/*/tests/**/*.ts\" \"scripts/**/*.ts\"",
     "lint:changesets": "bun run scripts/lint-changeset-headers.ts",
     "docs": "bun install --cwd docs-tools && docs-tools/node_modules/.bin/typedoc",
     "docs:llms": "bun run scripts/generate-llms-txt.ts"

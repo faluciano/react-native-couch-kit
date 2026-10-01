@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import { createRequire } from "node:module";
+import { DEFAULT_SIMULATE_URL } from "./defaults";
 
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json");
@@ -38,7 +39,7 @@ program
   .command("simulate")
   .description("Spawns headless bots to simulate players")
   .option("-n, --count <number>", "Number of bots", "4")
-  .option("-u, --url <url>", "WebSocket URL of host", "ws://localhost:8082")
+  .option("-u, --url <url>", "WebSocket URL of host", DEFAULT_SIMULATE_URL)
   .option("-i, --interval <ms>", "Action interval in ms", "1000")
   .action(async (_options, command) => {
     const { simulateCommand } = await import("./commands/simulate");
@@ -94,6 +95,11 @@ program
  *   - positive booleans (`--open`)    -> emitted only when enabled
  *   - negated booleans (`--no-build`) -> emitted only when disabled
  *
+ * Options the user did not pass are NOT forwarded: the proxy's defaults exist
+ * only so `--help` can display them, and the sub-command applies its own.
+ * Forwarding a proxy default would silently override the sub-command's
+ * default whenever the two drift apart.
+ *
  * Positional arguments are forwarded separately by each command's action.
  */
 function reconstructArgs(command: Command): string[] {
@@ -101,8 +107,10 @@ function reconstructArgs(command: Command): string[] {
   const opts = command.opts();
 
   for (const option of command.options) {
-    const value = opts[option.attributeName()];
+    const name = option.attributeName();
+    const value = opts[name];
     if (value === undefined) continue;
+    if (command.getOptionValueSource(name) === "default") continue;
 
     if (option.negate) {
       // e.g. `--no-build` (attribute "build", defaults true): forward the

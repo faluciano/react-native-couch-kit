@@ -1,7 +1,12 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import type { IGameState, IAction } from "@couch-kit/core";
 import { RelayMessageTypes } from "@couch-kit/client";
-import { RelayDisplayHost } from "../src/relay-display-host";
+import {
+  DEFAULT_RELAY_STATE_THROTTLE_MS,
+  RelayDisplayHost,
+  RelayError,
+  type RelayDisplayStatus,
+} from "../src/relay-display-host";
 
 // --- Minimal game under test ---------------------------------------------
 
@@ -27,6 +32,7 @@ class MockWebSocket {
   onopen: (() => void) | null = null;
   onmessage: ((event: { data: string }) => void) | null = null;
   onerror: ((event: unknown) => void) | null = null;
+  onclose: ((event: { code: number; reason: string }) => void) | null = null;
 
   constructor(url: string) {
     this.url = url;
@@ -48,6 +54,10 @@ class MockWebSocket {
   }
   fromServerRaw(data: string): void {
     this.onmessage?.({ data });
+  }
+  /** The relay (or the network) ends the connection. */
+  serverClose(code = 1006, reason = ""): void {
+    this.onclose?.({ code, reason });
   }
 
   /** Parsed frames this side sent, optionally filtered to relay DATA. */
@@ -107,12 +117,19 @@ describe("RelayDisplayHost", () => {
     ws.open();
     ws.sent.length = 0;
 
-    ws.fromServer({ type: RelayMessageTypes.PEER_JOINED, roomId: "ROOM", peerId: "p1" });
+    ws.fromServer({
+      type: RelayMessageTypes.PEER_JOINED,
+      roomId: "ROOM",
+      peerId: "p1",
+    });
     ws.fromServer({
       type: RelayMessageTypes.DATA,
       roomId: "ROOM",
       from: "p1",
-      data: JSON.stringify({ type: "JOIN", payload: { secret: SECRET, name: "P1" } }),
+      data: JSON.stringify({
+        type: "JOIN",
+        payload: { secret: SECRET, name: "P1" },
+      }),
     });
     await flush();
 
@@ -124,6 +141,11 @@ describe("RelayDisplayHost", () => {
   test("dispatch broadcasts a STATE_UPDATE envelope to the room", async () => {
     const { host, ws } = makeHost();
     ws.open();
+    ws.fromServer({
+      type: RelayMessageTypes.PEER_JOINED,
+      roomId: "ROOM",
+      peerId: "p1",
+    });
     ws.sent.length = 0;
 
     host.dispatch({ type: "BUMP" });
@@ -152,16 +174,28 @@ describe("RelayDisplayHost", () => {
   test("PEER_LEFT disconnects the peer without error", async () => {
     const { ws } = makeHost();
     ws.open();
-    ws.fromServer({ type: RelayMessageTypes.PEER_JOINED, roomId: "ROOM", peerId: "p1" });
+    ws.fromServer({
+      type: RelayMessageTypes.PEER_JOINED,
+      roomId: "ROOM",
+      peerId: "p1",
+    });
     expect(() =>
-      ws.fromServer({ type: RelayMessageTypes.PEER_LEFT, roomId: "ROOM", peerId: "p1" }),
+      ws.fromServer({
+        type: RelayMessageTypes.PEER_LEFT,
+        roomId: "ROOM",
+        peerId: "p1",
+      }),
     ).not.toThrow();
   });
 
   test("oversized inbound data is dropped, not forwarded to the runtime", async () => {
     const { ws } = makeHost();
     ws.open();
-    ws.fromServer({ type: RelayMessageTypes.PEER_JOINED, roomId: "ROOM", peerId: "p1" });
+    ws.fromServer({
+      type: RelayMessageTypes.PEER_JOINED,
+      roomId: "ROOM",
+      peerId: "p1",
+    });
     ws.sent.length = 0;
 
     const huge = "x".repeat(256 * 1024 + 1);
@@ -169,7 +203,10 @@ describe("RelayDisplayHost", () => {
       type: RelayMessageTypes.DATA,
       roomId: "ROOM",
       from: "p1",
-      data: JSON.stringify({ type: "JOIN", payload: { secret: SECRET, name: huge } }),
+      data: JSON.stringify({
+        type: "JOIN",
+        payload: { secret: SECRET, name: huge },
+      }),
     });
     await flush();
     // Nothing sent back: the frame never reached the runtime.
@@ -179,11 +216,20 @@ describe("RelayDisplayHost", () => {
   test("unparseable inbound data is ignored", async () => {
     const { ws } = makeHost();
     ws.open();
-    ws.fromServer({ type: RelayMessageTypes.PEER_JOINED, roomId: "ROOM", peerId: "p1" });
+    ws.fromServer({
+      type: RelayMessageTypes.PEER_JOINED,
+      roomId: "ROOM",
+      peerId: "p1",
+    });
     ws.sent.length = 0;
 
     expect(() =>
-      ws.fromServer({ type: RelayMessageTypes.DATA, roomId: "ROOM", from: "p1", data: "{bad" }),
+      ws.fromServer({
+        type: RelayMessageTypes.DATA,
+        roomId: "ROOM",
+        from: "p1",
+        data: "{bad",
+      }),
     ).not.toThrow();
     await flush();
     expect(ws.sent).toHaveLength(0);
@@ -195,12 +241,18 @@ describe("RelayDisplayHost", () => {
     expect(() => ws.fromServerRaw("not json")).not.toThrow();
   });
 
-  test("a relay ERROR message surfaces to onError", () => {
+  test("a relay ERROR message surfaces to onError with its code", () => {
     const errors: Error[] = [];
     const { ws } = makeHost((e) => errors.push(e));
     ws.open();
-    ws.fromServer({ type: RelayMessageTypes.ERROR, code: "ROOM_EXISTS", message: "boom" });
+    ws.fromServer({
+      type: RelayMessageTypes.ERROR,
+      code: "ROOM_EXISTS",
+      message: "boom",
+    });
     expect(errors.map((e) => e.message)).toContain("boom");
+    expect(errors[0]).toBeInstanceOf(RelayError);
+    expect((errors[0] as RelayError).code).toBe("ROOM_EXISTS");
   });
 
   test("a socket error surfaces to onError", () => {
@@ -215,6 +267,160 @@ describe("RelayDisplayHost", () => {
     ws.open();
     host.stop();
     expect(ws.closed).toBe(true);
+  });
+});
+
+describe("relay connection lifecycle", () => {
+  function makeTracked() {
+    const statuses: RelayDisplayStatus[] = [];
+    const errors: Error[] = [];
+    const host = new RelayDisplayHost<TestState, TestAction>({
+      url: "wss://relay.test",
+      reducer,
+      initialState,
+      stateThrottleMs: 1,
+      onStatusChange: (status) => statuses.push(status),
+      onError: (error) => errors.push(error),
+    });
+    return { host, ws: MockWebSocket.last!, statuses, errors };
+  }
+
+  async function joinPeer(ws: MockWebSocket, peerId: string, secret = SECRET) {
+    ws.fromServer({
+      type: RelayMessageTypes.PEER_JOINED,
+      roomId: "ROOM",
+      peerId,
+    });
+    ws.fromServer({
+      type: RelayMessageTypes.DATA,
+      roomId: "ROOM",
+      from: peerId,
+      data: JSON.stringify({ type: "JOIN", payload: { name: "P", secret } }),
+    });
+    await flush();
+  }
+
+  test("is connecting until the relay confirms the room, then open", () => {
+    const { host, ws, statuses } = makeTracked();
+    expect(host.status).toBe("connecting");
+
+    ws.open();
+    expect(host.status).toBe("connecting");
+
+    ws.fromServer({
+      type: RelayMessageTypes.ROOM_CREATED,
+      roomId: "ROOM",
+      peerId: "h",
+    });
+    expect(host.status).toBe("open");
+    expect(statuses).toEqual(["open"]);
+  });
+
+  test("does not write to a socket that has not opened", async () => {
+    const { host, ws } = makeTracked();
+
+    // A display that dispatches on mount broadcasts before the socket opens; a
+    // real WebSocket throws on send while connecting.
+    host.dispatch({ type: "BUMP" });
+    await flush();
+
+    expect(ws.sent).toEqual([]);
+    expect(host.getState().score).toBe(1);
+  });
+
+  test("does not broadcast to an empty room", async () => {
+    const { host, ws } = makeTracked();
+    ws.open();
+    ws.sent.length = 0;
+
+    host.dispatch({ type: "BUMP" });
+    await flush();
+
+    expect(ws.sent).toEqual([]);
+  });
+
+  test("a phone that joins later still receives the state it missed", async () => {
+    const { host, ws } = makeTracked();
+    ws.open();
+    host.dispatch({ type: "BUMP" });
+    await flush();
+
+    await joinPeer(ws, "p1");
+
+    const welcome = ws.dataMessages().find((d) => d.msg.type === "WELCOME");
+    expect(welcome?.msg.payload.state.score).toBe(1);
+  });
+
+  test("losing the relay marks every phone disconnected and reports it", async () => {
+    const { host, ws, statuses, errors } = makeTracked();
+    ws.open();
+    ws.fromServer({
+      type: RelayMessageTypes.ROOM_CREATED,
+      roomId: "ROOM",
+      peerId: "h",
+    });
+    await joinPeer(ws, "p1");
+    expect(Object.values(host.getState().players)[0]?.connected).toBe(true);
+
+    ws.serverClose(1006, "network");
+
+    expect(host.status).toBe("closed");
+    expect(statuses).toEqual(["open", "closed"]);
+    expect(Object.values(host.getState().players)[0]?.connected).toBe(false);
+    expect(errors.at(-1)?.message).toContain("Relay connection closed");
+    expect(errors.at(-1)?.message).toContain("1006");
+  });
+
+  test("stops writing once the relay connection is gone", async () => {
+    const { host, ws } = makeTracked();
+    ws.open();
+    await joinPeer(ws, "p1");
+    ws.serverClose();
+    ws.sent.length = 0;
+
+    host.dispatch({ type: "BUMP" });
+    await flush();
+
+    expect(ws.sent).toEqual([]);
+  });
+
+  test("stop() is a clean close, not an error", () => {
+    const { host, ws, statuses, errors } = makeTracked();
+    ws.open();
+    host.stop();
+    ws.serverClose(1000);
+
+    expect(host.status).toBe("closed");
+    expect(statuses).toEqual(["closed"]);
+    expect(errors).toEqual([]);
+  });
+
+  test("defaults to a throttle the relay's rate limit can absorb", async () => {
+    const host = new RelayDisplayHost<TestState, TestAction>({
+      url: "wss://relay.test",
+      reducer,
+      initialState,
+    });
+    const ws = MockWebSocket.last!;
+    ws.open();
+    await joinPeer(ws, "p1");
+    ws.sent.length = 0;
+
+    // Update continuously for a while, as a ticking game would.
+    const started = Date.now();
+    while (Date.now() - started < 300) {
+      host.dispatch({ type: "BUMP" });
+      await flush(5);
+    }
+    host.stop();
+
+    const broadcasts = ws
+      .dataMessages()
+      .filter((d) => d.msg.type === "STATE_UPDATE").length;
+    expect(broadcasts).toBeGreaterThanOrEqual(3);
+    expect(broadcasts).toBeLessThanOrEqual(
+      Math.ceil(300 / DEFAULT_RELAY_STATE_THROTTLE_MS) + 1,
+    );
   });
 });
 
@@ -242,7 +448,11 @@ describe("projected state updates", () => {
 
   /** Brings a phone all the way to joined, so it is in `joinedConnections`. */
   async function join(ws: MockWebSocket, peerId: string) {
-    ws.fromServer({ type: RelayMessageTypes.PEER_JOINED, roomId: "ROOM", peerId });
+    ws.fromServer({
+      type: RelayMessageTypes.PEER_JOINED,
+      roomId: "ROOM",
+      peerId,
+    });
     ws.fromServer({
       type: RelayMessageTypes.DATA,
       roomId: "ROOM",
@@ -261,7 +471,10 @@ describe("projected state updates", () => {
     ws.frames().filter((f) => f.type === RelayMessageTypes.DATA_MULTI);
 
   test("two players cost one frame, keyed by peer id", async () => {
-    const { host, ws } = makeProjectedHost((state, id) => ({ ...state, me: id }));
+    const { host, ws } = makeProjectedHost((state, id) => ({
+      ...state,
+      me: id,
+    }));
     ws.open();
     await join(ws, "p1");
     await join(ws, "p2");
@@ -274,11 +487,16 @@ describe("projected state updates", () => {
     expect(frames).toHaveLength(1);
     expect(Object.keys(frames[0].payloads).sort()).toEqual(["p1", "p2"]);
     // And no per-player DATA frames alongside it.
-    expect(ws.dataMessages().filter((d) => d.msg.type === "STATE_UPDATE")).toEqual([]);
+    expect(
+      ws.dataMessages().filter((d) => d.msg.type === "STATE_UPDATE"),
+    ).toEqual([]);
   });
 
   test("each payload carries that player's own projection", async () => {
-    const { host, ws } = makeProjectedHost((state, id) => ({ ...state, me: id }));
+    const { host, ws } = makeProjectedHost((state, id) => ({
+      ...state,
+      me: id,
+    }));
     ws.open();
     await join(ws, "p1");
     await join(ws, "p2");
@@ -308,7 +526,9 @@ describe("projected state updates", () => {
     // Splitting costs an extra billed message; being dropped by the relay would
     // cost the game.
     expect(multiFrames(ws)).toHaveLength(0);
-    const updates = ws.dataMessages().filter((d) => d.msg.type === "STATE_UPDATE");
+    const updates = ws
+      .dataMessages()
+      .filter((d) => d.msg.type === "STATE_UPDATE");
     expect(updates.map((u) => u.to).sort()).toEqual(["p1", "p2"]);
   });
 });
@@ -413,7 +633,9 @@ describe("relay-assigned room codes", () => {
     });
     await flush();
 
-    const envelopes = ws.frames().filter((f) => f.type === RelayMessageTypes.DATA);
+    const envelopes = ws
+      .frames()
+      .filter((f) => f.type === RelayMessageTypes.DATA);
     expect(envelopes.length).toBeGreaterThan(0);
     for (const envelope of envelopes) {
       expect(envelope.roomId).toBe("K7M2QX");

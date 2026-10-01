@@ -26,7 +26,7 @@ interface Floor {
 const FLOORS: Record<string, Floor> = {
   core: { lines: 82, functions: 88 },
   runtime: { lines: 95, functions: 90 },
-  client: { lines: 34, functions: 70 },
+  client: { lines: 75, functions: 85 },
   host: { lines: 79, functions: 75 },
   cli: { lines: 60, functions: 68 },
   devtools: { lines: 95, functions: 80 },

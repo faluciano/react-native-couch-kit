@@ -18,12 +18,8 @@ describe("sha256Hex", () => {
 
   it("hashes a longer multi-block message", () => {
     expect(
-      sha256Hex(
-        "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq",
-      ),
-    ).toBe(
-      "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1",
-    );
+      sha256Hex("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"),
+    ).toBe("248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1");
   });
 
   it("produces the same digest as the Web Crypto API (incl. UTF-8)", async () => {

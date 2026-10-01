@@ -18,6 +18,8 @@ import {
   shouldReconnect,
   resolveSessionSecret,
   interpretHostMessage,
+  DEFAULT_OPTIMISTIC_TIMEOUT,
+  type HostError,
 } from "./connection";
 import {
   TransportReadyState,
@@ -49,8 +51,30 @@ export interface ClientConfig<S extends IGameState, A extends IAction> {
   baseDelay?: number;
   /** Maximum delay (ms) cap for reconnection backoff (default: 10000). */
   maxDelay?: number;
+  /**
+   * How long (ms) an optimistic update may stand without the host confirming
+   * it (default: 2000). The host only broadcasts when its state changes, so an
+   * action it ignores — an illegal move, a rate-limited tap, one sent while
+   * offline — produces no update, and without this the client would keep
+   * showing a state the host never had. When the window passes with no update
+   * the client falls back to the last state the host sent. Set to `0` to
+   * disable. Has no effect without a `reducer`.
+   */
+  optimisticTimeoutMs?: number;
+  /**
+   * Keep the clock in sync with the host by exchanging PING/PONG (default:
+   * `true`). Powers `getServerTime()` and `rtt`. A game that uses neither can
+   * turn it off: on a relay transport every ping, and the host's answer, is a
+   * billed message.
+   */
+  timeSync?: boolean;
   onConnect?: () => void;
   onDisconnect?: () => void;
+  /**
+   * Called when the host rejects something this client sent (`RATE_LIMITED`,
+   * `NOT_JOINED`, `FORBIDDEN_ACTION`, `INVALID_SECRET`, …).
+   */
+  onError?: (error: HostError) => void;
   debug?: boolean;
   /**
    * Provide a custom transport factory (e.g. a cross-network relay). When
@@ -102,6 +126,15 @@ export function useGameClient<S extends IGameState, A extends IAction>(
   );
 
   const socketRef = useRef<ClientTransport | null>(null);
+  // The transport once it is open, as state: time sync has to re-run when the
+  // socket *opens*, and a ref read during render cannot signal that.
+  const [openTransport, setOpenTransport] = useState<ClientTransport | null>(
+    null,
+  );
+  // Last state the host sent, and the pending fallback to it (see
+  // `optimisticTimeoutMs`).
+  const lastServerState = useRef<S | null>(null);
+  const rollbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttempts = useRef(0);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const intentionalClose = useRef(false);
@@ -113,12 +146,32 @@ export function useGameClient<S extends IGameState, A extends IAction>(
   });
 
   // Time Sync Hook
-  const { getServerTime, rtt, handlePong } = useServerTime(socketRef.current);
+  const { getServerTime, rtt, handlePong } = useServerTime(
+    config.timeSync === false ? null : openTransport,
+  );
 
   const handlePongRef = useRef(handlePong);
   useEffect(() => {
     handlePongRef.current = handlePong;
   });
+
+  const cancelRollback = useCallback(() => {
+    if (rollbackTimer.current !== null) {
+      clearTimeout(rollbackTimer.current);
+      rollbackTimer.current = null;
+    }
+  }, []);
+
+  /** Replaces local state with the last state the host sent, if any. */
+  const rollbackToServerState = useCallback(() => {
+    cancelRollback();
+    const serverState = lastServerState.current;
+    if (serverState === null) return;
+    dispatchLocal({
+      type: InternalActionTypes.HYDRATE,
+      payload: serverState,
+    } as InternalAction<S>);
+  }, [cancelRollback]);
 
   const maxRetries = config.maxRetries ?? DEFAULT_MAX_RETRIES;
   const baseDelay = config.baseDelay ?? DEFAULT_BASE_DELAY;
@@ -138,7 +191,8 @@ export function useGameClient<S extends IGameState, A extends IAction>(
     //   Port + 1 is skipped to avoid conflicts with Metro bundler (uses 8081).
     let transport: ClientTransport;
     if (cfg.createTransport) {
-      if (cfg.debug) console.log("[GameClient] Connecting via custom transport");
+      if (cfg.debug)
+        console.log("[GameClient] Connecting via custom transport");
       transport = cfg.createTransport();
     } else {
       const wsUrl = resolveWebSocketUrl(
@@ -155,9 +209,18 @@ export function useGameClient<S extends IGameState, A extends IAction>(
     socketRef.current = transport;
     setStatus("connecting");
 
+    // Every handler ignores a transport that is no longer the current one. A
+    // socket closed by cleanup, `disconnect()` or a reconnect still fires its
+    // events later; without this they would overwrite the new connection's
+    // status and schedule a second, parallel reconnect.
+    const isCurrent = () => socketRef.current === transport;
+
     transport.onopen = () => {
+      if (!isCurrent()) return;
       const currentCfg = configRef.current;
       setStatus("connected");
+      setDisconnectReason(null);
+      setOpenTransport(transport);
       reconnectAttempts.current = 0;
       currentCfg.onConnect?.();
 
@@ -185,6 +248,7 @@ export function useGameClient<S extends IGameState, A extends IAction>(
     };
 
     transport.onmessage = (data) => {
+      if (!isCurrent()) return;
       let msg: HostMessage;
       try {
         msg = JSON.parse(data) as HostMessage;
@@ -199,7 +263,10 @@ export function useGameClient<S extends IGameState, A extends IAction>(
             setPlayerId(effect.playerId);
             break;
           case "hydrate":
-            // Full state replacement from the host's authoritative state.
+            // Full state replacement from the host's authoritative state. It
+            // supersedes any optimistic update, so no fallback is needed.
+            lastServerState.current = effect.state;
+            cancelRollback();
             dispatchLocal({
               type: InternalActionTypes.HYDRATE,
               payload: effect.state,
@@ -208,11 +275,22 @@ export function useGameClient<S extends IGameState, A extends IAction>(
           case "pong":
             handlePongRef.current(effect.payload);
             break;
+          case "error":
+            if (configRef.current.debug)
+              console.warn("[GameClient] Host error:", effect.error);
+            // Whatever was rejected, the host's state did not change: drop
+            // any optimistic update now instead of waiting out the timer.
+            rollbackToServerState();
+            configRef.current.onError?.(effect.error);
+            break;
         }
       }
     };
 
     transport.onclose = (code, reason) => {
+      if (!isCurrent()) return;
+      socketRef.current = null;
+      setOpenTransport(null);
       setStatus("disconnected");
       // Terminal room-level failures carry a relay error code (ROOM_NOT_FOUND,
       // ROOM_FULL, …). Surfacing it lets the UI explain the failure rather than
@@ -249,67 +327,98 @@ export function useGameClient<S extends IGameState, A extends IAction>(
     };
 
     transport.onerror = (e) => {
+      if (!isCurrent()) return;
       if (configRef.current.debug) console.error("[GameClient] Error", e);
       setStatus("error");
     };
     // Only re-create the connect function when URL/port actually changes.
     // Config values like name, avatar, callbacks, and createTransport are read
     // from configRef.
-  }, [config.url, config.wsPort, maxRetries, baseDelay, maxDelay]);
+  }, [
+    config.url,
+    config.wsPort,
+    maxRetries,
+    baseDelay,
+    maxDelay,
+    cancelRollback,
+    rollbackToServerState,
+  ]);
+
+  /**
+   * Closes the current transport for good. It is detached *before* closing, so
+   * its late `close`/`error` events are ignored and cannot trigger a reconnect
+   * or clobber the status of whatever connection replaces it.
+   */
+  const closeCurrent = useCallback(() => {
+    intentionalClose.current = true;
+    if (reconnectTimer.current) {
+      clearTimeout(reconnectTimer.current);
+      reconnectTimer.current = null;
+    }
+    cancelRollback();
+    const transport = socketRef.current;
+    if (!transport) return;
+    socketRef.current = null;
+    setOpenTransport(null);
+    transport.close();
+    configRef.current.onDisconnect?.();
+  }, [cancelRollback]);
 
   // Initial Connection
   useEffect(() => {
     connect();
-    return () => {
-      intentionalClose.current = true;
-      if (socketRef.current) socketRef.current.close();
-      if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
-    };
-  }, [connect]);
+    return closeCurrent;
+  }, [connect, closeCurrent]);
 
   /**
    * Manually disconnect from the host.
    * Prevents automatic reconnection.
    */
   const disconnect = useCallback(() => {
-    intentionalClose.current = true;
-    if (reconnectTimer.current) {
-      clearTimeout(reconnectTimer.current);
-      reconnectTimer.current = null;
-    }
-    if (socketRef.current) {
-      socketRef.current.close();
-      socketRef.current = null;
-    }
+    closeCurrent();
     setStatus("disconnected");
-  }, []);
+  }, [closeCurrent]);
 
   /**
    * Manually reconnect to the host.
    * Resets the reconnection attempt counter.
    */
   const reconnect = useCallback(() => {
-    disconnect();
+    closeCurrent();
     reconnectAttempts.current = 0;
-    // Small delay to let the close complete
-    setTimeout(() => connect(), 50);
-  }, [disconnect, connect]);
+    connect();
+  }, [closeCurrent, connect]);
 
   // Action Dispatcher
-  const sendAction = useCallback((action: A) => {
-    // 1. Optimistic Update
-    dispatchLocal(action);
+  const sendAction = useCallback(
+    (action: A) => {
+      // 1. Optimistic Update
+      dispatchLocal(action);
 
-    // 2. Send to Host
-    if (socketRef.current?.readyState === TransportReadyState.OPEN) {
-      socketRef.current.send(
-        JSON.stringify({
-          type: MessageTypes.ACTION,
-          payload: action,
-        }),
-      );
-    }
-  }, []);
+      // The host stays silent when an action changes nothing, so an optimistic
+      // update it ignored would otherwise stand forever. Arm a single fallback to
+      // the last server state; the next STATE_UPDATE cancels it.
+      const cfg = configRef.current;
+      const timeout = cfg.optimisticTimeoutMs ?? DEFAULT_OPTIMISTIC_TIMEOUT;
+      if (cfg.reducer && timeout > 0 && rollbackTimer.current === null) {
+        rollbackTimer.current = setTimeout(() => {
+          rollbackTimer.current = null;
+          rollbackToServerState();
+        }, timeout);
+      }
+
+      // 2. Send to Host
+      if (socketRef.current?.readyState === TransportReadyState.OPEN) {
+        socketRef.current.send(
+          JSON.stringify({
+            type: MessageTypes.ACTION,
+            payload: action,
+          }),
+        );
+      }
+    },
+    [rollbackToServerState],
+  );
 
   return {
     status,

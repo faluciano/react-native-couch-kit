@@ -3,6 +3,7 @@ import {
   DEFAULT_WS_PORT_OFFSET,
   DEFAULT_WS_PATH,
   generateId,
+  isValidSecret,
   type HostMessage,
 } from "@couch-kit/core";
 
@@ -18,6 +19,12 @@ import {
 
 /** localStorage key under which the session-recovery secret is persisted. */
 export const SESSION_SECRET_KEY = "ck_secret";
+
+/**
+ * Default time (ms) an optimistic update may stand without the host confirming
+ * it before the client falls back to the last state the host sent.
+ */
+export const DEFAULT_OPTIMISTIC_TIMEOUT = 2000;
 
 /** The subset of `WebSocket` close codes that must NOT trigger a reconnect. */
 const NON_RECOVERABLE_CLOSE_CODES = new Set<number>([
@@ -110,9 +117,12 @@ export type SecretStorage = Pick<Storage, "getItem" | "setItem">;
  * Resolve the session-recovery secret.
  *
  * Reuses an existing secret from storage when present, otherwise generates a
- * new one and persists it. When storage is unavailable or throws (e.g. Safari
- * private browsing, restrictive WebViews), a fresh secret is generated without
- * persistence so a JOIN can still proceed.
+ * new one and persists it. A stored value the host would reject (corrupted or
+ * written by something else) is replaced rather than reused — otherwise every
+ * JOIN would fail with `INVALID_SECRET` until the user cleared site data. When
+ * storage is unavailable or throws (e.g. Safari private browsing, restrictive
+ * WebViews), a fresh secret is generated without persistence so a JOIN can
+ * still proceed.
  */
 export function resolveSessionSecret(
   storage: SecretStorage | null | undefined,
@@ -121,7 +131,7 @@ export function resolveSessionSecret(
   try {
     if (!storage) return generate();
     const stored = storage.getItem(SESSION_SECRET_KEY);
-    if (stored) return stored;
+    if (stored && isValidSecret(stored)) return stored;
     const secret = generate();
     storage.setItem(SESSION_SECRET_KEY, secret);
     return secret;
@@ -138,15 +148,21 @@ export function resolveSessionSecret(
 export type HostMessageEffect<S> =
   | { kind: "setPlayerId"; playerId: string }
   | { kind: "hydrate"; state: S }
-  | { kind: "pong"; payload: PongPayload };
+  | { kind: "pong"; payload: PongPayload }
+  | { kind: "error"; error: HostError };
+
+/**
+ * A rejection reported by the host — e.g. `RATE_LIMITED`, `NOT_JOINED`,
+ * `FORBIDDEN_ACTION`, `INVALID_SECRET`.
+ */
+export type HostError = Extract<HostMessage, { type: "ERROR" }>["payload"];
 
 /** Payload of a `PONG` host message. */
 export type PongPayload = Extract<HostMessage, { type: "PONG" }>["payload"];
 
 /**
  * Translate a parsed host message into the ordered list of effects the client
- * should apply. Unknown/irrelevant message types (e.g. `ERROR`) yield no
- * effects.
+ * should apply. Unknown message types yield no effects.
  */
 export function interpretHostMessage<S>(
   msg: HostMessage,
@@ -166,6 +182,8 @@ export function interpretHostMessage<S>(
         { kind: "setPlayerId", playerId: msg.payload.playerId },
         { kind: "hydrate", state: msg.payload.state as S },
       ];
+    case MessageTypes.ERROR:
+      return [{ kind: "error", error: msg.payload }];
     default:
       return [];
   }

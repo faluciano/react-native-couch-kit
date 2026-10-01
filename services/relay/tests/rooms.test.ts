@@ -4,6 +4,7 @@ import {
   RelayMessageTypes,
   RelayErrorCodes,
   MAX_MESSAGE_BYTES,
+  RELAY_CLOSE_HOST_LEFT,
   generateRoomCode,
   ROOM_CODE_ALPHABET,
   ROOM_CODE_LENGTH,
@@ -29,7 +30,10 @@ describe("RelayRooms", () => {
   test("host creates a room and is acknowledged", () => {
     const rooms = new RelayRooms();
     const host = conn("h");
-    rooms.handleMessage(host, JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }));
+    rooms.handleMessage(
+      host,
+      JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }),
+    );
 
     expect(rooms.roomCount).toBe(1);
     expect(host.sent).toEqual([
@@ -39,9 +43,15 @@ describe("RelayRooms", () => {
 
   test("duplicate room creation is rejected", () => {
     const rooms = new RelayRooms();
-    rooms.handleMessage(conn("h"), JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }));
+    rooms.handleMessage(
+      conn("h"),
+      JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }),
+    );
     const h2 = conn("h2");
-    rooms.handleMessage(h2, JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }));
+    rooms.handleMessage(
+      h2,
+      JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }),
+    );
     expect(h2.sent[0].code).toBe(RelayErrorCodes.ROOM_EXISTS);
   });
 
@@ -60,8 +70,14 @@ describe("RelayRooms", () => {
 
   test("a full room errors but stays open", () => {
     const rooms = new RelayRooms({ maxPlayersPerRoom: 1 });
-    rooms.handleMessage(conn("h"), JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }));
-    rooms.handleMessage(conn("p1"), JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
+    rooms.handleMessage(
+      conn("h"),
+      JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }),
+    );
+    rooms.handleMessage(
+      conn("p1"),
+      JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }),
+    );
     const p2 = conn("p2");
     const close = rooms.handleMessage(
       p2,
@@ -74,7 +90,10 @@ describe("RelayRooms", () => {
   test("player join notifies host and joiner", () => {
     const rooms = new RelayRooms();
     const host = conn("h");
-    rooms.handleMessage(host, JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }));
+    rooms.handleMessage(
+      host,
+      JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }),
+    );
     const p = conn("p");
     rooms.handleMessage(p, JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
 
@@ -93,7 +112,10 @@ describe("RelayRooms", () => {
   test("player DATA is routed to host tagged with sender id", () => {
     const rooms = new RelayRooms();
     const host = conn("h");
-    rooms.handleMessage(host, JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }));
+    rooms.handleMessage(
+      host,
+      JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }),
+    );
     const p = conn("p");
     rooms.handleMessage(p, JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
     host.sent.length = 0;
@@ -112,7 +134,10 @@ describe("RelayRooms", () => {
   test("host unicast reaches only the addressed player", () => {
     const rooms = new RelayRooms();
     const host = conn("h");
-    rooms.handleMessage(host, JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }));
+    rooms.handleMessage(
+      host,
+      JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }),
+    );
     const p1 = conn("p1");
     const p2 = conn("p2");
     rooms.handleMessage(p1, JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
@@ -128,7 +153,10 @@ describe("RelayRooms", () => {
   test("host broadcast reaches all players", () => {
     const rooms = new RelayRooms();
     const host = conn("h");
-    rooms.handleMessage(host, JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }));
+    rooms.handleMessage(
+      host,
+      JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }),
+    );
     const p1 = conn("p1");
     const p2 = conn("p2");
     rooms.handleMessage(p1, JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
@@ -144,7 +172,10 @@ describe("RelayRooms", () => {
   test("player disconnect notifies host with PEER_LEFT", () => {
     const rooms = new RelayRooms();
     const host = conn("h");
-    rooms.handleMessage(host, JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }));
+    rooms.handleMessage(
+      host,
+      JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }),
+    );
     const p = conn("p");
     rooms.handleMessage(p, JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
     host.sent.length = 0;
@@ -158,13 +189,16 @@ describe("RelayRooms", () => {
   test("host disconnect tears down the room", () => {
     const rooms = new RelayRooms();
     const host = conn("h");
-    rooms.handleMessage(host, JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }));
+    rooms.handleMessage(
+      host,
+      JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }),
+    );
     const p = conn("p");
     rooms.handleMessage(p, JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
 
     rooms.handleClose(host);
     expect(rooms.roomCount).toBe(0);
-    // The former player is now orphaned; its DATA is rejected.
+    // The former player is detached; anything it still sends is rejected.
     p.sent.length = 0;
     rooms.handleMessage(p, dataMsg("{}"));
     expect(p.sent[0].code).toBe(RelayErrorCodes.NOT_IN_ROOM);
@@ -227,17 +261,29 @@ describe("RelayRooms", () => {
 
   test("room creation is capped at maxRooms", () => {
     const rooms = new RelayRooms({ maxRooms: 1 });
-    rooms.handleMessage(conn("h1"), JSON.stringify({ type: "CREATE_ROOM", roomId: "A" }));
+    rooms.handleMessage(
+      conn("h1"),
+      JSON.stringify({ type: "CREATE_ROOM", roomId: "A" }),
+    );
     const h2 = conn("h2");
-    rooms.handleMessage(h2, JSON.stringify({ type: "CREATE_ROOM", roomId: "B" }));
+    rooms.handleMessage(
+      h2,
+      JSON.stringify({ type: "CREATE_ROOM", roomId: "B" }),
+    );
     expect(h2.sent[0].code).toBe(RelayErrorCodes.SERVER_BUSY);
     expect(rooms.roomCount).toBe(1);
   });
 
   test("joining a full room is rejected with ROOM_FULL", () => {
     const rooms = new RelayRooms({ maxPlayersPerRoom: 1 });
-    rooms.handleMessage(conn("h"), JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }));
-    rooms.handleMessage(conn("p1"), JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
+    rooms.handleMessage(
+      conn("h"),
+      JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }),
+    );
+    rooms.handleMessage(
+      conn("p1"),
+      JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }),
+    );
     const p2 = conn("p2");
     rooms.handleMessage(p2, JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
     expect(p2.sent[0].code).toBe(RelayErrorCodes.ROOM_FULL);
@@ -247,8 +293,14 @@ describe("RelayRooms", () => {
     const rooms = new RelayRooms();
     const host = conn("h");
     const player = conn("p");
-    rooms.handleMessage(host, JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }));
-    rooms.handleMessage(player, JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
+    rooms.handleMessage(
+      host,
+      JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }),
+    );
+    rooms.handleMessage(
+      player,
+      JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }),
+    );
 
     expect(rooms.membershipOf("h")).toEqual({ roomId: "R", role: "host" });
     expect(rooms.membershipOf("p")).toEqual({ roomId: "R", role: "player" });
@@ -278,8 +330,14 @@ describe("RelayRooms", () => {
 
     // Routing works immediately: broadcast reaches every restored player.
     rooms.handleMessage(host, JSON.stringify({ type: "DATA", data: "s" }));
-    expect(p1.sent[0]).toMatchObject({ type: RelayMessageTypes.DATA, data: "s" });
-    expect(p2.sent[0]).toMatchObject({ type: RelayMessageTypes.DATA, data: "s" });
+    expect(p1.sent[0]).toMatchObject({
+      type: RelayMessageTypes.DATA,
+      data: "s",
+    });
+    expect(p2.sent[0]).toMatchObject({
+      type: RelayMessageTypes.DATA,
+      data: "s",
+    });
 
     // And player -> host still carries the sender id.
     rooms.handleMessage(p1, JSON.stringify({ type: "DATA", data: "a" }));
@@ -309,13 +367,22 @@ describe("RelayRooms", () => {
     ]);
 
     const late = conn("p2");
-    rooms.handleMessage(late, JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
+    rooms.handleMessage(
+      late,
+      JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }),
+    );
     expect(late.sent[0].type).toBe(RelayMessageTypes.ROOM_JOINED);
-    expect(host.sent[0]).toMatchObject({ type: RelayMessageTypes.PEER_JOINED, peerId: "p2" });
+    expect(host.sent[0]).toMatchObject({
+      type: RelayMessageTypes.PEER_JOINED,
+      peerId: "p2",
+    });
 
     host.sent.length = 0;
     rooms.handleClose(p1);
-    expect(host.sent[0]).toMatchObject({ type: RelayMessageTypes.PEER_LEFT, peerId: "p1" });
+    expect(host.sent[0]).toMatchObject({
+      type: RelayMessageTypes.PEER_LEFT,
+      peerId: "p1",
+    });
   });
 
   test("closing a connection clears its rate-limit state", () => {
@@ -337,7 +404,10 @@ describe("DATA_MULTI", () => {
     const host = conn("h");
     const p1 = conn("p1");
     const p2 = conn("p2");
-    rooms.handleMessage(host, JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }));
+    rooms.handleMessage(
+      host,
+      JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }),
+    );
     rooms.handleMessage(p1, JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
     rooms.handleMessage(p2, JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
     host.sent.length = 0;
@@ -347,7 +417,11 @@ describe("DATA_MULTI", () => {
   }
 
   const multi = (payloads: unknown) =>
-    JSON.stringify({ type: RelayMessageTypes.DATA_MULTI, roomId: "R", payloads });
+    JSON.stringify({
+      type: RelayMessageTypes.DATA_MULTI,
+      roomId: "R",
+      payloads,
+    });
 
   test("each player receives only its own payload, as a plain DATA frame", () => {
     const { rooms, host, p1, p2 } = room();
@@ -356,16 +430,26 @@ describe("DATA_MULTI", () => {
 
     // Phones must not be able to tell this from a unicast DATA: that is what
     // lets the batch ship without upgrading a single client.
-    expect(p1.sent).toEqual([{ type: RelayMessageTypes.DATA, roomId: "R", data: "one" }]);
-    expect(p2.sent).toEqual([{ type: RelayMessageTypes.DATA, roomId: "R", data: "two" }]);
+    expect(p1.sent).toEqual([
+      { type: RelayMessageTypes.DATA, roomId: "R", data: "one" },
+    ]);
+    expect(p2.sent).toEqual([
+      { type: RelayMessageTypes.DATA, roomId: "R", data: "two" },
+    ]);
   });
 
   test("counts as one message against the rate limit, not one per player", () => {
     const rooms = new RelayRooms({ messagesPerWindow: 3, rateWindowMs: 1000 });
     const host = conn("h");
-    rooms.handleMessage(host, JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }));
+    rooms.handleMessage(
+      host,
+      JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }),
+    );
     for (const id of ["p1", "p2", "p3", "p4"]) {
-      rooms.handleMessage(conn(id), JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
+      rooms.handleMessage(
+        conn(id),
+        JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }),
+      );
     }
 
     // Two four-player fan-outs would be 8 sends the old way, over the budget of
@@ -397,7 +481,10 @@ describe("DATA_MULTI", () => {
   test("missing or non-object payloads are rejected", () => {
     const { rooms, host } = room();
 
-    rooms.handleMessage(host, JSON.stringify({ type: RelayMessageTypes.DATA_MULTI, roomId: "R" }));
+    rooms.handleMessage(
+      host,
+      JSON.stringify({ type: RelayMessageTypes.DATA_MULTI, roomId: "R" }),
+    );
     expect(host.sent[0].code).toBe(RelayErrorCodes.MALFORMED);
 
     host.sent.length = 0;
@@ -423,11 +510,20 @@ describe("room code case", () => {
     const host = conn("h");
     const player = conn("p");
 
-    rooms.handleMessage(host, JSON.stringify({ type: "CREATE_ROOM", roomId: "6DX8" }));
-    rooms.handleMessage(player, JSON.stringify({ type: "JOIN_ROOM", roomId: "6dx8" }));
+    rooms.handleMessage(
+      host,
+      JSON.stringify({ type: "CREATE_ROOM", roomId: "6DX8" }),
+    );
+    rooms.handleMessage(
+      player,
+      JSON.stringify({ type: "JOIN_ROOM", roomId: "6dx8" }),
+    );
 
     expect(player.sent[0].type).toBe(RelayMessageTypes.ROOM_JOINED);
-    expect(host.sent[1]).toMatchObject({ type: RelayMessageTypes.PEER_JOINED, peerId: "p" });
+    expect(host.sent[1]).toMatchObject({
+      type: RelayMessageTypes.PEER_JOINED,
+      peerId: "p",
+    });
   });
 
   test("a room created lower-case is joinable upper-case", () => {
@@ -435,8 +531,14 @@ describe("room code case", () => {
     const host = conn("h");
     const player = conn("p");
 
-    rooms.handleMessage(host, JSON.stringify({ type: "CREATE_ROOM", roomId: "abcd" }));
-    rooms.handleMessage(player, JSON.stringify({ type: "JOIN_ROOM", roomId: "ABCD" }));
+    rooms.handleMessage(
+      host,
+      JSON.stringify({ type: "CREATE_ROOM", roomId: "abcd" }),
+    );
+    rooms.handleMessage(
+      player,
+      JSON.stringify({ type: "JOIN_ROOM", roomId: "ABCD" }),
+    );
 
     expect(player.sent[0].type).toBe(RelayMessageTypes.ROOM_JOINED);
   });
@@ -446,8 +548,14 @@ describe("room code case", () => {
     const first = conn("h1");
     const second = conn("h2");
 
-    rooms.handleMessage(first, JSON.stringify({ type: "CREATE_ROOM", roomId: "ABCD" }));
-    rooms.handleMessage(second, JSON.stringify({ type: "CREATE_ROOM", roomId: "abcd" }));
+    rooms.handleMessage(
+      first,
+      JSON.stringify({ type: "CREATE_ROOM", roomId: "ABCD" }),
+    );
+    rooms.handleMessage(
+      second,
+      JSON.stringify({ type: "CREATE_ROOM", roomId: "abcd" }),
+    );
 
     expect(second.sent[0].code).toBe(RelayErrorCodes.ROOM_EXISTS);
     expect(rooms.roomCount).toBe(1);
@@ -457,8 +565,14 @@ describe("room code case", () => {
     const rooms = new RelayRooms();
     const host = conn("h");
     const player = conn("p");
-    rooms.handleMessage(host, JSON.stringify({ type: "CREATE_ROOM", roomId: "xy12" }));
-    rooms.handleMessage(player, JSON.stringify({ type: "JOIN_ROOM", roomId: "XY12" }));
+    rooms.handleMessage(
+      host,
+      JSON.stringify({ type: "CREATE_ROOM", roomId: "xy12" }),
+    );
+    rooms.handleMessage(
+      player,
+      JSON.stringify({ type: "JOIN_ROOM", roomId: "XY12" }),
+    );
 
     expect(rooms.membershipOf("h")).toEqual({ roomId: "XY12", role: "host" });
     expect(rooms.membershipOf("p")).toEqual({ roomId: "XY12", role: "player" });
@@ -466,7 +580,10 @@ describe("room code case", () => {
     host.sent.length = 0;
     player.sent.length = 0;
     rooms.handleMessage(host, JSON.stringify({ type: "DATA", data: "s" }));
-    expect(player.sent[0]).toMatchObject({ type: RelayMessageTypes.DATA, data: "s" });
+    expect(player.sent[0]).toMatchObject({
+      type: RelayMessageTypes.DATA,
+      data: "s",
+    });
   });
 });
 
@@ -579,5 +696,95 @@ describe("generateRoomCode", () => {
     );
     // Birthday collisions at 1000 draws from 32^6 are ~0.0005% likely.
     expect(codes.size).toBe(1000);
+  });
+});
+
+describe("host departure", () => {
+  /** A fake connection that also records being closed by the relay. */
+  function closable(id: string) {
+    const closes: { code: number; reason: string }[] = [];
+    return {
+      ...conn(id),
+      closes,
+      close(code: number, reason: string) {
+        closes.push({ code, reason });
+      },
+    };
+  }
+
+  test("closes every phone in the room when the host leaves", () => {
+    const rooms = new RelayRooms();
+    const host = closable("h");
+    const p1 = closable("p1");
+    const p2 = closable("p2");
+    rooms.handleMessage(
+      host,
+      JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }),
+    );
+    rooms.handleMessage(p1, JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
+    rooms.handleMessage(p2, JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
+
+    rooms.handleClose(host);
+
+    expect(rooms.roomCount).toBe(0);
+    for (const player of [p1, p2]) {
+      expect(player.closes).toEqual([
+        { code: RELAY_CLOSE_HOST_LEFT, reason: RelayErrorCodes.HOST_LEFT },
+      ]);
+      expect(rooms.membershipOf(player.id)).toBeUndefined();
+    }
+    expect(host.closes).toEqual([]);
+  });
+
+  test("the transport's follow-up close for a dropped phone is a no-op", () => {
+    const rooms = new RelayRooms();
+    const host = closable("h");
+    const p1 = closable("p1");
+    rooms.handleMessage(
+      host,
+      JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }),
+    );
+    rooms.handleMessage(p1, JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
+    rooms.handleClose(host);
+    host.sent.length = 0;
+
+    // Closing the socket makes the transport report the close back to the core.
+    rooms.handleClose(p1);
+
+    expect(host.sent).toEqual([]);
+    expect(p1.closes).toHaveLength(1);
+  });
+
+  test("a phone leaving does not close anyone", () => {
+    const rooms = new RelayRooms();
+    const host = closable("h");
+    const p1 = closable("p1");
+    const p2 = closable("p2");
+    rooms.handleMessage(
+      host,
+      JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }),
+    );
+    rooms.handleMessage(p1, JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
+    rooms.handleMessage(p2, JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
+
+    rooms.handleClose(p1);
+
+    expect(host.closes).toEqual([]);
+    expect(p2.closes).toEqual([]);
+    expect(rooms.roomCount).toBe(1);
+  });
+
+  test("a connection without close support is simply detached", () => {
+    const rooms = new RelayRooms();
+    const host = conn("h");
+    const p1 = conn("p1");
+    rooms.handleMessage(
+      host,
+      JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }),
+    );
+    rooms.handleMessage(p1, JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
+
+    expect(() => rooms.handleClose(host)).not.toThrow();
+    expect(rooms.membershipOf("p1")).toBeUndefined();
   });
 });

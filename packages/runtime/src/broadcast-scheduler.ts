@@ -24,13 +24,19 @@ export interface BroadcastSchedulerOptions<TTimer> {
 }
 
 /**
- * Debounced state-broadcast scheduler used by the authoritative runtime.
- * Rapid state changes are coalesced into one broadcast after the latest change.
+ * Throttled state-broadcast scheduler used by the authoritative runtime.
+ *
+ * The first change opens a window of `stateThrottleMs`; every change inside it
+ * is coalesced into the single broadcast that fires when the window closes.
+ * The window is never extended by later changes, so a host that updates
+ * faster than the throttle still broadcasts once per window instead of being
+ * starved until the updates pause.
  */
 export class BroadcastScheduler<TTimer = ReturnType<typeof setTimeout>> {
   private stateThrottleMs: number;
   private readonly scheduler: TimerScheduler<TTimer>;
   private timer: TTimer | null = null;
+  private pending: (() => void) | null = null;
 
   constructor(options: BroadcastSchedulerOptions<TTimer> = {}) {
     this.stateThrottleMs = options.stateThrottleMs ?? DEFAULT_STATE_THROTTLE_MS;
@@ -40,15 +46,21 @@ export class BroadcastScheduler<TTimer = ReturnType<typeof setTimeout>> {
   }
 
   schedule(callback: () => void): void {
-    this.cancel();
+    // The latest callback wins, but the window opened by the first call stands.
+    this.pending = callback;
+    if (this.timer !== null) return;
+
     this.timer = this.scheduler.setTimeout(() => {
       this.timer = null;
-      callback();
+      const pending = this.pending;
+      this.pending = null;
+      pending?.();
     }, this.stateThrottleMs);
   }
 
   cancel(): void {
-    if (this.timer) {
+    this.pending = null;
+    if (this.timer !== null) {
       this.scheduler.clearTimeout(this.timer);
       this.timer = null;
     }

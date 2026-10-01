@@ -93,6 +93,8 @@ export function describeRelayError(reason: string | null): string | null {
       return "That room isn't open. Check the code on the screen.";
     case RelayErrorCodes.ROOM_FULL:
       return "That room is full.";
+    case RelayErrorCodes.HOST_LEFT:
+      return "The host screen closed, so this game has ended.";
     case RelayErrorCodes.RATE_LIMITED:
       return "Too many messages — slow down and try again.";
     case RelayErrorCodes.ROOM_EXISTS:

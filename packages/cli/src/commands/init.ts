@@ -45,14 +45,15 @@ export const initCommand = new Command("init")
         dependencies: {
           react: "^19.0.0",
           "react-dom": "^19.0.0",
-          "@couch-kit/client": "^0.8.0",
+          "@couch-kit/client": "latest",
+          "@couch-kit/core": "latest",
         },
         devDependencies: {
           "@types/react": "^19.0.0",
           "@types/react-dom": "^19.0.0",
           "@vitejs/plugin-react": "^6.0.0",
           typescript: "^5.7.0",
-          vite: "^6.0.0",
+          vite: "^8.0.0",
         },
       };
 

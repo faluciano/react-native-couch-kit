@@ -144,6 +144,40 @@ describe("replay command", () => {
     expect(JSON.parse(logs.join("\n")).finalState.count).toBe(3);
   });
 
+  test("loads a reducer whose path contains URL-special characters", async () => {
+    // The reducer is imported by file URL; a raw path containing `#` would
+    // otherwise be parsed as a URL fragment by Node's ESM loader.
+    const oddDir = path.join(tmpDir, "my game #1");
+    fs.mkdirSync(oddDir);
+    const oddReducer = path.join(oddDir, "reducer.mjs");
+    fs.writeFileSync(oddReducer, REDUCER_SOURCE);
+
+    const replay = await loadReplay();
+    await replay.parseAsync([recordingPath, oddReducer, "--json"], {
+      from: "user",
+    });
+
+    expect(JSON.parse(logs.join("\n")).finalState.count).toBe(3);
+  });
+
+  test("exits when the recording is not valid JSON", async () => {
+    fs.writeFileSync(recordingPath, "{ not json");
+    mockExit();
+    const replay = await loadReplay();
+
+    let thrown: unknown;
+    try {
+      await replay.parseAsync([recordingPath, reducerPath], {
+        from: "user",
+      });
+    } catch (e) {
+      thrown = e;
+    }
+
+    expect((thrown as ExitError).code).toBe(1);
+    expect(errors.join("\n")).toContain("Error:");
+  });
+
   test("exits when the recording file is missing", async () => {
     mockExit();
     const replay = await loadReplay();

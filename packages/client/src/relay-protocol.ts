@@ -46,7 +46,20 @@ export const RelayErrorCodes = {
   RATE_LIMITED: "RATE_LIMITED",
   /** Relay is at its room capacity. */
   SERVER_BUSY: "SERVER_BUSY",
+  /**
+   * The display hosting the room disconnected, so the room is gone. Never sent
+   * as an `ERROR` frame: the relay closes each phone's socket with
+   * {@link RELAY_CLOSE_HOST_LEFT} and the client transport reports this code as
+   * the close reason.
+   */
+  HOST_LEFT: "HOST_LEFT",
 } as const;
+
+/**
+ * WebSocket close code the relay uses when a room's host disconnects and its
+ * phones are dropped with it.
+ */
+export const RELAY_CLOSE_HOST_LEFT = 4001;
 
 export type RelayErrorCode =
   (typeof RelayErrorCodes)[keyof typeof RelayErrorCodes];

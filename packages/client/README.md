@@ -4,7 +4,7 @@ The client-side React hooks for the web controller.
 
 ## Features
 
-- **Default connection:** By default, connects to `ws(s)://{window.location.hostname}:8082`.
+- **Default connection:** By default, connects to `ws(s)://{window.location.hostname}:8082/ws`.
 - **Time synchronization:** `useServerTime()` helps estimate server time using periodic ping/pong.
 - **Asset preloading:** `usePreload()` is a small helper for preloading images and fetching other URLs.
 - **Optimistic UI:** State updates apply locally immediately while being sent to the server.
@@ -27,15 +27,18 @@ Config:
 
 - `reducer`: `(state, action) => state` (your shared reducer)
 - `initialState`: initial state used until the host hydrates
-- `url?`: explicit WebSocket URL. If omitted, the hook uses `ws(s)://{window.location.hostname}:8082`.
+- `url?`: explicit WebSocket URL. If omitted, the hook uses `ws(s)://{window.location.hostname}:8082/ws`.
 - `wsPort?`: WebSocket port override (default: auto-detected from page URL using HTTP port + 2)
 - `name?`: player display name (default: `"Player"`)
 - `avatar?`: player avatar emoji (default: `"\u{1F600}"`)
 - `maxRetries?`: maximum reconnection attempts before giving up (default: `5`)
 - `baseDelay?`: base delay in ms for exponential backoff reconnection (default: `1000`)
 - `maxDelay?`: maximum delay in ms cap for reconnection backoff (default: `10000`)
+- `optimisticTimeoutMs?`: how long an optimistic update may stand without the host confirming it (default: `2000`; `0` disables). See [Optimistic updates](#optimistic-updates).
+- `timeSync?`: exchange PING/PONG with the host to power `getServerTime()` and `rtt` (default: `true`). Turn it off if you use neither — on a relay every ping is a billed message.
 - `debug?`: enable console logs
 - `onConnect?`, `onDisconnect?`: lifecycle callbacks
+- `onError?`: called with `{ code, message }` when the host rejects something this client sent (`RATE_LIMITED`, `NOT_JOINED`, `FORBIDDEN_ACTION`, `INVALID_SECRET`, …)
 
 Returns:
 
@@ -43,10 +46,24 @@ Returns:
 - `state`: current controller state (optimistic + hydrated)
 - `playerId`: stable public identifier derived from the session secret. Persists across page refreshes and reconnections (the same player always gets the same `playerId`).
 - `sendAction(action)`: optimistic dispatch + send to host
+- `disconnectReason`: why the last connection ended, when the transport knows (for the relay, a code such as `ROOM_NOT_FOUND` or `HOST_LEFT`); `null` once connected again
 - `getServerTime()`: NTP-ish server time based on periodic ping/pong
 - `rtt`: round-trip time (ms) to the server, updated periodically via PING/PONG
 - `disconnect()`: manually disconnect from the host (prevents automatic reconnection)
 - `reconnect()`: manually reconnect to the host (resets the reconnection attempt counter)
+
+### Optimistic updates
+
+With a `reducer`, `sendAction` applies the action locally before the host
+answers. The host is still the authority, and it only broadcasts when its state
+actually changes — so an action it ignores (an illegal move, a rate-limited tap,
+one sent while offline) produces no update at all. The client therefore treats
+silence as a "no": if no state update arrives within `optimisticTimeoutMs`, it
+falls back to the last state the host sent. A host `ERROR` does the same
+immediately and is passed to `onError`.
+
+The hook is safe under React `StrictMode` and across option changes: a
+connection that has been replaced can no longer affect the current one.
 
 ## State Sync Contract
 
@@ -77,7 +94,7 @@ In dev, pass the TV WebSocket URL explicitly:
 useGameClient({
   reducer,
   initialState,
-  url: "ws://TV_IP:8082",
+  url: "ws://TV_IP:8082/ws",
 });
 ```
 

@@ -89,7 +89,12 @@ describe("computeBackoffDelay", () => {
 });
 
 describe("shouldReconnect", () => {
-  const base = { intentionalClose: false, closeCode: 1006, attempts: 0, maxRetries: 5 };
+  const base = {
+    intentionalClose: false,
+    closeCode: 1006,
+    attempts: 0,
+    maxRetries: 5,
+  };
 
   test("reconnects on an abnormal close with attempts remaining", () => {
     expect(shouldReconnect(base)).toBe(true);
@@ -106,8 +111,12 @@ describe("shouldReconnect", () => {
 
   test("stops once the retry budget is exhausted", () => {
     expect(shouldReconnect({ ...base, attempts: 4, maxRetries: 5 })).toBe(true);
-    expect(shouldReconnect({ ...base, attempts: 5, maxRetries: 5 })).toBe(false);
-    expect(shouldReconnect({ ...base, attempts: 6, maxRetries: 5 })).toBe(false);
+    expect(shouldReconnect({ ...base, attempts: 5, maxRetries: 5 })).toBe(
+      false,
+    );
+    expect(shouldReconnect({ ...base, attempts: 6, maxRetries: 5 })).toBe(
+      false,
+    );
   });
 
   test("intentional close takes priority over a recoverable code/attempts", () => {
@@ -136,10 +145,19 @@ describe("resolveSessionSecret", () => {
     };
   }
 
+  const validSecret = "0123456789abcdef0123456789abcdef";
+
   test("reuses an existing persisted secret", () => {
-    const storage = makeStorage({ [SESSION_SECRET_KEY]: "existing-secret" });
+    const storage = makeStorage({ [SESSION_SECRET_KEY]: validSecret });
     const secret = resolveSessionSecret(storage, () => "generated");
-    expect(secret).toBe("existing-secret");
+    expect(secret).toBe(validSecret);
+  });
+
+  test("replaces a stored secret the host would reject", () => {
+    const storage = makeStorage({ [SESSION_SECRET_KEY]: "not-a-secret" });
+    const secret = resolveSessionSecret(storage, () => validSecret);
+    expect(secret).toBe(validSecret);
+    expect(storage.store[SESSION_SECRET_KEY]).toBe(validSecret);
   });
 
   test("generates and persists a new secret when none exists", () => {
@@ -225,12 +243,22 @@ describe("interpretHostMessage", () => {
     expect(effects).toEqual([{ kind: "pong", payload }]);
   });
 
-  test("ERROR (and other non-routed messages) produce no effects", () => {
+  test("ERROR surfaces the host's rejection", () => {
     const msg: HostMessage = {
       type: "ERROR",
-      payload: { code: "INVALID_SECRET", message: "nope" },
+      payload: { code: "RATE_LIMITED", message: "slow down" },
     };
     const effects: HostMessageEffect<unknown>[] = interpretHostMessage(msg);
-    expect(effects).toEqual([]);
+    expect(effects).toEqual([
+      { kind: "error", error: { code: "RATE_LIMITED", message: "slow down" } },
+    ]);
+  });
+
+  test("unknown message types produce no effects", () => {
+    const msg = {
+      type: "SOMETHING_NEW",
+      payload: {},
+    } as unknown as HostMessage;
+    expect(interpretHostMessage(msg)).toEqual([]);
   });
 });

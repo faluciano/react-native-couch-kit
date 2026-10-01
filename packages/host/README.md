@@ -216,11 +216,18 @@ Records game actions with timestamps for session replay and debugging. Useful fo
 
 ```tsx
 import { useActionRecorder, useGameHost } from "@couch-kit/host";
+import type { GameAction } from "./shared/gameLogic";
 
 function GameScreen() {
-  const { state } = useGameHost();
+  const { state, dispatch } = useGameHost();
   const { isRecording, recordedCount, startRecording, stopRecording, recordAction } =
     useActionRecorder();
+
+  // Recording is not automatic: call recordAction for each action you dispatch.
+  const dispatchAndRecord = (action: GameAction) => {
+    dispatch(action);
+    recordAction(action);
+  };
 
   const handleStartRecording = () => startRecording(state);
   const handleStop = () => {
@@ -233,6 +240,7 @@ function GameScreen() {
     <View>
       <Text>Actions recorded: {recordedCount}</Text>
       <Button title={isRecording ? "Stop" : "Record"} onPress={isRecording ? handleStop : handleStartRecording} />
+      <Button title="Reset" onPress={() => dispatchAndRecord({ type: "RESET" })} />
     </View>
   );
 }
@@ -244,7 +252,9 @@ Returns:
 - `recordedCount`: number of actions captured so far
 - `startRecording(currentState, metadata?)`: begin recording from the given state
 - `stopRecording()`: end recording and return the `ActionRecording` object (or `null`)
-- `recordAction(action, state)`: capture a single action + resulting state
+- `recordAction(action)`: capture a single action with a timestamp. Nothing is recorded automatically — call it alongside `dispatch`. Resulting states are not stored; replay recomputes them from `initialState` and the reducer. No-op when no recording is active.
+- `exportRecording()`: the current recording as a JSON string (or `null`)
+- `discardRecording()`: drop the current recording and reset the count
 
 ### `getBestIpAddress()`
 

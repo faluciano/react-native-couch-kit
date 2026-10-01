@@ -36,6 +36,49 @@ export function frameByteLength(data: string | ArrayBuffer): number {
   return bytes;
 }
 
+/** Longest player display name the runtime stores; longer names are truncated. */
+export const MAX_PLAYER_NAME_LENGTH = 64;
+
+/**
+ * Longest avatar string the runtime stores. The avatar is part of game state,
+ * so it is re-sent to every player on every state update; anything larger than
+ * a small icon is dropped rather than paid for on each broadcast.
+ */
+export const MAX_PLAYER_AVATAR_LENGTH = 16 * 1024;
+
+/** Display name used when a JOIN supplies a blank one. */
+export const DEFAULT_PLAYER_NAME = "Player";
+
+/** Truncates to `max` code points without splitting a surrogate pair. */
+function truncate(value: string, max: number): string {
+  if (value.length <= max) return value;
+  // Slice generously first so a huge string is not spread into an array.
+  return Array.from(value.slice(0, max * 2))
+    .slice(0, max)
+    .join("");
+}
+
+/**
+ * Normalizes the player-supplied name from a JOIN: trimmed, capped at
+ * {@link MAX_PLAYER_NAME_LENGTH}, and never blank.
+ */
+export function sanitizePlayerName(name: string): string {
+  const trimmed = truncate(name.trim(), MAX_PLAYER_NAME_LENGTH).trim();
+  return trimmed.length > 0 ? trimmed : DEFAULT_PLAYER_NAME;
+}
+
+/**
+ * Normalizes the player-supplied avatar from a JOIN. Anything that is not a
+ * string of at most {@link MAX_PLAYER_AVATAR_LENGTH} characters is dropped.
+ */
+export function sanitizePlayerAvatar(avatar: unknown): string | undefined {
+  if (typeof avatar !== "string") return undefined;
+  if (avatar.length === 0 || avatar.length > MAX_PLAYER_AVATAR_LENGTH) {
+    return undefined;
+  }
+  return avatar;
+}
+
 type ClientMessageOf<TType extends ClientMessage["type"]> = Extract<
   ClientMessage,
   { type: TType }
@@ -67,12 +110,14 @@ export function isValidClientMessage(
   if (typeof m.type !== "string") return false;
 
   switch (m.type) {
-    case MessageTypes.JOIN:
+    case MessageTypes.JOIN: {
+      if (typeof m.payload !== "object" || m.payload === null) return false;
+      const { name, avatar } = m.payload as Record<string, unknown>;
       return (
-        typeof m.payload === "object" &&
-        m.payload !== null &&
-        typeof (m.payload as Record<string, unknown>).name === "string"
+        typeof name === "string" &&
+        (avatar === undefined || avatar === null || typeof avatar === "string")
       );
+    }
     case MessageTypes.ACTION:
       return (
         typeof m.payload === "object" &&

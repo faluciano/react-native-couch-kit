@@ -489,6 +489,112 @@ describe("GameHostRuntime", () => {
  * in the client is a convention players can ignore; projecting here is a rule
  * they cannot.
  */
+describe("GameHostRuntime hardening", () => {
+  const wait = (ms: number) =>
+    new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+  test("keeps broadcasting while the host updates faster than the throttle", async () => {
+    const { runtime, transport } = createRuntime({ stateThrottleMs: 20 });
+
+    const started = Date.now();
+    while (Date.now() - started < 150) {
+      runtime.dispatch({ type: "RESET" });
+      await wait(5);
+    }
+
+    // A debounce would have sent nothing until the updates stopped.
+    expect(transport.broadcasts.length).toBeGreaterThanOrEqual(3);
+    runtime.stop();
+  });
+
+  test("does not queue actions that leave state unchanged", async () => {
+    const { runtime, transport } = createRuntime();
+    await joinPlayer(runtime, "connection-1");
+    await flushBroadcast();
+
+    for (let i = 0; i < 50; i++) {
+      await runtime.handleMessage("connection-1", {
+        type: MessageTypes.ACTION,
+        payload: { type: "UNKNOWN_NOOP", payload: i },
+      });
+    }
+    runtime.dispatch({ type: "RESET" });
+    await flushBroadcast();
+
+    const update = transport.broadcasts.at(-1);
+    if (update?.type !== MessageTypes.STATE_UPDATE) {
+      throw new Error("Expected STATE_UPDATE");
+    }
+    expect(update.payload.action).toBeUndefined();
+  });
+
+  test("caps and trims the JOIN name and drops an oversized avatar", async () => {
+    const { runtime } = createRuntime();
+    const joined: string[] = [];
+    runtime.updateConfig({
+      initialState,
+      reducer,
+      onPlayerJoined: (_id, name) => joined.push(name),
+    });
+
+    runtime.handleConnection("connection-1");
+    await runtime.handleMessage("connection-1", {
+      type: MessageTypes.JOIN,
+      payload: {
+        name: `  ${"x".repeat(100_000)}  `,
+        avatar: "y".repeat(1_000_000),
+        secret: generateId(),
+      },
+    });
+
+    const [player] = Object.values(runtime.getState().players);
+    expect(player?.name).toHaveLength(64);
+    expect(player?.avatar).toBeUndefined();
+    expect(joined).toEqual([player?.name ?? ""]);
+  });
+
+  test("a reconnect that drops mid-join leaves the pending removal armed", async () => {
+    const { runtime } = createRuntime({ disconnectTimeout: 40 });
+    const secret = await joinPlayer(runtime, "connection-1");
+    runtime.handleDisconnect("connection-1");
+
+    runtime.handleConnection("connection-2");
+    const pendingJoin = runtime.handleMessage("connection-2", {
+      type: MessageTypes.JOIN,
+      payload: { name: "Alice", secret },
+    });
+    // The socket closes while the player ID is still being derived.
+    runtime.handleDisconnect("connection-2");
+    await pendingJoin;
+
+    await wait(80);
+    expect(Object.keys(runtime.getState().players)).toHaveLength(0);
+  });
+
+  test("a takeover that drops mid-join leaves the live session usable", async () => {
+    const { runtime, transport } = createRuntime();
+    const secret = await joinPlayer(runtime, "connection-1");
+    const welcome = transport.lastSent("connection-1");
+    if (welcome?.type !== MessageTypes.WELCOME) {
+      throw new Error("Expected WELCOME");
+    }
+
+    runtime.handleConnection("connection-2");
+    const pendingJoin = runtime.handleMessage("connection-2", {
+      type: MessageTypes.JOIN,
+      payload: { name: "Alice", secret },
+    });
+    runtime.handleDisconnect("connection-2");
+    await pendingJoin;
+
+    await runtime.handleMessage("connection-1", {
+      type: MessageTypes.ACTION,
+      payload: { type: "INCREMENT", payload: 2 },
+    });
+    expect(runtime.getState().scores[welcome.payload.playerId]).toBe(2);
+  });
+});
+
 describe("GameHostRuntime state projection", () => {
   interface HandState extends IGameState {
     hands: Record<string, string[]>;
@@ -664,6 +770,42 @@ describe("GameHostRuntime state projection", () => {
         const { newState } = message.payload as { newState: HandState };
         expect(newState.hands.seat).toEqual(["HIDDEN", "HIDDEN"]);
       }
+    });
+
+    test("projected updates never carry another player's action", async () => {
+      const transport = new FakeTransport();
+      const runtime = new GameHostRuntime<
+        HandState,
+        { type: "PLAY"; payload: string }
+      >(
+        {
+          initialState: handsInitial,
+          reducer: (state) => ({ ...state }),
+          stateThrottleMs: 0,
+          disconnectTimeout: 60_000,
+          project,
+        },
+        transport,
+      );
+      for (const id of ["conn-1", "conn-2"]) {
+        runtime.handleConnection(id);
+        await runtime.handleMessage(id, {
+          type: MessageTypes.JOIN,
+          payload: { name: "P", secret: generateId() },
+        });
+      }
+      await flushBroadcast();
+      transport.sent.clear();
+
+      await runtime.handleMessage("conn-1", {
+        type: MessageTypes.ACTION,
+        payload: { type: "PLAY", payload: "ACE-OF-SPADES" },
+      });
+      await flushBroadcast();
+
+      const toOther = transport.sent.get("conn-2") ?? [];
+      expect(toOther).toHaveLength(1);
+      expect(JSON.stringify(toOther)).not.toContain("ACE-OF-SPADES");
     });
 
     test("a transport without sendMany still gets one send per connection", async () => {

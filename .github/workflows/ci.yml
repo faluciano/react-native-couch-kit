@@ -24,7 +24,9 @@ jobs:
           path: ~/.bun/install/cache
           key: bun-${{ hashFiles('bun.lock') }}
           restore-keys: bun-
-      - run: bun install
+      - run: bun install --frozen-lockfile
+      # Prettier formatting check + changeset header lint (there is no ESLint).
+      - run: bun run lint
       - run: bun run typecheck
 
   test:
@@ -40,7 +42,7 @@ jobs:
           path: ~/.bun/install/cache
           key: bun-${{ hashFiles('bun.lock') }}
           restore-keys: bun-
-      - run: bun install
+      - run: bun install --frozen-lockfile
       - run: bun run test
       - name: Enforce coverage floors
         run: bun run coverage
@@ -77,7 +79,7 @@ jobs:
           path: ~/.bun/install/cache
           key: bun-${{ hashFiles('bun.lock') }}
           restore-keys: bun-
-      - run: bun install
+      - run: bun install --frozen-lockfile
       - run: bun run build
 
   typecheck-matrix:
@@ -86,7 +88,7 @@ jobs:
       matrix:
         # Boundaries of the host peerDependency range (react-native >=0.72.0):
         # the supported floor and the current latest.
-        react-native: ["0.72.0", "0.86.0"]
+        react-native: ["0.72.0", "0.87.1"]
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
@@ -98,6 +100,8 @@ jobs:
           path: ~/.bun/install/cache
           key: bun-rn${{ matrix.react-native }}-${{ hashFiles('bun.lock') }}
           restore-keys: bun-rn${{ matrix.react-native }}-
+      # Not --frozen-lockfile: the next step runs `bun add`, which rewrites the
+      # lockfile for the matrix React Native version.
       - run: bun install
       - name: Install React Native ${{ matrix.react-native }}
         run: bun add --dev react-native@${{ matrix.react-native }} --cwd packages/host
@@ -125,7 +129,7 @@ jobs:
           path: ~/.bun/install/cache
           key: bun-${{ hashFiles('bun.lock') }}
           restore-keys: bun-
-      - run: bun install
+      - run: bun install --frozen-lockfile
       - run: bunx changeset status --since=origin/main
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

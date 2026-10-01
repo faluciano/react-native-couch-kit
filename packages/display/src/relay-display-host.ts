@@ -10,8 +10,43 @@ import type { IGameState, IAction, HostMessage } from "@couch-kit/core";
 import {
   RelayMessageTypes,
   relayRoomUrl,
+  type RelayErrorCode,
   type RelayServerMessage,
 } from "@couch-kit/client";
+
+/**
+ * Default minimum interval (ms) between state broadcasts through a relay.
+ *
+ * Slower than the LAN default on purpose: a relay rate-limits every connection
+ * (30 messages/second on the reference relays) and answers a breach by closing
+ * the socket — which, for the display, ends the room. 20 broadcasts/second
+ * leaves headroom for the unicast traffic the display also sends (WELCOME,
+ * PONG, errors), so a game that updates continuously cannot talk itself out of
+ * its own room.
+ */
+export const DEFAULT_RELAY_STATE_THROTTLE_MS = 50;
+
+/**
+ * Where the display's relay connection stands.
+ *
+ * - `connecting` — socket opening, or open but the room not yet confirmed.
+ * - `open` — the room exists and phones can join.
+ * - `closed` — the relay connection is gone, and the room with it. Terminal:
+ *   the game state is still readable, but a new {@link RelayDisplayHost} (and a
+ *   new room code) is needed for phones to rejoin.
+ */
+export type RelayDisplayStatus = "connecting" | "open" | "closed";
+
+/** An error reported by the relay, carrying its machine-readable code. */
+export class RelayError extends Error {
+  readonly code: RelayErrorCode;
+
+  constructor(code: RelayErrorCode, message: string) {
+    super(message);
+    this.name = "RelayError";
+    this.code = code;
+  }
+}
 
 /**
  * Options for {@link RelayDisplayHost}.
@@ -43,6 +78,12 @@ export interface RelayDisplayHostOptions<
    * placeholder until this fires — roughly a round trip to the relay.
    */
   onRoomCode?: (roomCode: string) => void;
+  /**
+   * Called whenever {@link RelayDisplayHost.status} changes. `closed` is the
+   * one worth acting on: the room is gone, so show the players something
+   * rather than a board that will never update again.
+   */
+  onStatusChange?: (status: RelayDisplayStatus) => void;
 }
 
 /**
@@ -68,17 +109,29 @@ export class RelayDisplayHost<S extends IGameState, A extends IAction> {
   /** Null until the relay confirms the room, when the code is relay-assigned. */
   private assignedRoomId: string | null;
   private readonly onRoomCode?: (roomCode: string) => void;
+  private readonly onStatusChange?: (status: RelayDisplayStatus) => void;
   /** Connected phone connection ids (relay peer ids). */
   private readonly peers = new Set<string>();
+  private currentStatus: RelayDisplayStatus = "connecting";
+  /** Whether frames can be written; a socket still connecting throws on send. */
+  private socketOpen = false;
+  private stopped = false;
 
   constructor(options: RelayDisplayHostOptions<S, A>) {
-    const { url, roomId, onRoomCode, ...runtimeConfig } = options;
+    const { url, roomId, onRoomCode, onStatusChange, ...runtimeConfig } =
+      options;
     this.assignedRoomId = roomId ?? null;
     this.onRoomCode = onRoomCode;
-    this.runtime = new GameHostRuntime<S, A>(runtimeConfig);
+    this.onStatusChange = onStatusChange;
+    this.runtime = new GameHostRuntime<S, A>({
+      ...runtimeConfig,
+      stateThrottleMs:
+        runtimeConfig.stateThrottleMs ?? DEFAULT_RELAY_STATE_THROTTLE_MS,
+    });
     this.ws = new WebSocket(relayRoomUrl(url, roomId));
 
     this.ws.onopen = () => {
+      this.socketOpen = true;
       // No roomId asks the relay to allocate one. Sending the field as
       // undefined omits it from the JSON, which is what the relay reads as
       // "you pick".
@@ -105,6 +158,8 @@ export class RelayDisplayHost<S extends IGameState, A extends IAction> {
         event instanceof Error ? event : new Error("Relay socket error"),
       );
 
+    this.ws.onclose = (event: CloseEvent) => this.handleSocketClose(event);
+
     const transport: GameRuntimeTransport = {
       send: (connectionId, message) => this.sendEnvelope(message, connectionId),
       broadcast: (message) => this.sendEnvelope(message),
@@ -122,6 +177,11 @@ export class RelayDisplayHost<S extends IGameState, A extends IAction> {
     return this.assignedRoomId;
   }
 
+  /** Where the relay connection stands. See {@link RelayDisplayStatus}. */
+  get status(): RelayDisplayStatus {
+    return this.currentStatus;
+  }
+
   /** Current authoritative game state. */
   getState = (): S => this.runtime.getState();
 
@@ -134,9 +194,41 @@ export class RelayDisplayHost<S extends IGameState, A extends IAction> {
 
   /** Tear down the runtime and relay socket. */
   stop(): void {
+    this.stopped = true;
+    this.socketOpen = false;
+    this.peers.clear();
     this.runtime.setTransport(null);
     this.runtime.stop();
     this.ws.close();
+    this.setStatus("closed");
+  }
+
+  private setStatus(status: RelayDisplayStatus): void {
+    if (this.currentStatus === status) return;
+    this.currentStatus = status;
+    this.onStatusChange?.(status);
+  }
+
+  /**
+   * The relay connection ended. The relay drops the room with its host, so
+   * every phone is gone too: mark them disconnected so the state on screen
+   * says so, and report the loss unless this was our own {@link stop}.
+   */
+  private handleSocketClose(event: CloseEvent): void {
+    this.socketOpen = false;
+    if (this.stopped) return;
+
+    for (const peerId of this.peers) {
+      this.runtime.handleDisconnect(peerId);
+    }
+    this.peers.clear();
+    this.setStatus("closed");
+    this.runtime.handleError(
+      new Error(
+        `Relay connection closed (code ${event?.code ?? "unknown"})` +
+          (event?.reason ? `: ${event.reason}` : ""),
+      ),
+    );
   }
 
   /**
@@ -154,6 +246,8 @@ export class RelayDisplayHost<S extends IGameState, A extends IAction> {
    * messages; being dropped costs the game.
    */
   private sendMultiEnvelope(entries: readonly AddressedMessage[]): void {
+    if (!this.socketOpen) return;
+
     const payloads: Record<string, string> = {};
     for (const { connectionId, message } of entries) {
       payloads[connectionId] = JSON.stringify(message);
@@ -176,6 +270,14 @@ export class RelayDisplayHost<S extends IGameState, A extends IAction> {
   }
 
   private sendEnvelope(message: HostMessage, to?: string): void {
+    // Nothing to write to yet (or any more): a socket that is still connecting
+    // throws on send, and the runtime may broadcast before it opens.
+    if (!this.socketOpen) return;
+    // A room broadcast with nobody in it is a frame the relay bills and
+    // rate-limits for no reader. A phone that joins later gets the whole state
+    // in its WELCOME.
+    if (to === undefined && this.peers.size === 0) return;
+
     const envelope: Record<string, unknown> = {
       type: RelayMessageTypes.DATA,
       // The relay routes by the sender's membership, not this field, so it is
@@ -223,10 +325,11 @@ export class RelayDisplayHost<S extends IGameState, A extends IAction> {
         // Carries the code when the relay chose it, and confirms the code when
         // the caller supplied one.
         this.assignedRoomId = msg.roomId;
+        this.setStatus("open");
         this.onRoomCode?.(msg.roomId);
         break;
       case RelayMessageTypes.ERROR:
-        this.runtime.handleError(new Error(msg.message));
+        this.runtime.handleError(new RelayError(msg.code, msg.message));
         break;
       // ROOM_JOINED is an acknowledgement; no action needed.
     }

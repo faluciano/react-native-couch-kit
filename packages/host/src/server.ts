@@ -29,13 +29,26 @@ export const useStaticServer = (config: CouchKitHostConfig) => {
 
   useEffect(() => {
     let server: StaticServer | null = null;
+    // Set by cleanup. Starting is asynchronous, so an effect that was torn down
+    // mid-start (a config change, StrictMode's double mount, an unmount) must
+    // neither publish its result nor leave its server holding the port.
+    let cancelled = false;
     setLoading(true);
+    setError(null);
+
+    const stop = (target: StaticServer | null) => {
+      if (!target) return;
+      void Promise.resolve(target.stop()).catch(() => {
+        // Nothing useful to do if a server we no longer want fails to stop.
+      });
+    };
 
     const startServer = async () => {
       // In Dev Mode, we don't start the static server.
       // We just resolve the IP so the host knows where it is.
       if (config.devMode && config.devServerUrl) {
         const ip = await getBestIpAddress();
+        if (cancelled) return;
         if (ip) {
           // In dev mode, the URL is the laptop's dev server,
           // but we might need the TV's IP for the WebSocket connection later.
@@ -65,13 +78,21 @@ export const useStaticServer = (config: CouchKitHostConfig) => {
         }
         const port = config.port || DEFAULT_HTTP_PORT;
 
-        server = new StaticServer();
+        const started = new StaticServer();
+        server = started;
 
         // Use '0.0.0.0' to bind to all interfaces (local network)
-        await server.start(port, path, "0.0.0.0");
+        await started.start(port, path, "0.0.0.0");
+        if (cancelled) {
+          // Cleanup ran while the server was still starting, when a stop may
+          // not have taken; stop it again now that it is actually up.
+          stop(started);
+          return;
+        }
 
         // We prefer the actual IP over "localhost" returned by some libs
         const ip = await getBestIpAddress();
+        if (cancelled) return;
         if (ip) {
           setUrl(`http://${ip}:${port}/index.html`);
         } else {
@@ -79,18 +100,17 @@ export const useStaticServer = (config: CouchKitHostConfig) => {
           setUrl(`http://localhost:${port}/index.html`);
         }
       } catch (e) {
-        setError(new Error(toErrorMessage(e)));
+        if (!cancelled) setError(new Error(toErrorMessage(e)));
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     startServer();
 
     return () => {
-      if (server) {
-        server.stop();
-      }
+      cancelled = true;
+      stop(server);
     };
   }, [config.port, config.devMode, config.devServerUrl, config.staticDir]);
 

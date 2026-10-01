@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { MessageTypes, type ClientMessage, type HostMessage } from "../src/protocol";
+import {
+  MessageTypes,
+  type ClientMessage,
+  type HostMessage,
+} from "../src/protocol";
 
 describe("Protocol Definitions", () => {
   test("MessageTypes constants should match string values", () => {
@@ -11,7 +15,7 @@ describe("Protocol Definitions", () => {
   test("ClientMessage types should be valid", () => {
     const joinMsg: ClientMessage = {
       type: "JOIN",
-      payload: { name: "Test User", avatar: "🤖" }
+      payload: { name: "Test User", avatar: "🤖" },
     };
     expect(joinMsg.type).toBe(MessageTypes.JOIN);
   });
@@ -22,8 +26,8 @@ describe("Protocol Definitions", () => {
       payload: {
         playerId: "123",
         state: {},
-        serverTime: Date.now()
-      }
+        serverTime: Date.now(),
+      },
     };
     expect(welcomeMsg.type).toBe(MessageTypes.WELCOME);
   });
