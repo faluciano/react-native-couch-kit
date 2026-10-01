@@ -2,7 +2,7 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "paths": {
-      "@couch-kit/*": ["packages/*/src"]
+      "@couch-kit/*": ["./packages/*/src"]
     }
   },
   "include": ["packages/*/src"],

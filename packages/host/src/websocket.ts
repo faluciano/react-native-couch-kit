@@ -73,8 +73,7 @@ export class GameWebSocketServer extends EventEmitter<WebSocketServerEvents> {
     super();
     this.port = config.port;
     this.debug = !!config.debug;
-    this.maxMessageBytes =
-      config.maxMessageBytes ?? DEFAULT_MAX_MESSAGE_BYTES;
+    this.maxMessageBytes = config.maxMessageBytes ?? DEFAULT_MAX_MESSAGE_BYTES;
     // Only `port`, `debug`, and `maxMessageBytes` are honored. `maxFrameSize`,
     // `keepaliveInterval`, and `keepaliveTimeout` are deprecated no-ops: the
     // nitro-http WebSocket transport does not expose these knobs, so they are
@@ -150,10 +149,7 @@ export class GameWebSocketServer extends EventEmitter<WebSocketServerEvents> {
         // Handle errors
         ws.onerror = (event: { message: string }) => {
           this.log(`[WebSocket] Error on ${socketId}:`, event.message);
-          this.emit(
-            "error",
-            new Error(`WebSocket error: ${event.message}`),
-          );
+          this.emit("error", new Error(`WebSocket error: ${event.message}`));
         };
       },
     );

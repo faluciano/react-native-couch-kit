@@ -7,28 +7,43 @@ you are expected to uphold it.
 
 ## Development Setup
 
-**Package manager:** Bun (v1.3.14)
+**Package manager:** Bun (v1.4.2)
 
 ```bash
 bun install        # install dependencies
 bun run build      # build all packages
 bun run test       # run tests
-bun run lint       # lint
+bun run lint       # Prettier formatting check + changeset header lint
+bun run format     # apply Prettier formatting
 bun run typecheck  # type-check
 ```
 
+There is no ESLint. `bun run lint` fails if any source, test, or script file is
+not Prettier-formatted; run `bun run format` to fix it.
+
 ## Monorepo Structure
 
-Six packages under `packages/`:
+Seven packages under `packages/`:
 
 | Package               | Description                                 |
 | --------------------- | ------------------------------------------- |
 | `@couch-kit/core`     | Shared types, protocol, reducer             |
 | `@couch-kit/runtime`  | Transport-neutral authoritative game state  |
 | `@couch-kit/client`   | React hooks for phone controllers           |
+| `@couch-kit/display`  | Browser display host for relay mode         |
 | `@couch-kit/host`     | React Native TV host                        |
 | `@couch-kit/cli`      | CLI tools (bundle, simulate, scaffold)      |
 | `@couch-kit/devtools` | Debug overlay component for web controllers |
+
+Two unpublished relay services under `services/` (outside the workspace):
+
+| Service                 | Description                                             |
+| ----------------------- | ------------------------------------------------------- |
+| `services/relay`        | Single-process Bun relay (reference / self-host)        |
+| `services/relay-worker` | Cloudflare Workers + Durable Objects relay (production) |
+
+Relay tests live in `services/relay/tests` and are not run by `bun run test`;
+run `bun test` from `services/relay` (CI does this in the `relay` job).
 
 ## Making Changes
 
@@ -40,7 +55,7 @@ Six packages under `packages/`:
    - Write a summary of the change
 4. Commit and push
 5. Open a PR to `main`
-6. CI runs: lint (includes typecheck), test, build, and changeset validation
+6. CI runs: lint (Prettier formatting check, changeset header lint, and typecheck), test, relay, build, and changeset validation
 7. Get review and merge
 
 ## Changesets
@@ -85,7 +100,7 @@ One-time setup per package (maintainer, on npmjs.com):
    - **Repository:** `react-native-couch-kit`
    - **Workflow filename:** `release.yml`
    - **Environment:** leave blank (the release job does not use a GitHub Environment)
-3. Repeat for every published package: `@couch-kit/core`, `@couch-kit/runtime`, `@couch-kit/client`, `@couch-kit/host`, `@couch-kit/cli`, `@couch-kit/devtools`
+3. Repeat for every published package: `@couch-kit/core`, `@couch-kit/runtime`, `@couch-kit/client`, `@couch-kit/display`, `@couch-kit/host`, `@couch-kit/cli`, `@couch-kit/devtools`
 4. (Recommended) After verifying a publish works, set each package's **Publishing access** to **"Require two-factor authentication and disallow tokens"** for maximum security.
 5. Enable "Allow GitHub Actions to create and approve pull requests" in repo Settings → Actions → General → Workflow permissions.
 

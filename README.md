@@ -65,12 +65,12 @@ sequenceDiagram
 
   loop Game Loop
     P->>TV: ACTION { type, payload }
-    TV-->>P: STATE_UPDATE { state }
+    TV-->>P: STATE_UPDATE { newState }
   end
 
-  loop Heartbeat
-    TV-->>P: PING
-    P->>TV: PONG
+  loop Time sync
+    P->>TV: PING
+    TV-->>P: PONG { serverTime }
   end
 ```
 
@@ -324,7 +324,7 @@ export default function Controller() {
 - **System actions are automatic:** The framework uses internal action types (`__HYDRATE__`, `__PLAYER_JOINED__`, `__PLAYER_LEFT__`, `__PLAYER_RECONNECTED__`, `__PLAYER_REMOVED__`) under the hood. These are handled automatically by `createGameReducer` -- you do **not** need to handle them in your reducer.
 - **State updates:** The host broadcasts full state snapshots. The client applies them automatically via hydration.
 - **Session recovery is automatic:** When a player refreshes or reconnects, the library restores their previous player data automatically. Player IDs are stable across reconnections — the same device always gets the same `playerId`. Disconnected players are cleaned up after a timeout (default: 5 minutes).
-- **Dev-mode WebSocket:** if the controller is served from your laptop (Vite), `useGameClient()` will try to connect WS to the laptop by default. In dev, pass `url: "ws://TV_IP:8082"`.
+- **Dev-mode WebSocket:** if the controller is served from your laptop (Vite), `useGameClient()` will try to connect WS to the laptop by default. In dev, pass `url: "ws://TV_IP:8082/ws"`.
 
 ## Dev Workflow (Controller on Laptop)
 
@@ -349,7 +349,7 @@ On the controller (served from the laptop), explicitly point WS to the TV:
 useGameClient({
   reducer: gameReducer,
   initialState,
-  url: "ws://192.168.1.99:8082", // TV IP
+  url: "ws://192.168.1.99:8082/ws", // TV IP
 });
 ```
 
@@ -371,7 +371,7 @@ bun install
 
 ### 2. Building the Libraries
 
-The packages (`core`, `runtime`, `client`, `host`, `cli`, `devtools`) are located in `packages/*`. You can build them all at once:
+The packages (`core`, `runtime`, `client`, `display`, `host`, `cli`, `devtools`) are located in `packages/*`. You can build them all at once:
 
 ```bash
 bun run build
@@ -394,8 +394,14 @@ bun run test
 Run linting and type checking:
 
 ```bash
-bun run lint
+bun run lint       # Prettier formatting check + changeset header lint
 bun run typecheck
+```
+
+The relay's tests live under `services/relay` (outside the `packages/*` workspace), so `bun run test` does not run them. CI runs them in a separate `relay` job:
+
+```bash
+cd services/relay && bun test
 ```
 
 #### Coverage
@@ -426,7 +432,7 @@ improves; never lower them without a good reason.
 
 ### 4. Code Style
 
-The project uses [Prettier](https://prettier.io/) for formatting (configured in `.prettierrc`) and [ESLint](https://eslint.org/) for linting.
+The project uses [Prettier](https://prettier.io/) for formatting (configured in `.prettierrc`). There is no ESLint: `bun run lint` checks that source, tests, and scripts are Prettier-formatted and lints changeset headers, and `bun run format` applies the formatting.
 
 ### 5. Testing in a Real App (Yalc)
 
@@ -519,6 +525,7 @@ Each consumer repo has a `renovate.json` scoped to the `@couch-kit/*` packages (
 - [Client Documentation](./packages/client/README.md)
 - [Core Documentation](./packages/core/README.md)
 - [Runtime Documentation](./packages/runtime/README.md)
+- [Display Documentation](./packages/display/README.md)
 - [CLI Documentation](./packages/cli/README.md)
 - [Devtools Documentation](./packages/devtools/README.md)
 
@@ -526,11 +533,12 @@ Each consumer repo has a `renovate.json` scoped to the `@couch-kit/*` packages (
 
 - Phone can’t open the controller page: confirm TV and phone are on the same Wi‑Fi; verify `serverUrl` is not null.
 - Phone opens page but actions do nothing: check that your reducer handles your custom action types and the host isn’t erroring.
-- Dev mode WS fails: pass `url: "ws://TV_IP:8082"` to `useGameClient()`.
+- Dev mode WS fails: pass `url: "ws://TV_IP:8082/ws"` to `useGameClient()`.
 - Connection is flaky: enable `debug` in host/client and watch logs; keep the TV from sleeping.
 
 ## Security Notes
 
-- The controller URL is reachable to anyone on the same LAN. Don’t run this on untrusted Wi‑Fi.
+- In LAN mode, the controller URL is reachable to anyone on the same LAN. Don’t run this on untrusted Wi‑Fi.
+- In relay mode, the room code is the only credential needed to join a room, and game messages (including session secrets) pass through the relay you configure. See [SECURITY.md](./SECURITY.md#relay-mode) for the relay threat model.
 - `JOIN` requires a `secret` field — a persistent session token stored in the client's `localStorage`. The library uses it internally for session recovery. The raw secret is never broadcast to other clients; only a derived public `playerId` is shared in game state.
 - The host rejects internal action injection, rate-limits actions (60/sec), ignores actions from clients that haven't `JOIN`ed, and discards inbound messages larger than 256 KiB (configurable via `maxMessageBytes`) to bound memory usage.
