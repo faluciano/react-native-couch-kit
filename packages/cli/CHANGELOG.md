@@ -1,5 +1,16 @@
 # @couch-kit/cli
 
+## 0.3.11
+
+### Patch Changes
+
+- [#206](https://github.com/faluciano/react-native-couch-kit/pull/206) [`0de1742`](https://github.com/faluciano/react-native-couch-kit/commit/0de1742a2808918733f785542934e9a540d43b7b) Thanks [@faluciano](https://github.com/faluciano)! - Fix the CLI under Node.
+
+  - `couch-kit simulate` defaulted to `ws://localhost:8082`, without the `/ws` path the host listens on, so bots could not connect. Defaults now have one source of truth and proxy commands no longer override sub-command defaults.
+  - `couch-kit replay` crashed with "Bun is not defined"; it now uses Node APIs and imports the reducer by file URL.
+  - The package is marked `"type": "module"` (the bundle is ESM) and declares Node >= 22, which `simulate`'s use of the global `WebSocket` already required.
+  - `couch-kit init` scaffolds current dependencies: `@couch-kit/client` and `@couch-kit/core` at `latest` (core was imported but not declared) and a Vite version compatible with the React plugin.
+
 ## 0.3.10
 
 ### Patch Changes

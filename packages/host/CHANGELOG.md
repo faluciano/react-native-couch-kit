@@ -1,5 +1,13 @@
 # @couch-kit/host
 
+## 2.0.1
+
+### Patch Changes
+
+- [#206](https://github.com/faluciano/react-native-couch-kit/pull/206) [`4619047`](https://github.com/faluciano/react-native-couch-kit/commit/46190475e22cc74c72f570e6048abd8d6983e715) Thanks [@faluciano](https://github.com/faluciano)! - `useStaticServer` no longer publishes results from, or leaks, a server whose effect was torn down while it was still starting (a config change, a `StrictMode` double mount, an unmount). A stale error is also cleared when the server restarts.
+- Updated dependencies [[`9465677`](https://github.com/faluciano/react-native-couch-kit/commit/9465677b63ad58273b8c0dee98ebece5d477a074)]:
+  - @couch-kit/runtime@0.4.0
+
 ## 2.0.0
 
 ### Major Changes

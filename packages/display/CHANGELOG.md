@@ -1,5 +1,23 @@
 # @couch-kit/display
 
+## 0.5.0
+
+### Minor Changes
+
+- [#206](https://github.com/faluciano/react-native-couch-kit/pull/206) [`a438965`](https://github.com/faluciano/react-native-couch-kit/commit/a43896586f43a2f7e4811fb9c4394a25b1018d69) Thanks [@faluciano](https://github.com/faluciano)! - Make `RelayDisplayHost` aware of its relay connection.
+
+  - New `status` (`connecting` → `open` → `closed`) and `onStatusChange` option. When the relay connection drops, every player is marked disconnected, the status becomes `closed`, and the loss is reported through `onError` — previously the display kept running with no sign that the room was gone.
+  - Nothing is written to a socket that is not open. A display that dispatched before the socket opened threw from the broadcast timer.
+  - Room broadcasts are skipped while no phone is in the room, saving a billed relay message per state change in an empty lobby.
+  - `stateThrottleMs` defaults to 50ms here (`DEFAULT_RELAY_STATE_THROTTLE_MS`) so a continuously updating game stays inside the relay's 30 messages/second limit, which closes the display's socket when exceeded.
+  - Relay errors reach `onError` as `RelayError` with the relay's `code`.
+
+### Patch Changes
+
+- Updated dependencies [[`ddec122`](https://github.com/faluciano/react-native-couch-kit/commit/ddec122d9e415c54f157d6998c2b719ab31586b3), [`9465677`](https://github.com/faluciano/react-native-couch-kit/commit/9465677b63ad58273b8c0dee98ebece5d477a074)]:
+  - @couch-kit/client@0.15.0
+  - @couch-kit/runtime@0.4.0
+
 ## 0.4.0
 
 ### Minor Changes
