@@ -1,3 +1,4 @@
+import { createGameReducer } from "./reducer.js";
 import type { GameReducer, IAction, IGameState } from "./types.js";
 
 /**
@@ -45,17 +46,24 @@ export interface ReplayResult<S extends IGameState = IGameState> {
 /**
  * Replays a recording against a reducer, producing the final state
  * and intermediate snapshots for each action applied.
+ *
+ * Pass the game's own reducer, as given to the host. It is wrapped with
+ * {@link createGameReducer} here, so recordings that include internal actions
+ * (`__PLAYER_JOINED__` and friends, as a host recorder captures) replay the
+ * same way they ran. Wrapping an already-wrapped reducer is harmless: the outer
+ * layer handles internal actions and the inner never sees them.
  */
 export function replayActions<
   S extends IGameState = IGameState,
   A extends IAction = IAction,
 >(recording: Recording<S, A>, reducer: GameReducer<S, A>): ReplayResult<S> {
   const snapshots: StateSnapshot<S>[] = [];
+  const gameReducer = createGameReducer(reducer);
   let currentState = recording.initialState;
 
   for (let i = 0; i < recording.actions.length; i++) {
     const { action, timestamp } = recording.actions[i];
-    currentState = reducer(currentState, action);
+    currentState = gameReducer(currentState, action);
 
     snapshots.push({
       state: currentState,

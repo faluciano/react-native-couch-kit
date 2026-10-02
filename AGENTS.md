@@ -44,7 +44,7 @@ Build order: `core` → `runtime` → `client` → `display`, then `host`, `cli`
 - **State broadcasts are throttled**: at most one broadcast per `stateThrottleMs` window (default 33ms, ~30fps), with every change inside the window coalesced into it.
 - **WebSocket port = HTTP port + 2** (default 8082) to avoid Metro dev server on 8081.
 - **Session recovery**: disconnected players have a 5-minute timeout before `__PLAYER_REMOVED__` fires.
-- **Security**: Rate limiting (60 actions/sec), internal action injection prevention, secrets never broadcast.
+- **Security**: Rate limiting (60 messages/sec per connection, answered with one `RATE_LIMITED` per window), internal action injection prevention, secrets never broadcast.
 
 ## Protocol Flow
 

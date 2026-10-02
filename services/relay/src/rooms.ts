@@ -77,8 +77,26 @@ export interface RelayLimits {
   maxRooms: number;
   /** Max players (phones) per room, excluding the host. */
   maxPlayersPerRoom: number;
-  /** Messages allowed per connection within {@link RelayLimits.rateWindowMs}. */
+  /**
+   * Messages a player may send within {@link RelayLimits.rateWindowMs}.
+   *
+   * Kept above the host runtime's own per-connection limit (`RATE_LIMIT_MAX`,
+   * 60/s in `@couch-kit/runtime`) so that a fast game is throttled by the
+   * runtime — which answers with a recoverable `RATE_LIMITED` error — rather
+   * than disconnected here.
+   */
   messagesPerWindow: number;
+  /**
+   * Messages the host may send within {@link RelayLimits.rateWindowMs}.
+   *
+   * The host is the room's fan-out point: besides its own broadcasts it answers
+   * every player's messages (a `PONG` per `PING`, an `ERROR` per rejected
+   * action), so its legitimate rate scales with the players. Holding it to the
+   * per-player budget let one chatty phone push the display over the limit, and
+   * closing the host closes the whole room. The default covers a full room with
+   * every player at the runtime's limit (16 × 61 replies) plus broadcasts.
+   */
+  hostMessagesPerWindow: number;
   /** Sliding-window length for the per-connection message rate limit, in ms. */
   rateWindowMs: number;
 }
@@ -86,7 +104,8 @@ export interface RelayLimits {
 export const DEFAULT_LIMITS: RelayLimits = {
   maxRooms: 1000,
   maxPlayersPerRoom: 16,
-  messagesPerWindow: 30,
+  messagesPerWindow: 75,
+  hostMessagesPerWindow: 1200,
   rateWindowMs: 1000,
 };
 
@@ -315,16 +334,30 @@ export class RelayRooms {
 
   /**
    * Sliding-window rate limit. Records this message's timestamp and returns
-   * `false` once a connection exceeds {@link RelayLimits.messagesPerWindow}
-   * within {@link RelayLimits.rateWindowMs}.
+   * `false` once a connection exceeds its budget within
+   * {@link RelayLimits.rateWindowMs}: {@link RelayLimits.hostMessagesPerWindow}
+   * for a room's host, {@link RelayLimits.messagesPerWindow} for anyone else.
    */
   private allow(id: string): boolean {
     const t = this.now();
     const cutoff = t - this.limits.rateWindowMs;
-    const hits = (this.rate.get(id) ?? []).filter((ts) => ts > cutoff);
+    let hits = this.rate.get(id);
+    if (!hits) {
+      hits = [];
+      this.rate.set(id, hits);
+    }
+    // Timestamps arrive in order, so expired ones are always at the front.
+    // Dropping them from there keeps a busy host's check cheap, where
+    // re-filtering the whole window on every message would not be.
+    let expired = 0;
+    while (expired < hits.length && hits[expired] <= cutoff) expired++;
+    if (expired > 0) hits.splice(0, expired);
     hits.push(t);
-    this.rate.set(id, hits);
-    return hits.length <= this.limits.messagesPerWindow;
+    const budget =
+      this.membership.get(id)?.role === "host"
+        ? this.limits.hostMessagesPerWindow
+        : this.limits.messagesPerWindow;
+    return hits.length <= budget;
   }
 
   /** Clean up a closed connection and notify its room. */

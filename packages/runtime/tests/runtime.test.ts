@@ -48,6 +48,7 @@ const reducer = (state: ScoreState, action: ScoreAction): ScoreState => {
 class FakeTransport implements GameRuntimeTransport {
   readonly sent = new Map<string, HostMessage[]>();
   readonly broadcasts: HostMessage[] = [];
+  readonly recipients: string[][] = [];
 
   send(connectionId: string, message: HostMessage): void {
     const messages = this.sent.get(connectionId) ?? [];
@@ -55,8 +56,9 @@ class FakeTransport implements GameRuntimeTransport {
     this.sent.set(connectionId, messages);
   }
 
-  broadcast(message: HostMessage): void {
+  broadcast(message: HostMessage, recipients: ReadonlySet<string>): void {
     this.broadcasts.push(message);
+    this.recipients.push([...recipients]);
   }
 
   lastSent(connectionId: string): HostMessage | undefined {
@@ -224,11 +226,12 @@ describe("GameHostRuntime", () => {
     }
   });
 
-  test("rate limits excessive actions per connection", async () => {
+  test("rate limits excessive messages per connection", async () => {
     const { runtime, transport } = createRuntime();
     await joinPlayer(runtime, "connection-1");
 
-    for (let index = 0; index < 61; index++) {
+    // The JOIN already used one of the 60 messages in this window.
+    for (let index = 0; index < 60; index++) {
       await runtime.handleMessage("connection-1", {
         type: MessageTypes.ACTION,
         payload: { type: "INCREMENT", payload: 1 },
@@ -241,7 +244,36 @@ describe("GameHostRuntime", () => {
       expect(error.payload.code).toBe("RATE_LIMITED");
     }
     const playerId = Object.keys(runtime.getState().players)[0];
-    expect(runtime.getState().scores[playerId]).toBe(60);
+    expect(runtime.getState().scores[playerId]).toBe(59);
+  });
+
+  test("answers only the first message over the limit", async () => {
+    const { runtime, transport } = createRuntime();
+    runtime.handleConnection("connection-1");
+
+    // Pings and malformed frames each earn a reply, so they count too.
+    for (let index = 0; index < 100; index++) {
+      await runtime.handleMessage(
+        "connection-1",
+        index % 2 === 0
+          ? {
+              type: MessageTypes.PING,
+              payload: { id: `ping-${index}`, timestamp: index },
+            }
+          : { type: "GARBAGE" },
+      );
+    }
+
+    // 60 replies within the limit plus a single RATE_LIMITED: a flood cannot
+    // make the host send as fast as it receives.
+    const sent = transport.sent.get("connection-1") ?? [];
+    expect(sent).toHaveLength(61);
+    const rateLimited = sent.filter(
+      (message) =>
+        message.type === MessageTypes.ERROR &&
+        message.payload.code === "RATE_LIMITED",
+    );
+    expect(rateLimited).toHaveLength(1);
   });
 
   test("answers time synchronization pings", async () => {
@@ -407,7 +439,7 @@ describe("GameHostRuntime", () => {
     });
     const transport = new FakeTransport();
 
-    runtime.handleConnection("connection-1");
+    await joinPlayer(runtime, "connection-1");
     runtime.dispatch({ type: "RESET" });
     await flushBroadcast();
     expect(transport.broadcasts).toHaveLength(0);
@@ -495,6 +527,7 @@ describe("GameHostRuntime hardening", () => {
 
   test("keeps broadcasting while the host updates faster than the throttle", async () => {
     const { runtime, transport } = createRuntime({ stateThrottleMs: 20 });
+    await joinPlayer(runtime, "connection-1");
 
     const started = Date.now();
     while (Date.now() - started < 150) {
@@ -505,6 +538,76 @@ describe("GameHostRuntime hardening", () => {
     // A debounce would have sent nothing until the updates stopped.
     expect(transport.broadcasts.length).toBeGreaterThanOrEqual(3);
     runtime.stop();
+  });
+
+  test("publishes every reduced action, from every source", async () => {
+    const { runtime } = createRuntime();
+    const seen: string[] = [];
+    const unsubscribe = runtime.subscribeActions((action) => {
+      seen.push(action.type);
+    });
+
+    await joinPlayer(runtime, "connection-1");
+    await runtime.handleMessage("connection-1", {
+      type: MessageTypes.ACTION,
+      payload: { type: "INCREMENT", payload: 1 },
+    });
+    // A no-op is still input: replay must see it to stay faithful.
+    await runtime.handleMessage("connection-1", {
+      type: MessageTypes.ACTION,
+      payload: { type: "UNKNOWN_NOOP" },
+    });
+    runtime.dispatch({ type: "RESET" });
+    runtime.handleDisconnect("connection-1");
+
+    unsubscribe();
+    runtime.dispatch({ type: "RESET" });
+
+    expect(seen).toEqual([
+      InternalActionTypes.PLAYER_JOINED,
+      "INCREMENT",
+      "UNKNOWN_NOOP",
+      "RESET",
+      InternalActionTypes.PLAYER_LEFT,
+    ]);
+    runtime.stop();
+  });
+
+  test("a throwing action listener is reported, not fatal", () => {
+    const errors: Error[] = [];
+    const { runtime } = createRuntime({
+      onError: (error) => errors.push(error),
+    });
+    runtime.subscribeActions(() => {
+      throw new Error("boom");
+    });
+
+    runtime.dispatch({ type: "RESET" });
+
+    expect(runtime.getState().scores).toEqual({});
+    expect(errors[0]?.message).toContain("boom");
+  });
+
+  test("broadcasts only to connections that have joined", async () => {
+    const { runtime, transport } = createRuntime();
+    runtime.handleConnection("lurker");
+
+    // Nobody has joined: nothing to broadcast, and the lurker learns nothing.
+    runtime.dispatch({ type: "RESET" });
+    await flushBroadcast();
+    expect(transport.broadcasts).toHaveLength(0);
+
+    await joinPlayer(runtime, "connection-1");
+    await flushBroadcast();
+    expect(transport.recipients.at(-1)).toEqual(["connection-1"]);
+
+    // Once the only player leaves, there is again nobody to broadcast to.
+    const before = transport.broadcasts.length;
+    runtime.handleDisconnect("connection-1");
+    runtime.dispatch({ type: "RESET" });
+    await flushBroadcast();
+    expect(transport.broadcasts).toHaveLength(before);
+    expect(transport.sent.get("lurker")).toBeUndefined();
   });
 
   test("does not queue actions that leave state unchanged", async () => {

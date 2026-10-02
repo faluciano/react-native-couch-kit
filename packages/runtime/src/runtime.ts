@@ -43,7 +43,16 @@ export interface AddressedMessage {
 /** Minimal message-delivery surface required by the authoritative runtime. */
 export interface GameRuntimeTransport {
   send(connectionId: string, message: HostMessage): void;
-  broadcast(message: HostMessage): void;
+  /**
+   * Delivers one message to every player.
+   *
+   * @param recipients - The connections that have completed a JOIN. A
+   *   transport that addresses sockets itself (the LAN WebSocket server) should
+   *   send to these only: a socket that connected but never joined has not
+   *   identified itself and has no business receiving game state. A transport
+   *   that can only fan out to everyone (a relay room broadcast) may ignore it.
+   */
+  broadcast(message: HostMessage, recipients: ReadonlySet<string>): void;
   /**
    * Delivers a batch of per-connection messages, for transports that can carry
    * them in one frame.
@@ -56,6 +65,15 @@ export interface GameRuntimeTransport {
    */
   sendMany?(entries: readonly AddressedMessage[]): void;
 }
+
+/**
+ * Receives every action the runtime reduces: host dispatches, player actions
+ * (stamped with the sender's `playerId`), and the internal lifecycle actions
+ * the runtime generates itself (`__PLAYER_JOINED__` and friends).
+ */
+export type RuntimeActionListener<S extends IGameState, A extends IAction> = (
+  action: A | InternalAction<S>,
+) => void;
 
 /** Configuration shared by every authoritative Couch Kit host transport. */
 export interface GameHostRuntimeConfig<
@@ -104,6 +122,7 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
   private state: S;
   private transport: GameRuntimeTransport | null;
   private readonly listeners = new Set<() => void>();
+  private readonly actionListeners = new Set<RuntimeActionListener<S, A>>();
   private readonly sessionManager: HostSessionManager;
   private readonly rateLimiter = new ActionRateLimiter();
   private readonly broadcastScheduler: BroadcastScheduler;
@@ -140,6 +159,22 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
     this.listeners.add(listener);
     return () => {
       this.listeners.delete(listener);
+    };
+  };
+
+  /**
+   * Subscribes to every action the runtime reduces, whatever its source and
+   * whether or not it changed state — the complete input log, in order.
+   * Replaying it through `createGameReducer(reducer)` from the state at
+   * subscription time reproduces the canonical state; `useActionRecorder`
+   * builds recordings from it.
+   */
+  readonly subscribeActions = (
+    listener: RuntimeActionListener<S, A>,
+  ): (() => void) => {
+    this.actionListeners.add(listener);
+    return () => {
+      this.actionListeners.delete(listener);
     };
   };
 
@@ -180,6 +215,26 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
       this.log(
         `[GameRuntime] Ignoring message from inactive connection: ${connectionId}`,
       );
+      return;
+    }
+
+    // Every message counts, not just actions: pings, malformed frames and
+    // forbidden actions each cost a reply too. Only the first message over the
+    // limit is answered. Replying to each would let a flooding client make the
+    // host send as fast as it receives — and over the relay, those replies
+    // count against the display's own budget, whose overrun closes the room.
+    const rate = this.rateLimiter.record(connectionId);
+    if (!rate.allowed) {
+      this.log(`[GameRuntime] Rate limited ${connectionId}`);
+      if (rate.firstRejection) {
+        this.send(connectionId, {
+          type: MessageTypes.ERROR,
+          payload: {
+            code: "RATE_LIMITED",
+            message: "Too many messages, slow down",
+          },
+        });
+      }
       return;
     }
 
@@ -325,18 +380,6 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
           return;
         }
 
-        if (!this.rateLimiter.record(connectionId).allowed) {
-          this.log(`[GameRuntime] Rate limited ${connectionId}`);
-          this.send(connectionId, {
-            type: MessageTypes.ERROR,
-            payload: {
-              code: "RATE_LIMITED",
-              message: "Too many actions, slow down",
-            },
-          });
-          return;
-        }
-
         const changed = this.applyAction({
           ...actionPayload,
           playerId: authorization.playerId,
@@ -430,9 +473,24 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
   /** @returns whether the action changed the canonical state. */
   private applyAction(action: A | InternalAction<S>): boolean {
     const nextState = this.reducer(this.state, action);
-    if (Object.is(nextState, this.state)) return false;
+    const changed = !Object.is(nextState, this.state);
+    if (changed) this.state = nextState;
 
-    this.state = nextState;
+    // Before the change listeners, so a recorder sees the action ahead of any
+    // re-render the new state triggers.
+    for (const listener of this.actionListeners) {
+      try {
+        listener(action);
+      } catch (error) {
+        const cause = error instanceof Error ? error : new Error(String(error));
+        this.notifyError(
+          new Error(`Action listener failed: ${cause.message}`, { cause }),
+        );
+      }
+    }
+
+    if (!changed) return false;
+
     this.stateDirty = true;
 
     for (const listener of this.listeners) {
@@ -461,7 +519,11 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
     this.stateDirty = false;
 
     if (!this.config.project) {
-      transport.broadcast(createStateUpdateMessage(this.state, actions));
+      if (this.joinedConnections.size === 0) return;
+      transport.broadcast(
+        createStateUpdateMessage(this.state, actions),
+        this.joinedConnections,
+      );
       return;
     }
 

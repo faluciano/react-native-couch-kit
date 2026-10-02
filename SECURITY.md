@@ -89,9 +89,9 @@ What to assume:
   not end-to-end encrypted, so whoever operates the relay is in a position to
   read them, including each player's session secret in `JOIN`. Use a relay you
   trust, served over `wss://`.
-- **The relay applies abuse limits, not authentication.** Each connection is
-  limited to 30 messages per second (exceeding it returns `RATE_LIMITED` and
-  closes the socket), rooms hold at most 16 players, and messages over 256 KiB
+- **The relay applies abuse limits, not authentication.** Each phone is
+  limited to 75 messages per second and the display to 1200 (exceeding either
+  returns `RATE_LIMITED` and closes the socket), rooms hold at most 16 players, and messages over 256 KiB
   are rejected. Connections are also limited per IP: the Bun relay caps
   concurrent connections, and the Worker rate-limits new connections when its
   `CONNECT_LIMITER` binding is configured. An optional `Origin` allowlist
