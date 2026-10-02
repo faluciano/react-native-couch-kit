@@ -100,7 +100,11 @@ export function usePreload(
         img.src = src;
       } else {
         fetch(src)
-          .then(tick)
+          .then((response) => {
+            // fetch resolves on any HTTP response; a 404 is still a failure.
+            if (!response.ok) failed.push(src);
+            tick();
+          })
           .catch(() => {
             failed.push(src);
             tick();

@@ -104,9 +104,9 @@ Key test files:
 
 - `packages/core/tests/` — reducer, protocol, middleware, replay
 - `packages/runtime/tests/` — authoritative state, sessions, authorization, validation, broadcast scheduling
-- `packages/client/tests/` — time-sync, debug-panel
+- `packages/client/tests/` — `useGameClient` lifecycle, relay transport and protocol contract, time-sync, preload, debug-panel
 - `packages/display/tests/` — relay display host
-- `packages/host/tests/` — event-emitter, assets, action-recorder
+- `packages/host/tests/` — WebSocket server, provider, static server, assets, network, action-recorder, event-emitter. Native modules are faked once, in `tests/helpers/native-fakes.ts`, because `mock.module` is process-wide
 - `packages/cli/tests/` — CLI commands, bundle manifest
 - `packages/devtools/tests/` — debug overlay
 - `services/relay/tests/` — relay routing core. Not covered by `bun run test`; these run in the separate `relay` CI job (`bun test` from `services/relay`).

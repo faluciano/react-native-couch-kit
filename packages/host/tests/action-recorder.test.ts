@@ -32,6 +32,8 @@ describe("useActionRecorder", () => {
       startRecording: () => {},
       stopRecording: () => null,
       recordAction: () => {},
+      exportRecording: () => null,
+      discardRecording: () => {},
     };
 
     expect(_recording.actions).toHaveLength(0);
@@ -71,7 +73,7 @@ describe("useActionRecorder", () => {
     });
     expect(parsed.metadata).toEqual({ game: "buzz" });
 
-    let stopped: ActionRecording | null = null;
+    let stopped = null as ActionRecording | null;
     act(() => {
       stopped = result.current.stopRecording();
     });
@@ -130,7 +132,7 @@ describe("useActionRecorder", () => {
       runtime.dispatch({ type: "SCORE", payload: 1 });
     });
 
-    let recording: ActionRecording<State, Action> | null = null;
+    let recording = null as ActionRecording<State, Action> | null;
     act(() => {
       recording = result.current.stopRecording();
     });
