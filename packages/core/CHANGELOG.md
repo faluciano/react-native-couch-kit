@@ -1,5 +1,11 @@
 # @couch-kit/core
 
+## 0.10.1
+
+### Patch Changes
+
+- [#208](https://github.com/faluciano/react-native-couch-kit/pull/208) [`99598d6`](https://github.com/faluciano/react-native-couch-kit/commit/99598d6796b0bd3042aa9f3fbd3bf44ee891b890) Thanks [@faluciano](https://github.com/faluciano)! - `replayActions` wraps the reducer it is given with `createGameReducer`. A recording that contains internal actions (`__PLAYER_JOINED__` and the others a host recorder captures) now replays the way it ran. Before, those actions were silently ignored, because a game's own reducer does not handle them. Passing a reducer that is already wrapped is harmless.
+
 ## 0.10.0
 
 ### Minor Changes
