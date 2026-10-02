@@ -1,5 +1,11 @@
 # @couch-kit/runtime
 
+## 0.6.0
+
+### Minor Changes
+
+- [#210](https://github.com/faluciano/react-native-couch-kit/pull/210) [`0810bd2`](https://github.com/faluciano/react-native-couch-kit/commit/0810bd28a55fca11eb780c9ba19e3c8e17d4086d) Thanks [@faluciano](https://github.com/faluciano)! - New `resendState()`: schedules a state update to every joined connection as if the state had just changed. It is for a transport that may have lost updates, such as a relay connection that dropped and came back.
+
 ## 0.5.0
 
 ### Minor Changes

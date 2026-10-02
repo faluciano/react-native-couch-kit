@@ -1,5 +1,17 @@
 # @couch-kit/client
 
+## 0.16.0
+
+### Minor Changes
+
+- [#210](https://github.com/faluciano/react-native-couch-kit/pull/210) [`0810bd2`](https://github.com/faluciano/react-native-couch-kit/commit/0810bd28a55fca11eb780c9ba19e3c8e17d4086d) Thanks [@faluciano](https://github.com/faluciano)! - Relay protocol support for display resumption. `CreateRoomMessage` gains an optional `resumeToken` and `RoomCreatedMessage` carries one. New in this release:
+
+  - the `ROOM_RESUMED` message type (`RoomResumedMessage`, which lists the phones still in the room)
+  - the `RELAY_CLOSE_HOST_REPLACED` (4002) close code
+  - `RELAY_HOST_RESUME_GRACE_MS` (30 seconds)
+
+  Phones need no change. They stay connected while a display reconnects.
+
 ## 0.15.1
 
 ### Patch Changes

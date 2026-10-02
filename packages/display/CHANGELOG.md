@@ -1,5 +1,34 @@
 # @couch-kit/display
 
+## 0.7.0
+
+### Minor Changes
+
+- [#210](https://github.com/faluciano/react-native-couch-kit/pull/210) [`0810bd2`](https://github.com/faluciano/react-native-couch-kit/commit/0810bd28a55fca11eb780c9ba19e3c8e17d4086d) Thanks [@faluciano](https://github.com/faluciano)! - **New features:** `RelayDisplayHost` takes its room back after a dropped relay connection. It used to lose the room on any drop.
+
+  When the display's network blinks, it moves to the new `reconnecting` status. It reconnects with backoff and claims the room with the resume token the relay issued at creation. Phones stay connected throughout and the room code does not change. On success it:
+
+  - disconnects phones that left while it was away
+  - connects phones that arrived, whose held JOINs follow
+  - re-sends the current state to everyone
+
+  The room ends, as before, if:
+
+  - the relay's 30-second grace period runs out
+  - the relay no longer has the room
+  - the relay closed the display on purpose
+  - the relay predates resumption
+
+  Set `resume: false` to end the room on any drop. `stop()` now closes with code 1000, so the relay ends the room at once rather than holding it.
+
+  **Migration:** `RelayDisplayStatus` gains `"reconnecting"`. An exhaustive `switch` over it needs a new case.
+
+### Patch Changes
+
+- Updated dependencies [[`0810bd2`](https://github.com/faluciano/react-native-couch-kit/commit/0810bd28a55fca11eb780c9ba19e3c8e17d4086d), [`0810bd2`](https://github.com/faluciano/react-native-couch-kit/commit/0810bd28a55fca11eb780c9ba19e3c8e17d4086d)]:
+  - @couch-kit/client@0.16.0
+  - @couch-kit/runtime@0.6.0
+
 ## 0.6.0
 
 ### Minor Changes
