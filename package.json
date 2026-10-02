@@ -32,6 +32,6 @@
     "node": ">=18.0.0"
   },
   "overrides": {
-    "fast-xml-parser": "5.11.1"
+    "fast-xml-parser": "5.11.2"
   }
 }
