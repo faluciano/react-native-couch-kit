@@ -1,5 +1,13 @@
 # @couch-kit/client
 
+## 0.15.1
+
+### Patch Changes
+
+- [#208](https://github.com/faluciano/react-native-couch-kit/pull/208) [`f4b57e3`](https://github.com/faluciano/react-native-couch-kit/commit/f4b57e3fba385d18396781d22a413a1d8afcb909) Thanks [@faluciano](https://github.com/faluciano)! - `usePreload` counts an HTTP error response (a 404, say) as a failed asset. Before, any response that arrived counted as loaded, so a missing sound file came back as `loaded: true` with an empty `failedAssets`.
+- Updated dependencies [[`99598d6`](https://github.com/faluciano/react-native-couch-kit/commit/99598d6796b0bd3042aa9f3fbd3bf44ee891b890)]:
+  - @couch-kit/core@0.10.1
+
 ## 0.15.0
 
 ### Minor Changes

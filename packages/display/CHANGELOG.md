@@ -1,5 +1,18 @@
 # @couch-kit/display
 
+## 0.6.0
+
+### Minor Changes
+
+- [#208](https://github.com/faluciano/react-native-couch-kit/pull/208) [`99598d6`](https://github.com/faluciano/react-native-couch-kit/commit/99598d6796b0bd3042aa9f3fbd3bf44ee891b890) Thanks [@faluciano](https://github.com/faluciano)! - `RelayDisplayHost` gains `subscribeActions(listener)`, the runtime's complete action stream: the display's own dispatches, players' actions, and join/leave lifecycle actions. State updates are no longer sent through the relay while no phone has joined the game.
+
+### Patch Changes
+
+- Updated dependencies [[`f4b57e3`](https://github.com/faluciano/react-native-couch-kit/commit/f4b57e3fba385d18396781d22a413a1d8afcb909), [`99598d6`](https://github.com/faluciano/react-native-couch-kit/commit/99598d6796b0bd3042aa9f3fbd3bf44ee891b890), [`99598d6`](https://github.com/faluciano/react-native-couch-kit/commit/99598d6796b0bd3042aa9f3fbd3bf44ee891b890)]:
+  - @couch-kit/client@0.15.1
+  - @couch-kit/core@0.10.1
+  - @couch-kit/runtime@0.5.0
+
 ## 0.5.0
 
 ### Minor Changes
