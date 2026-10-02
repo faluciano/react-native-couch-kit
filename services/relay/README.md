@@ -29,7 +29,8 @@ matching the single-instance model). Defaults are generous for party-game scale:
 
 | Limit                          | Default | Env override             | On breach                                  |
 | ------------------------------ | ------- | ------------------------ | ------------------------------------------ |
-| Messages / connection / second | 30      | _(code: `messagesPerWindow`)_ | `RATE_LIMITED` error, then socket closed (`1008`) |
+| Messages / player / second     | 75      | _(code: `messagesPerWindow`)_ | `RATE_LIMITED` error, then socket closed (`1008`) |
+| Messages / host / second       | 1200    | _(code: `hostMessagesPerWindow`)_ | `RATE_LIMITED` error, then socket closed (`1008`) — which ends the room |
 | Concurrent rooms               | 1000    | _(code: `maxRooms`)_     | `SERVER_BUSY` error on `CREATE_ROOM`       |
 | Players per room               | 16      | _(code: `maxPlayersPerRoom`)_ | `ROOM_FULL` error on `JOIN_ROOM`      |
 | Concurrent connections / IP    | 50      | `MAX_CONNECTIONS_PER_IP` | `429` on upgrade                           |

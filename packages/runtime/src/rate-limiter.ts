@@ -1,4 +1,4 @@
-/** Maximum actions per rate-limit window. */
+/** Maximum messages per connection per rate-limit window. */
 export const RATE_LIMIT_MAX = 60;
 
 /** Rate-limit window duration (ms). */
@@ -11,6 +11,11 @@ export interface RateLimitInfo {
 
 export interface RateLimitResult extends RateLimitInfo {
   allowed: boolean;
+  /**
+   * Whether this is the first rejection in the current window. Lets a caller
+   * answer the overflow once rather than once per rejected message.
+   */
+  firstRejection: boolean;
 }
 
 export interface ActionRateLimiterOptions {
@@ -20,7 +25,7 @@ export interface ActionRateLimiterOptions {
 }
 
 /**
- * Per-connection action limiter that preserves the host provider's original
+ * Per-connection message limiter that preserves the host provider's original
  * fixed-window algorithm.
  */
 export class ActionRateLimiter {
@@ -49,6 +54,7 @@ export class ActionRateLimiter {
     return {
       ...rateInfo,
       allowed: rateInfo.count <= this.maxActions,
+      firstRejection: rateInfo.count === this.maxActions + 1,
     };
   }
 

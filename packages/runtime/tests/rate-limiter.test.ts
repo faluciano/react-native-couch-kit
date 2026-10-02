@@ -30,7 +30,11 @@ describe("runtime ActionRateLimiter", () => {
     const blocked = limiter.record("socket-1");
 
     expect(blocked.allowed).toBe(false);
+    expect(blocked.firstRejection).toBe(true);
     expect(blocked.count).toBe(RATE_LIMIT_MAX + 1);
+
+    // Later rejections in the same window are not the first.
+    expect(limiter.record("socket-1").firstRejection).toBe(false);
   });
 
   test("resets only after the window has fully elapsed", () => {

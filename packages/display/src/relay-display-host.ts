@@ -5,6 +5,7 @@ import {
   type AddressedMessage,
   type GameHostRuntimeConfig,
   type GameRuntimeTransport,
+  type RuntimeActionListener,
 } from "@couch-kit/runtime";
 import type { IGameState, IAction, HostMessage } from "@couch-kit/core";
 import {
@@ -17,12 +18,12 @@ import {
 /**
  * Default minimum interval (ms) between state broadcasts through a relay.
  *
- * Slower than the LAN default on purpose: a relay rate-limits every connection
- * (30 messages/second on the reference relays) and answers a breach by closing
- * the socket — which, for the display, ends the room. 20 broadcasts/second
- * leaves headroom for the unicast traffic the display also sends (WELCOME,
- * PONG, errors), so a game that updates continuously cannot talk itself out of
- * its own room.
+ * Slower than the LAN default on purpose: every frame the display sends is
+ * billed by the relay and counted against the display's rate limit, whose
+ * breach closes the socket — and, for the display, ends the room. 20
+ * broadcasts/second is smooth for a party game and leaves the display's budget
+ * (1200 messages/second on the reference relays) to the unicast replies it
+ * also sends: WELCOME, PONG, errors.
  */
 export const DEFAULT_RELAY_STATE_THROTTLE_MS = 50;
 
@@ -188,6 +189,14 @@ export class RelayDisplayHost<S extends IGameState, A extends IAction> {
   /** Subscribe to state changes (for `useSyncExternalStore` or manual render). */
   subscribe = (listener: () => void): (() => void) =>
     this.runtime.subscribe(listener);
+
+  /**
+   * Subscribe to every action the runtime reduces — the display's own
+   * dispatches, players' actions, and join/leave lifecycle actions. A
+   * `RelayDisplayHost` can be passed straight to `useActionRecorder({ source })`.
+   */
+  subscribeActions = (listener: RuntimeActionListener<S, A>): (() => void) =>
+    this.runtime.subscribeActions(listener);
 
   /** Dispatch a trusted host-display action. */
   dispatch = (action: A): void => this.runtime.dispatch(action);

@@ -115,4 +115,36 @@ describe("replayActions", () => {
 
     expect(result.snapshots[0].action.playerId).toBe("p1");
   });
+
+  test("replays internal lifecycle actions a host recorder captures", () => {
+    const recording: Recording<TestState, IAction> = {
+      initialState,
+      actions: [
+        {
+          action: {
+            type: "__PLAYER_JOINED__",
+            payload: { id: "p1", name: "Ana" },
+          },
+          timestamp: 1,
+        },
+        { action: { type: "INCREMENT" }, timestamp: 2 },
+        {
+          action: { type: "__PLAYER_LEFT__", payload: { playerId: "p1" } },
+          timestamp: 3,
+        },
+      ],
+      startTimestamp: 0,
+    };
+
+    const result = replayActions(
+      recording,
+      testReducer as GameReducer<TestState, IAction>,
+    );
+
+    expect(result.finalState.count).toBe(1);
+    expect(result.finalState.players.p1).toMatchObject({
+      name: "Ana",
+      connected: false,
+    });
+  });
 });

@@ -146,6 +146,18 @@ describe("RelayDisplayHost", () => {
       roomId: "ROOM",
       peerId: "p1",
     });
+    // The runtime broadcasts only once someone has joined the game, not
+    // merely the relay room.
+    ws.fromServer({
+      type: RelayMessageTypes.DATA,
+      roomId: "ROOM",
+      from: "p1",
+      data: JSON.stringify({
+        type: "JOIN",
+        payload: { secret: SECRET, name: "P1" },
+      }),
+    });
+    await flush();
     ws.sent.length = 0;
 
     host.dispatch({ type: "BUMP" });

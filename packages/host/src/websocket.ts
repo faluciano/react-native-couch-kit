@@ -256,6 +256,29 @@ export class GameWebSocketServer extends EventEmitter<WebSocketServerEvents> {
     }
   }
 
+  /**
+   * Send the same data to each of `socketIds`, serializing it once.
+   * Unknown IDs are skipped; a failed send doesn't skip the remaining clients.
+   */
+  public multicast(socketIds: Iterable<string>, data: unknown) {
+    try {
+      const message = JSON.stringify(data);
+      for (const id of socketIds) {
+        const client = this.clients.get(id);
+        if (!client) continue;
+        client.ws.send(message).catch((error: Error) => {
+          this.log(`[WebSocket] Failed to send to ${id}:`, error);
+        });
+      }
+    } catch (error) {
+      this.log(`[WebSocket] Failed to serialize multicast message:`, error);
+      this.emit(
+        "error",
+        error instanceof Error ? error : new Error(String(error)),
+      );
+    }
+  }
+
   /** Returns the number of currently connected clients. */
   public get clientCount(): number {
     return this.clients.size;

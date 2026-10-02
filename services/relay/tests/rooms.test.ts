@@ -4,6 +4,7 @@ import {
   RelayMessageTypes,
   RelayErrorCodes,
   MAX_MESSAGE_BYTES,
+  DEFAULT_LIMITS,
   RELAY_CLOSE_HOST_LEFT,
   generateRoomCode,
   ROOM_CODE_ALPHABET,
@@ -385,6 +386,48 @@ describe("RelayRooms", () => {
     });
   });
 
+  test("the host gets its own, larger budget", () => {
+    const rooms = new RelayRooms({
+      messagesPerWindow: 2,
+      hostMessagesPerWindow: 5,
+      rateWindowMs: 1000,
+    });
+    const host = conn("h");
+    const p1 = conn("p1");
+    rooms.handleMessage(
+      host,
+      JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }),
+    );
+    rooms.handleMessage(p1, JSON.stringify({ type: "JOIN_ROOM", roomId: "R" }));
+
+    // CREATE_ROOM plus four broadcasts is five: within the host budget, though
+    // more than twice what a player may send.
+    const broadcast = JSON.stringify({ type: "DATA", data: "x" });
+    for (let i = 0; i < 4; i++) {
+      expect(rooms.handleMessage(host, broadcast)).toBeNull();
+    }
+    expect(rooms.handleMessage(host, broadcast)).toEqual({
+      code: 1008,
+      reason: "Rate limited",
+    });
+
+    // JOIN_ROOM plus one message is the player's whole budget.
+    expect(rooms.handleMessage(p1, broadcast)).toBeNull();
+    expect(rooms.handleMessage(p1, broadcast)).toEqual({
+      code: 1008,
+      reason: "Rate limited",
+    });
+  });
+
+  test("defaults leave the runtime, not the relay, to throttle a fast player", () => {
+    // @couch-kit/runtime allows 60 messages/s per connection and answers the
+    // excess with RATE_LIMITED. The relay must not close the phone first.
+    expect(DEFAULT_LIMITS.messagesPerWindow).toBeGreaterThan(60);
+    expect(DEFAULT_LIMITS.hostMessagesPerWindow).toBeGreaterThanOrEqual(
+      DEFAULT_LIMITS.maxPlayersPerRoom * 61 + 30,
+    );
+  });
+
   test("closing a connection clears its rate-limit state", () => {
     const rooms = new RelayRooms({ messagesPerWindow: 2, rateWindowMs: 1000 });
     const c = conn("c");
@@ -439,7 +482,10 @@ describe("DATA_MULTI", () => {
   });
 
   test("counts as one message against the rate limit, not one per player", () => {
-    const rooms = new RelayRooms({ messagesPerWindow: 3, rateWindowMs: 1000 });
+    const rooms = new RelayRooms({
+      hostMessagesPerWindow: 3,
+      rateWindowMs: 1000,
+    });
     const host = conn("h");
     rooms.handleMessage(
       host,

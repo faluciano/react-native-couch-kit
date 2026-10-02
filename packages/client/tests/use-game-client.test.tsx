@@ -1,5 +1,12 @@
-import { unregisterDom } from "./helpers/dom";
-import { afterAll, afterEach, describe, expect, test } from "bun:test";
+import { registerDom, unregisterDom } from "./helpers/dom";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  test,
+} from "bun:test";
 import { act, cleanup, configure, renderHook } from "@testing-library/react";
 import type { HostMessage, IGameState } from "@couch-kit/core";
 import { useGameClient, type ClientConfig } from "../src/client";
@@ -106,6 +113,8 @@ afterEach(() => {
   cleanup();
   configure({ reactStrictMode: false });
 });
+
+beforeAll(registerDom);
 
 afterAll(() => {
   unregisterDom();

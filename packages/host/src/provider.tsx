@@ -16,6 +16,7 @@ import {
 import {
   GameHostRuntime,
   type GameHostRuntimeConfig,
+  type RuntimeActionListener,
 } from "@couch-kit/runtime";
 import { useStaticServer } from "./server";
 import { GameWebSocketServer } from "./websocket";
@@ -41,6 +42,14 @@ interface GameHostContextValue<S extends IGameState, A extends IAction> {
   dispatch: (action: A) => void;
   serverUrl: string | null;
   serverError: Error | null;
+  /** Reads canonical state now, without waiting for a re-render. */
+  getState: () => S;
+  /**
+   * Subscribes to every action the host reduces — its own dispatches, every
+   * player's actions, and player join/leave lifecycle actions. Pass the whole
+   * context to `useActionRecorder({ source })` to record complete sessions.
+   */
+  subscribeActions: (listener: RuntimeActionListener<S, A>) => () => void;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -139,8 +148,8 @@ export function GameHostProvider<S extends IGameState, A extends IAction>({
           send: (connectionId, message) => {
             server.send(connectionId, message);
           },
-          broadcast: (message) => {
-            server.broadcast(message);
+          broadcast: (message, recipients) => {
+            server.multicast(recipients, message);
           },
         });
 
@@ -175,8 +184,15 @@ export function GameHostProvider<S extends IGameState, A extends IAction>({
   );
 
   const contextValue = useMemo(
-    () => ({ state, dispatch, serverUrl, serverError }),
-    [state, dispatch, serverUrl, serverError],
+    () => ({
+      state,
+      dispatch,
+      serverUrl,
+      serverError,
+      getState: runtime.getState,
+      subscribeActions: runtime.subscribeActions,
+    }),
+    [state, dispatch, serverUrl, serverError, runtime],
   );
 
   return (

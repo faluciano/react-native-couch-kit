@@ -1136,7 +1136,7 @@ The framework dispatches these internal actions automatically. User reducers do 
 | Duplicate React / Invalid Hook Call | Ensure library packages treat \`react\` as peerDependency; don't bundle it |
 | Changes not showing up after yalc push | Stop Metro and run \`bun start --reset-cache\` |
 | \`staticDir\` undefined on Android | Use \`useExtractAssets(manifest)\` — APK assets can't be served directly |
-| Rate limited errors | Client is sending >60 actions/second — throttle your dispatch calls |
+| Rate limited errors | Client is sending >60 messages/second — throttle your dispatch calls |
 
 ---
 
@@ -1145,7 +1145,7 @@ The framework dispatches these internal actions automatically. User reducers do 
 - **LAN-only:** The controller URL is reachable to anyone on the same LAN. Do not run on untrusted Wi-Fi.
 - **Secret-based session recovery:** \`JOIN\` requires a \`secret\` field — a persistent session token stored in client \`localStorage\`. The raw secret is never broadcast to other clients; only a derived public \`playerId\` (SHA-256 hash prefix) is shared in game state.
 - **Internal action rejection:** The host rejects any client-dispatched internal action types (\`__HYDRATE__\`, \`__PLAYER_JOINED__\`, etc.) with a \`FORBIDDEN_ACTION\` error.
-- **Rate limiting:** The host enforces a rate limit of 60 actions per second per client socket.
+- **Rate limiting:** The host enforces a rate limit of 60 messages per second per client socket. Only the first message over the limit gets a \`RATE_LIMITED\` error; the rest of that second is dropped silently.
 - **Input validation:** The host validates all incoming WebSocket messages against the \`ClientMessage\` schema before processing.
 - **No encryption:** WebSocket traffic is unencrypted (\`ws://\`, not \`wss://\`). This is acceptable for LAN party games but not for sensitive data.
 `;

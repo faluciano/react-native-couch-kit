@@ -44,7 +44,7 @@ Build order: `core` → `runtime` → `client` → `display`, then `host`, `cli`
 - **State broadcasts are throttled**: at most one broadcast per `stateThrottleMs` window (default 33ms, ~30fps), with every change inside the window coalesced into it.
 - **WebSocket port = HTTP port + 2** (default 8082) to avoid Metro dev server on 8081.
 - **Session recovery**: disconnected players have a 5-minute timeout before `__PLAYER_REMOVED__` fires.
-- **Security**: Rate limiting (60 actions/sec), internal action injection prevention, secrets never broadcast.
+- **Security**: Rate limiting (60 messages/sec per connection, answered with one `RATE_LIMITED` per window), internal action injection prevention, secrets never broadcast.
 
 ## Protocol Flow
 
@@ -104,9 +104,9 @@ Key test files:
 
 - `packages/core/tests/` — reducer, protocol, middleware, replay
 - `packages/runtime/tests/` — authoritative state, sessions, authorization, validation, broadcast scheduling
-- `packages/client/tests/` — time-sync, debug-panel
+- `packages/client/tests/` — `useGameClient` lifecycle, relay transport and protocol contract, time-sync, preload, debug-panel
 - `packages/display/tests/` — relay display host
-- `packages/host/tests/` — event-emitter, assets, action-recorder
+- `packages/host/tests/` — WebSocket server, provider, static server, assets, network, action-recorder, event-emitter. Native modules are faked once, in `tests/helpers/native-fakes.ts`, because `mock.module` is process-wide
 - `packages/cli/tests/` — CLI commands, bundle manifest
 - `packages/devtools/tests/` — debug overlay
 - `services/relay/tests/` — relay routing core. Not covered by `bun run test`; these run in the separate `relay` CI job (`bun test` from `services/relay`).
