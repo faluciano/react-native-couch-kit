@@ -85,13 +85,21 @@ const server = Bun.serve<SocketData, undefined>({
       // the core already sent the matching ERROR frame.
       if (close) ws.close(close.code, close.reason);
     },
-    close(ws) {
+    close(ws, code) {
       const next = (ipCounts.get(ws.data.ip) ?? 1) - 1;
       if (next <= 0) ipCounts.delete(ws.data.ip);
       else ipCounts.set(ws.data.ip, next);
-      if (ws.data.conn) rooms.handleClose(ws.data.conn);
+      // 1006: the socket died without a close frame — a dropped network, not
+      // a host deciding to leave — so its room waits for it to resume.
+      if (ws.data.conn) {
+        rooms.handleClose(ws.data.conn, { abnormal: code === 1006 });
+      }
     },
   },
 });
+
+// End rooms whose host dropped and never came back. Once a second is plenty
+// against a grace period measured in tens of seconds.
+setInterval(() => rooms.expireAbandonedRooms(), 1000);
 
 console.log(`Couch Kit relay listening on :${server.port}`);

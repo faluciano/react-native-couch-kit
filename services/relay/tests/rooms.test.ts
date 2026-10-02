@@ -6,6 +6,8 @@ import {
   MAX_MESSAGE_BYTES,
   DEFAULT_LIMITS,
   RELAY_CLOSE_HOST_LEFT,
+  RELAY_CLOSE_HOST_REPLACED,
+  MAX_HELD_MESSAGES,
   generateRoomCode,
   ROOM_CODE_ALPHABET,
   ROOM_CODE_LENGTH,
@@ -38,8 +40,33 @@ describe("RelayRooms", () => {
 
     expect(rooms.roomCount).toBe(1);
     expect(host.sent).toEqual([
-      { type: RelayMessageTypes.ROOM_CREATED, roomId: "R", peerId: "h" },
+      {
+        type: RelayMessageTypes.ROOM_CREATED,
+        roomId: "R",
+        peerId: "h",
+        resumeToken: expect.stringMatching(/^[0-9a-f]{32}$/),
+      },
     ]);
+  });
+
+  test("a connection already in a room cannot create another", () => {
+    const rooms = new RelayRooms();
+    const host = conn("h");
+    rooms.handleMessage(
+      host,
+      JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }),
+    );
+    rooms.handleMessage(
+      host,
+      JSON.stringify({ type: "CREATE_ROOM", roomId: "S" }),
+    );
+
+    expect(rooms.roomCount).toBe(1);
+    expect(host.sent.at(-1)).toMatchObject({
+      type: RelayMessageTypes.ERROR,
+      code: RelayErrorCodes.MALFORMED,
+    });
+    expect(rooms.membershipOf("h")?.roomId).toBe("R");
   });
 
   test("duplicate room creation is rejected", () => {
@@ -832,5 +859,294 @@ describe("host departure", () => {
 
     expect(() => rooms.handleClose(host)).not.toThrow();
     expect(rooms.membershipOf("p1")).toBeUndefined();
+  });
+});
+
+describe("host resumption", () => {
+  function closable(id: string) {
+    const closes: { code: number; reason: string }[] = [];
+    return {
+      ...conn(id),
+      closes,
+      close(code: number, reason: string) {
+        closes.push({ code, reason });
+      },
+    };
+  }
+
+  const join = JSON.stringify({ type: "JOIN_ROOM", roomId: "R" });
+  const phoneData = (data: string) =>
+    JSON.stringify({ type: RelayMessageTypes.DATA, data });
+  const resume = (resumeToken: string, roomId = "R") =>
+    JSON.stringify({ type: "CREATE_ROOM", roomId, resumeToken });
+
+  /** A room with a host and one phone, on a controllable clock. */
+  function room(limits: Partial<typeof DEFAULT_LIMITS> = {}) {
+    let t = 1_000;
+    const clock = {
+      advance(ms: number) {
+        t += ms;
+      },
+    };
+    const rooms = new RelayRooms(limits, () => t);
+    const host = closable("h");
+    const p1 = closable("p1");
+    rooms.handleMessage(
+      host,
+      JSON.stringify({ type: "CREATE_ROOM", roomId: "R" }),
+    );
+    const token: string = host.sent[0].resumeToken;
+    rooms.handleMessage(p1, join);
+    host.sent.length = 0;
+    p1.sent.length = 0;
+    return { rooms, host, p1, token, clock };
+  }
+
+  test("a host that drops keeps its room and its phones for the grace period", () => {
+    const { rooms, host, p1, clock } = room();
+
+    rooms.handleClose(host, { abnormal: true });
+
+    expect(rooms.roomCount).toBe(1);
+    expect(p1.closes).toEqual([]);
+    expect(rooms.membershipOf("p1")?.roomId).toBe("R");
+    expect(rooms.nextExpiryAt()).toBe(1_000 + DEFAULT_LIMITS.hostResumeGraceMs);
+
+    clock.advance(DEFAULT_LIMITS.hostResumeGraceMs - 1);
+    expect(rooms.expireAbandonedRooms()).toEqual([]);
+    expect(p1.closes).toEqual([]);
+  });
+
+  test("a room whose host never returns ends, closing its phones", () => {
+    const { rooms, host, p1, clock } = room();
+    rooms.handleClose(host, { abnormal: true });
+
+    clock.advance(DEFAULT_LIMITS.hostResumeGraceMs);
+    expect(rooms.expireAbandonedRooms()).toEqual(["R"]);
+
+    expect(rooms.roomCount).toBe(0);
+    expect(rooms.nextExpiryAt()).toBeNull();
+    expect(p1.closes).toEqual([
+      { code: RELAY_CLOSE_HOST_LEFT, reason: RelayErrorCodes.HOST_LEFT },
+    ]);
+  });
+
+  test("a host that closes deliberately ends the room at once", () => {
+    const { rooms, host, p1 } = room();
+
+    rooms.handleClose(host);
+
+    expect(rooms.roomCount).toBe(0);
+    expect(p1.closes).toHaveLength(1);
+  });
+
+  test("the host resumes on a new connection and gets the room back", () => {
+    const { rooms, host, p1, token } = room();
+    rooms.handleClose(host, { abnormal: true });
+
+    const back = closable("h2");
+    rooms.handleMessage(back, resume(token));
+
+    expect(back.sent).toEqual([
+      {
+        type: RelayMessageTypes.ROOM_RESUMED,
+        roomId: "R",
+        peerId: "h2",
+        peers: ["p1"],
+      },
+    ]);
+    expect(rooms.nextExpiryAt()).toBeNull();
+    expect(rooms.membershipOf("h2")).toEqual({ roomId: "R", role: "host" });
+
+    // Traffic flows both ways again.
+    rooms.handleMessage(back, dataMsg("state"));
+    expect(p1.sent.at(-1)).toMatchObject({ data: "state" });
+    rooms.handleMessage(p1, phoneData("tap"));
+    expect(back.sent.at(-1)).toMatchObject({ from: "p1", data: "tap" });
+  });
+
+  test("phone messages sent while the host was away are delivered on resume", () => {
+    const { rooms, host, p1, token } = room();
+    rooms.handleClose(host, { abnormal: true });
+
+    rooms.handleMessage(p1, phoneData("one"));
+    rooms.handleMessage(p1, phoneData("two"));
+    const back = conn("h2");
+    rooms.handleMessage(back, resume(token));
+
+    expect(back.sent.slice(1)).toEqual([
+      { type: RelayMessageTypes.DATA, roomId: "R", from: "p1", data: "one" },
+      { type: RelayMessageTypes.DATA, roomId: "R", from: "p1", data: "two" },
+    ]);
+  });
+
+  test("the peer list reflects arrivals and departures while the host was away", () => {
+    const { rooms, host, p1, token } = room();
+    rooms.handleClose(host, { abnormal: true });
+
+    // p1 says something and leaves; p2 arrives and joins the game.
+    rooms.handleMessage(p1, phoneData("from p1"));
+    rooms.handleClose(p1);
+    const p2 = conn("p2");
+    rooms.handleMessage(p2, join);
+    rooms.handleMessage(p2, phoneData("JOIN from p2"));
+
+    const back = conn("h2");
+    rooms.handleMessage(back, resume(token));
+
+    expect(back.sent).toEqual([
+      {
+        type: RelayMessageTypes.ROOM_RESUMED,
+        roomId: "R",
+        peerId: "h2",
+        peers: ["p2"],
+      },
+      // p1's message is dropped with p1: the host never hears of p1 again.
+      {
+        type: RelayMessageTypes.DATA,
+        roomId: "R",
+        from: "p2",
+        data: "JOIN from p2",
+      },
+    ]);
+  });
+
+  test("holding is bounded", () => {
+    const { rooms, host, p1, token } = room({ messagesPerWindow: 1_000 });
+    rooms.handleClose(host, { abnormal: true });
+
+    for (let i = 0; i < MAX_HELD_MESSAGES + 10; i++) {
+      rooms.handleMessage(p1, phoneData(`m${i}`));
+    }
+    const back = conn("h2");
+    rooms.handleMessage(back, resume(token));
+
+    // ROOM_RESUMED plus the held messages, oldest kept.
+    expect(back.sent).toHaveLength(1 + MAX_HELD_MESSAGES);
+    expect(back.sent[1].data).toBe("m0");
+  });
+
+  test("a wrong token cannot take the room", () => {
+    const { rooms, host, p1, token } = room();
+    rooms.handleClose(host, { abnormal: true });
+
+    const intruder = conn("x");
+    rooms.handleMessage(intruder, resume("0".repeat(32)));
+
+    expect(intruder.sent).toEqual([
+      {
+        type: RelayMessageTypes.ERROR,
+        code: RelayErrorCodes.ROOM_NOT_FOUND,
+        message: "Room not found",
+      },
+    ]);
+    expect(rooms.membershipOf("x")).toBeUndefined();
+
+    // The rightful host still can.
+    const back = conn("h2");
+    rooms.handleMessage(back, resume(token));
+    expect(back.sent[0].type).toBe(RelayMessageTypes.ROOM_RESUMED);
+    expect(p1.closes).toEqual([]);
+  });
+
+  test("resuming a room that has ended is ROOM_NOT_FOUND", () => {
+    const { rooms, host, token, clock } = room();
+    rooms.handleClose(host, { abnormal: true });
+    clock.advance(DEFAULT_LIMITS.hostResumeGraceMs);
+    rooms.expireAbandonedRooms();
+
+    const back = conn("h2");
+    rooms.handleMessage(back, resume(token));
+
+    expect(back.sent[0]).toMatchObject({
+      code: RelayErrorCodes.ROOM_NOT_FOUND,
+    });
+  });
+
+  test("resuming replaces a host connection the relay still thinks is alive", () => {
+    const { rooms, host, p1, token } = room();
+
+    // No close yet: the old socket died without a close frame and nothing has
+    // tried to write to it.
+    const back = conn("h2");
+    rooms.handleMessage(back, resume(token));
+
+    expect(host.closes).toEqual([
+      { code: RELAY_CLOSE_HOST_REPLACED, reason: "Host replaced" },
+    ]);
+    expect(back.sent[0]).toMatchObject({ peers: ["p1"] });
+
+    // When the old socket's close is finally reported, it changes nothing.
+    rooms.handleClose(host, { abnormal: true });
+    expect(rooms.membershipOf("h2")).toEqual({ roomId: "R", role: "host" });
+    expect(rooms.nextExpiryAt()).toBeNull();
+    expect(p1.closes).toEqual([]);
+  });
+
+  test("a host can resume repeatedly with the same token", () => {
+    const { rooms, host, token } = room();
+    rooms.handleClose(host, { abnormal: true });
+    const second = conn("h2");
+    rooms.handleMessage(second, resume(token));
+    rooms.handleClose(second, { abnormal: true });
+
+    const third = conn("h3");
+    rooms.handleMessage(third, resume(token));
+    expect(third.sent[0].type).toBe(RelayMessageTypes.ROOM_RESUMED);
+  });
+
+  test("resume state survives a loss of memory", () => {
+    const { rooms, host, p1, token } = room();
+    rooms.handleClose(host, { abnormal: true });
+    const saved = rooms.resumeStateOf("r");
+    expect(saved).toEqual({
+      roomId: "R",
+      resumeToken: token,
+      hostGoneAt: 1_000,
+    });
+
+    // A fresh core, as a Durable Object waking from hibernation would build:
+    // only the phone's socket is left, plus what was persisted.
+    const woken = new RelayRooms({}, () => 2_000);
+    woken.restore([{ conn: p1, roomId: "R", role: "player" }], [saved!]);
+    expect(woken.nextExpiryAt()).toBe(1_000 + DEFAULT_LIMITS.hostResumeGraceMs);
+
+    const back = conn("h2");
+    woken.handleMessage(back, resume(token));
+    expect(back.sent[0]).toMatchObject({
+      type: RelayMessageTypes.ROOM_RESUMED,
+      peers: ["p1"],
+    });
+  });
+
+  test("a host that vanished unseen starts its grace period on restore", () => {
+    const { rooms, p1, token } = room();
+    // Saved while the host was present...
+    const saved = rooms.resumeStateOf("R")!;
+    expect(saved.hostGoneAt).toBeNull();
+
+    // ...and restored with only the phone left.
+    const woken = new RelayRooms({}, () => 5_000);
+    woken.restore([{ conn: p1, roomId: "R", role: "player" }], [saved]);
+
+    expect(woken.nextExpiryAt()).toBe(5_000 + DEFAULT_LIMITS.hostResumeGraceMs);
+    const back = conn("h2");
+    woken.handleMessage(back, resume(token));
+    expect(back.sent[0].type).toBe(RelayMessageTypes.ROOM_RESUMED);
+  });
+
+  test("a room restored without resume state cannot be resumed", () => {
+    const rooms = new RelayRooms();
+    const host = closable("h");
+    const p1 = closable("p1");
+    rooms.restore([
+      { conn: host, roomId: "R", role: "host" },
+      { conn: p1, roomId: "R", role: "player" },
+    ]);
+
+    // Nothing to resume with, so a drop ends the room as before.
+    rooms.handleClose(host, { abnormal: true });
+    expect(rooms.roomCount).toBe(0);
+    expect(p1.closes).toHaveLength(1);
   });
 });

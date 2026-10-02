@@ -9,11 +9,19 @@
  * players, a table between turns) is evicted from memory while its WebSockets
  * stay open, and evicted objects are not billed for duration. That works here
  * because the relay holds no game state — the browser display owns the game.
- * All this object knows is who is in the room, and that is recoverable from the
- * sockets themselves on wake.
+ * Who is in the room is recoverable from the sockets themselves on wake. The
+ * one thing that is not is the room's resume state (its token, and whether its
+ * display is away), so that alone is persisted, in synchronous KV storage.
  */
 
-import { RelayRooms, type RelayConnection } from "../../relay/src/rooms";
+import {
+  RelayRooms,
+  type RelayConnection,
+  type RoomResumeState,
+} from "../../relay/src/rooms";
+
+/** KV key holding this room's {@link RoomResumeState}. */
+const RESUME_STATE_KEY = "resume";
 
 /**
  * Header carrying a candidate room code from the router to the object that
@@ -38,6 +46,19 @@ interface Attachment {
 
 export class RelayRoom implements DurableObject {
   private core: RelayRooms | null = null;
+  /** The code this object answers to, once anything has told us. */
+  private roomId: string | null = null;
+  /** Last resume state written, serialized, to skip redundant writes. */
+  private persisted: string | null | undefined;
+  /** When the expiry alarm is set for, to skip redundant sets. */
+  private alarmAt: number | null | undefined;
+  /**
+   * Pending while a display is away. A scheduled callback cannot survive
+   * hibernation, so its mere existence keeps this object in memory — which is
+   * the point: the phone messages held for the display live in memory only.
+   * It also ends the room on time; the alarm is the backstop for an eviction.
+   */
+  private expiryTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private readonly ctx: DurableObjectState,
@@ -71,12 +92,68 @@ export class RelayRoom implements DurableObject {
           roomId: att.roomId,
           role: att.role,
         });
+        this.roomId = att.roomId;
       }
     }
-    if (entries.length > 0) core.restore(entries);
+    const saved = this.savedResumeState();
+    if (saved) this.roomId = saved.roomId;
+    if (entries.length > 0 || saved)
+      core.restore(entries, saved ? [saved] : []);
+    this.persisted = saved ? JSON.stringify(saved) : null;
 
     this.core = core;
     return core;
+  }
+
+  private savedResumeState(): RoomResumeState | undefined {
+    return this.ctx.storage.kv.get<RoomResumeState>(RESUME_STATE_KEY);
+  }
+
+  /**
+   * Brings storage in line with the core after anything that may have changed
+   * the room: persists its resume state (or deletes it once the room is over),
+   * and points the alarm at the moment a display that dropped runs out of time
+   * to come back. An alarm, unlike a timer, fires even if this object
+   * hibernates in the meantime.
+   */
+  private async sync(): Promise<void> {
+    const core = this.rooms();
+    const state =
+      this.roomId === null ? undefined : core.resumeStateOf(this.roomId);
+    const serialized = state ? JSON.stringify(state) : null;
+    if (serialized !== this.persisted) {
+      if (state) this.ctx.storage.kv.put(RESUME_STATE_KEY, state);
+      else this.ctx.storage.kv.delete(RESUME_STATE_KEY);
+      this.persisted = serialized;
+    }
+
+    const expiry = core.nextExpiryAt();
+    if (expiry !== this.alarmAt) {
+      if (this.expiryTimer !== null) clearTimeout(this.expiryTimer);
+      this.expiryTimer = null;
+      if (expiry === null) {
+        await this.ctx.storage.deleteAlarm();
+      } else {
+        await this.ctx.storage.setAlarm(expiry);
+        this.expiryTimer = setTimeout(
+          () => {
+            this.expiryTimer = null;
+            void this.alarm();
+          },
+          Math.max(0, expiry - Date.now()),
+        );
+      }
+      this.alarmAt = expiry;
+    }
+  }
+
+  async alarm(): Promise<void> {
+    // Runs from the timer or the alarm, whichever fires first; the second is
+    // a harmless no-op, or gets rescheduled by sync() if the room is still
+    // waiting.
+    this.alarmAt = undefined;
+    this.rooms().expireAbandonedRooms();
+    await this.sync();
   }
 
   /** The code the router claimed for this object, read back off the sockets. */
@@ -97,7 +174,12 @@ export class RelayRoom implements DurableObject {
    * is what keeps the keyspace from filling up with nothing.
    */
   private occupied(): boolean {
-    return this.ctx.getWebSockets().length > 0;
+    // A room whose display dropped may have no sockets at all — a lobby with no
+    // phones yet — and is still taken until the display gives up on it.
+    return (
+      this.ctx.getWebSockets().length > 0 ||
+      this.savedResumeState() !== undefined
+    );
   }
 
   private attachment(ws: WebSocket): Attachment | null {
@@ -172,6 +254,7 @@ export class RelayRoom implements DurableObject {
     // The role is only known once CREATE_ROOM / JOIN_ROOM has been handled.
     // Persist it so a wake can rebuild the routing table.
     const mem = core.membershipOf(att.peerId);
+    if (mem) this.roomId = mem.roomId;
     if (mem && (att.roomId !== mem.roomId || att.role !== mem.role)) {
       ws.serializeAttachment({
         ...att,
@@ -185,6 +268,7 @@ export class RelayRoom implements DurableObject {
     // ever created still routes to a Durable Object, and leaving that socket
     // open would keep the object alive for a room that does not exist.
     if (close) ws.close(close.code, close.reason);
+    await this.sync();
   }
 
   async webSocketClose(
@@ -192,7 +276,9 @@ export class RelayRoom implements DurableObject {
     code: number,
     reason: string,
   ): Promise<void> {
-    this.drop(ws);
+    // 1006: the socket died without a close frame — a dropped network, not a
+    // display deciding to leave — so its room waits for it to resume.
+    this.drop(ws, code === 1006);
 
     // Complete the closing handshake. When a client calls close(), the
     // hibernation API hands us the frame and expects *us* to close our side; if
@@ -208,15 +294,17 @@ export class RelayRoom implements DurableObject {
     } catch {
       // Already closed from the other side; nothing to complete.
     }
+    await this.sync();
   }
 
   async webSocketError(ws: WebSocket): Promise<void> {
-    this.drop(ws);
+    this.drop(ws, true);
+    await this.sync();
   }
 
-  private drop(ws: WebSocket): void {
+  private drop(ws: WebSocket, abnormal: boolean): void {
     const att = this.attachment(ws);
     if (!att) return;
-    this.rooms().handleClose(this.connection(ws, att.peerId));
+    this.rooms().handleClose(this.connection(ws, att.peerId), { abnormal });
   }
 }

@@ -81,6 +81,11 @@ What to assume:
   32-character alphabet, drawn from a CSPRNG (about 1.07 billion possibilities).
   A display that supplies its own `roomId` gets a code only as unguessable as the
   one it chose.
+- **Hosting a room is held by a resume token.** The relay gives the display a
+  128-bit random token when the room is created, and only a connection that
+  presents it can take the room back after the display's connection drops. A
+  wrong token gets the same `ROOM_NOT_FOUND` as a room that does not exist. The
+  token lives in the display's memory only and is never sent to phones.
 - **The relay routes opaque envelopes.** It tracks room membership and forwards
   `DATA` envelopes between the display and its phones without parsing the game
   messages inside them. A phone's messages go only to the display, never directly
