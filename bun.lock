@@ -15,7 +15,7 @@
     },
     "packages/cli": {
       "name": "@couch-kit/cli",
-      "version": "0.3.10",
+      "version": "0.3.12",
       "bin": {
         "couch-kit": "./dist/index.js",
       },
@@ -29,7 +29,7 @@
     },
     "packages/client": {
       "name": "@couch-kit/client",
-      "version": "0.14.0",
+      "version": "0.16.0",
       "dependencies": {
         "@couch-kit/core": "workspace:*",
       },
@@ -48,14 +48,14 @@
     },
     "packages/core": {
       "name": "@couch-kit/core",
-      "version": "0.10.0",
+      "version": "0.10.1",
       "devDependencies": {
         "typescript": "^7.0.0",
       },
     },
     "packages/devtools": {
       "name": "@couch-kit/devtools",
-      "version": "3.0.2",
+      "version": "3.0.3",
       "devDependencies": {
         "@couch-kit/client": "workspace:*",
         "@couch-kit/core": "workspace:*",
@@ -78,7 +78,7 @@
     },
     "packages/display": {
       "name": "@couch-kit/display",
-      "version": "0.4.0",
+      "version": "0.7.0",
       "dependencies": {
         "@couch-kit/client": "workspace:*",
         "@couch-kit/core": "workspace:*",
@@ -90,7 +90,7 @@
     },
     "packages/host": {
       "name": "@couch-kit/host",
-      "version": "2.0.0",
+      "version": "2.1.1",
       "dependencies": {
         "@couch-kit/core": "workspace:*",
         "@couch-kit/runtime": "workspace:*",
@@ -119,7 +119,7 @@
     },
     "packages/runtime": {
       "name": "@couch-kit/runtime",
-      "version": "0.3.0",
+      "version": "0.6.0",
       "dependencies": {
         "@couch-kit/core": "workspace:*",
       },
@@ -129,7 +129,7 @@
     },
   },
   "overrides": {
-    "fast-xml-parser": "5.11.1",
+    "fast-xml-parser": "5.11.2",
   },
   "packages": {
     "@babel/code-frame": ["@babel/code-frame@7.29.7", "", { "dependencies": { "@babel/helper-validator-identifier": "^7.29.7", "js-tokens": "^4.0.0", "picocolors": "^1.1.1" } }, "sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw=="],
