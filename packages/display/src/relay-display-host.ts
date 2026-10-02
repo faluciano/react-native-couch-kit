@@ -9,6 +9,9 @@ import {
 } from "@couch-kit/runtime";
 import type { IGameState, IAction, HostMessage } from "@couch-kit/core";
 import {
+  RELAY_CLOSE_HOST_REPLACED,
+  RELAY_HOST_RESUME_GRACE_MS,
+  RelayErrorCodes,
   RelayMessageTypes,
   relayRoomUrl,
   type RelayErrorCode,
@@ -32,11 +35,20 @@ export const DEFAULT_RELAY_STATE_THROTTLE_MS = 50;
  *
  * - `connecting` — socket opening, or open but the room not yet confirmed.
  * - `open` — the room exists and phones can join.
+ * - `reconnecting` — the connection dropped and the display is taking its
+ *   room back. Phones stay connected to the relay meanwhile, and what they
+ *   send is delivered once the room resumes.
  * - `closed` — the relay connection is gone, and the room with it. Terminal:
  *   the game state is still readable, but a new {@link RelayDisplayHost} (and a
  *   new room code) is needed for phones to rejoin.
  */
-export type RelayDisplayStatus = "connecting" | "open" | "closed";
+export type RelayDisplayStatus =
+  "connecting" | "open" | "reconnecting" | "closed";
+
+/** First delay before a reconnect attempt, doubled per failure. */
+const RECONNECT_BASE_DELAY_MS = 250;
+/** Longest wait between reconnect attempts. */
+const RECONNECT_MAX_DELAY_MS = 4_000;
 
 /** An error reported by the relay, carrying its machine-readable code. */
 export class RelayError extends Error {
@@ -85,6 +97,13 @@ export interface RelayDisplayHostOptions<
    * rather than a board that will never update again.
    */
   onStatusChange?: (status: RelayDisplayStatus) => void;
+  /**
+   * Whether to take the room back after the relay connection drops. Default
+   * `true`: a display whose network blinks reconnects within the relay's grace
+   * period (30 seconds on the reference relays) and keeps its room code and
+   * its phones. Set `false` to have any drop end the room, as before.
+   */
+  resume?: boolean;
 }
 
 /**
@@ -106,60 +125,47 @@ export interface RelayDisplayHostOptions<
  */
 export class RelayDisplayHost<S extends IGameState, A extends IAction> {
   private readonly runtime: GameHostRuntime<S, A>;
-  private readonly ws: WebSocket;
+  private readonly url: string;
+  /** The current relay socket; replaced on each reconnect. */
+  private ws!: WebSocket;
   /** Null until the relay confirms the room, when the code is relay-assigned. */
   private assignedRoomId: string | null;
   private readonly onRoomCode?: (roomCode: string) => void;
   private readonly onStatusChange?: (status: RelayDisplayStatus) => void;
+  private readonly resumeEnabled: boolean;
   /** Connected phone connection ids (relay peer ids). */
   private readonly peers = new Set<string>();
   private currentStatus: RelayDisplayStatus = "connecting";
   /** Whether frames can be written; a socket still connecting throws on send. */
   private socketOpen = false;
   private stopped = false;
+  /** The room's resume credential, from `ROOM_CREATED`. */
+  private resumeToken: string | null = null;
+  /** When the connection dropped, while reconnecting. */
+  private awaySince: number | null = null;
+  private reconnectAttempts = 0;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(options: RelayDisplayHostOptions<S, A>) {
-    const { url, roomId, onRoomCode, onStatusChange, ...runtimeConfig } =
-      options;
+    const {
+      url,
+      roomId,
+      onRoomCode,
+      onStatusChange,
+      resume,
+      ...runtimeConfig
+    } = options;
+    this.url = url;
     this.assignedRoomId = roomId ?? null;
     this.onRoomCode = onRoomCode;
     this.onStatusChange = onStatusChange;
+    this.resumeEnabled = resume ?? true;
     this.runtime = new GameHostRuntime<S, A>({
       ...runtimeConfig,
       stateThrottleMs:
         runtimeConfig.stateThrottleMs ?? DEFAULT_RELAY_STATE_THROTTLE_MS,
     });
-    this.ws = new WebSocket(relayRoomUrl(url, roomId));
-
-    this.ws.onopen = () => {
-      this.socketOpen = true;
-      // No roomId asks the relay to allocate one. Sending the field as
-      // undefined omits it from the JSON, which is what the relay reads as
-      // "you pick".
-      this.ws.send(
-        JSON.stringify({
-          type: RelayMessageTypes.CREATE_ROOM,
-          roomId: this.assignedRoomId ?? undefined,
-        }),
-      );
-    };
-
-    this.ws.onmessage = (event: MessageEvent) => {
-      let msg: RelayServerMessage;
-      try {
-        msg = JSON.parse(event.data as string) as RelayServerMessage;
-      } catch {
-        return;
-      }
-      this.handleRelayMessage(msg);
-    };
-
-    this.ws.onerror = (event) =>
-      this.runtime.handleError(
-        event instanceof Error ? event : new Error("Relay socket error"),
-      );
-
-    this.ws.onclose = (event: CloseEvent) => this.handleSocketClose(event);
+    this.connect();
 
     const transport: GameRuntimeTransport = {
       send: (connectionId, message) => this.sendEnvelope(message, connectionId),
@@ -205,11 +211,70 @@ export class RelayDisplayHost<S extends IGameState, A extends IAction> {
   stop(): void {
     this.stopped = true;
     this.socketOpen = false;
+    this.clearReconnectTimer();
     this.peers.clear();
     this.runtime.setTransport(null);
     this.runtime.stop();
-    this.ws.close();
+    // A deliberate close: the relay ends the room now rather than holding it
+    // for a resume that will never come.
+    this.ws.close(1000, "Display stopped");
     this.setStatus("closed");
+  }
+
+  /**
+   * Opens a relay socket and either creates the room or, once the relay has
+   * issued a resume token, takes it back.
+   *
+   * Every handler checks that its socket is still the current one: a socket
+   * replaced by a reconnect may still deliver a late close or message, and
+   * acting on it would tear down the connection that replaced it.
+   */
+  private connect(): void {
+    const resumeToken = this.resumeToken;
+    const ws = new WebSocket(
+      relayRoomUrl(this.url, this.assignedRoomId ?? undefined),
+    );
+    this.ws = ws;
+
+    ws.onopen = () => {
+      if (ws !== this.ws) return;
+      this.socketOpen = true;
+      // No roomId asks the relay to allocate one. Sending the field as
+      // undefined omits it from the JSON, which is what the relay reads as
+      // "you pick".
+      ws.send(
+        JSON.stringify({
+          type: RelayMessageTypes.CREATE_ROOM,
+          roomId: this.assignedRoomId ?? undefined,
+          resumeToken: resumeToken ?? undefined,
+        }),
+      );
+    };
+
+    ws.onmessage = (event: MessageEvent) => {
+      if (ws !== this.ws) return;
+      let msg: RelayServerMessage;
+      try {
+        msg = JSON.parse(event.data as string) as RelayServerMessage;
+      } catch {
+        return;
+      }
+      this.handleRelayMessage(msg);
+    };
+
+    ws.onerror = (event) => {
+      // A failed reconnect attempt is expected while the network is down; its
+      // close event decides what happens next.
+      if (ws !== this.ws || this.currentStatus === "reconnecting") return;
+      this.runtime.handleError(
+        event instanceof Error ? event : new Error("Relay socket error"),
+      );
+    };
+
+    ws.onclose = (event: CloseEvent) => {
+      if (ws !== this.ws) return;
+      this.handleSocketClose(event);
+    };
   }
 
   private setStatus(status: RelayDisplayStatus): void {
@@ -219,25 +284,107 @@ export class RelayDisplayHost<S extends IGameState, A extends IAction> {
   }
 
   /**
-   * The relay connection ended. The relay drops the room with its host, so
-   * every phone is gone too: mark them disconnected so the state on screen
-   * says so, and report the loss unless this was our own {@link stop}.
+   * The relay connection ended. If the room can still be taken back, try;
+   * otherwise the room is gone.
    */
   private handleSocketClose(event: CloseEvent): void {
     this.socketOpen = false;
     if (this.stopped) return;
 
+    if (this.canResume(event)) {
+      this.awaySince ??= Date.now();
+      this.setStatus("reconnecting");
+      this.scheduleReconnect();
+      return;
+    }
+
+    this.endRoom(
+      `Relay connection closed (code ${event?.code ?? "unknown"})` +
+        (event?.reason ? `: ${event.reason}` : ""),
+    );
+  }
+
+  /**
+   * Whether a drop is worth reconnecting after: the room exists and has a
+   * token, and the relay did not end it on purpose. A policy close (rate
+   * limited) ends the room on the relay's side, and a replaced host means
+   * another connection holds the token now.
+   */
+  private canResume(event: CloseEvent): boolean {
+    if (!this.resumeEnabled || this.resumeToken === null) return false;
+    const code = event?.code;
+    if (code === 1008 || code === RELAY_CLOSE_HOST_REPLACED) return false;
+    return this.awaySince === null || this.timeLeftToResume() > 0;
+  }
+
+  /** How long until the relay gives up on this display. */
+  private timeLeftToResume(): number {
+    if (this.awaySince === null) return RELAY_HOST_RESUME_GRACE_MS;
+    return this.awaySince + RELAY_HOST_RESUME_GRACE_MS - Date.now();
+  }
+
+  private scheduleReconnect(): void {
+    const remaining = this.timeLeftToResume();
+    if (remaining <= 0) {
+      this.endRoom("Could not reach the relay before the room expired");
+      return;
+    }
+    const delay = Math.min(
+      RECONNECT_BASE_DELAY_MS * 2 ** this.reconnectAttempts,
+      RECONNECT_MAX_DELAY_MS,
+      remaining,
+    );
+    this.reconnectAttempts++;
+    this.clearReconnectTimer();
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (!this.stopped) this.connect();
+    }, delay);
+  }
+
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer !== null) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+  }
+
+  /**
+   * The room is gone, and every phone with it: mark them disconnected so the
+   * state on screen says so, and report the loss.
+   */
+  private endRoom(reason: string): void {
+    this.clearReconnectTimer();
+    this.resumeToken = null;
+    this.awaySince = null;
     for (const peerId of this.peers) {
       this.runtime.handleDisconnect(peerId);
     }
     this.peers.clear();
     this.setStatus("closed");
-    this.runtime.handleError(
-      new Error(
-        `Relay connection closed (code ${event?.code ?? "unknown"})` +
-          (event?.reason ? `: ${event.reason}` : ""),
-      ),
-    );
+    this.runtime.handleError(new Error(reason));
+  }
+
+  /**
+   * The room is ours again. Phones that left while the display was away are
+   * disconnected, phones that arrived are connected (their JOINs follow as
+   * ordinary DATA), and everyone gets the current state: updates sent while
+   * the socket was down never left this machine.
+   */
+  private handleResumed(peers: readonly string[]): void {
+    const present = new Set(peers);
+    for (const peerId of Array.from(this.peers)) {
+      if (present.has(peerId)) continue;
+      this.peers.delete(peerId);
+      this.runtime.handleDisconnect(peerId);
+    }
+    for (const peerId of present) {
+      if (this.peers.has(peerId)) continue;
+      this.peers.add(peerId);
+      this.runtime.handleConnection(peerId);
+    }
+    this.awaySince = null;
+    this.reconnectAttempts = 0;
+    this.setStatus("open");
+    this.runtime.resendState();
   }
 
   /**
@@ -334,10 +481,25 @@ export class RelayDisplayHost<S extends IGameState, A extends IAction> {
         // Carries the code when the relay chose it, and confirms the code when
         // the caller supplied one.
         this.assignedRoomId = msg.roomId;
+        this.resumeToken = msg.resumeToken ?? null;
         this.setStatus("open");
         this.onRoomCode?.(msg.roomId);
         break;
+      case RelayMessageTypes.ROOM_RESUMED:
+        this.handleResumed(msg.peers);
+        break;
       case RelayMessageTypes.ERROR:
+        // The relay no longer has the room (or the token): it expired, or
+        // the relay restarted. Nothing left to reconnect to.
+        if (
+          this.currentStatus === "reconnecting" &&
+          msg.code === RelayErrorCodes.ROOM_NOT_FOUND
+        ) {
+          this.socketOpen = false;
+          this.ws.close(1000, "Room expired");
+          this.endRoom("The room expired before the display reconnected");
+          break;
+        }
         this.runtime.handleError(new RelayError(msg.code, msg.message));
         break;
       // ROOM_JOINED is an acknowledgement; no action needed.

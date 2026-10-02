@@ -588,6 +588,23 @@ describe("GameHostRuntime hardening", () => {
     expect(errors[0]?.message).toContain("boom");
   });
 
+  test("resendState re-sends unchanged state to joined players", async () => {
+    const { runtime, transport } = createRuntime();
+    await joinPlayer(runtime, "connection-1");
+    await flushBroadcast();
+    const before = transport.broadcasts.length;
+
+    runtime.resendState();
+    await flushBroadcast();
+
+    expect(transport.broadcasts).toHaveLength(before + 1);
+    const update = transport.broadcasts.at(-1);
+    if (update?.type !== MessageTypes.STATE_UPDATE) {
+      throw new Error("Expected STATE_UPDATE");
+    }
+    expect(update.payload.newState).toEqual(runtime.getState());
+  });
+
   test("broadcasts only to connections that have joined", async () => {
     const { runtime, transport } = createRuntime();
     runtime.handleConnection("lurker");

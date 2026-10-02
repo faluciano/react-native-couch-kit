@@ -18,6 +18,8 @@ export const RelayMessageTypes = {
   CREATE_ROOM: "CREATE_ROOM",
   /** Relay → display: room created; includes the display's own `peerId`. */
   ROOM_CREATED: "ROOM_CREATED",
+  /** Relay → display: a dropped display took its room back; lists the phones still in it. */
+  ROOM_RESUMED: "ROOM_RESUMED",
   /** Phone → relay: join an existing room. */
   JOIN_ROOM: "JOIN_ROOM",
   /** Relay → phone: joined; includes the phone's assigned `peerId`. */
@@ -61,13 +63,36 @@ export const RelayErrorCodes = {
  */
 export const RELAY_CLOSE_HOST_LEFT = 4001;
 
+/**
+ * WebSocket close code the relay sends a host connection that another
+ * connection has resumed the room from — typically the display's own previous
+ * socket, which the relay had not yet noticed was dead.
+ */
+export const RELAY_CLOSE_HOST_REPLACED = 4002;
+
+/**
+ * How long the relay keeps a room whose display dropped without closing its
+ * socket, waiting for it to resume. Phones stay connected meanwhile, and what
+ * they send is held for the display (up to a bound).
+ */
+export const RELAY_HOST_RESUME_GRACE_MS = 30_000;
+
 export type RelayErrorCode =
   (typeof RelayErrorCodes)[keyof typeof RelayErrorCodes];
 
-/** Display → relay: create and host a room. */
+/**
+ * Display → relay: create and host a room — or, with `resumeToken`, take back
+ * a room this display was hosting before its connection dropped.
+ */
 export interface CreateRoomMessage {
   type: typeof RelayMessageTypes.CREATE_ROOM;
   roomId: string;
+  /**
+   * The token from this room's {@link RoomCreatedMessage}. Present only when
+   * resuming; the relay then answers {@link RoomResumedMessage}, or
+   * `ROOM_NOT_FOUND` if the room has already gone.
+   */
+  resumeToken?: string;
 }
 
 /** Relay → display: room created; `peerId` is the display's own id. */
@@ -75,6 +100,25 @@ export interface RoomCreatedMessage {
   type: typeof RelayMessageTypes.ROOM_CREATED;
   roomId: string;
   peerId: string;
+  /**
+   * The credential for resuming this room after a dropped connection. Sent
+   * only to the host; anyone holding it can take the room over. Absent from
+   * relays that predate resumption.
+   */
+  resumeToken?: string;
+}
+
+/**
+ * Relay → display: the room is this connection's again. `peers` are the phones
+ * in the room now — phones that left while the display was away are not in
+ * it, and phones that arrived are. Anything phones sent meanwhile follows as
+ * ordinary `DATA` frames.
+ */
+export interface RoomResumedMessage {
+  type: typeof RelayMessageTypes.ROOM_RESUMED;
+  roomId: string;
+  peerId: string;
+  peers: string[];
 }
 
 /** Phone → relay: join an existing room. */
@@ -155,6 +199,7 @@ export type RelayClientMessage =
 /** Any message the relay may send to a client. */
 export type RelayServerMessage =
   | RoomCreatedMessage
+  | RoomResumedMessage
   | RoomJoinedMessage
   | PeerJoinedMessage
   | PeerLeftMessage

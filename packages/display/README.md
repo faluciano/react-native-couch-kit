@@ -69,7 +69,8 @@ plus the relay coordinates:
 | `reducer`   | The shared game reducer                        |
 | `initialState` | The shared initial state                    |
 
-| `onStatusChange` | Called when the relay connection changes: `connecting` → `open` → `closed` |
+| `onStatusChange` | Called when the relay connection changes: `connecting` → `open`, then `reconnecting` ↔ `open` across drops, and `closed` at the end |
+| `resume`    | Take the room back after a dropped connection (default `true`). `false` ends the room on any drop |
 | `onError`   | Receives runtime and relay errors; relay errors are `RelayError` with a `code` |
 | `stateThrottleMs` | Minimum interval between state broadcasts. Defaults to 50ms here (not the LAN default of 33ms) so a continuously updating game stays inside the relay's per-connection rate limit |
 
@@ -79,23 +80,40 @@ Instance members:
 - `subscribe(listener)` — subscribe to state changes; returns an unsubscribe fn.
 - `dispatch(action)` — dispatch a trusted host-side action.
 - `status` — `connecting` until the relay confirms the room, then `open`;
-  `closed` once the relay connection is gone.
+  `reconnecting` while taking the room back after a drop; `closed` once the
+  room is gone.
+- `subscribeActions(listener)` — every action the runtime reduces, from any
+  source; pass the host to `useActionRecorder({ source })` to record sessions.
 - `stop()` — tear down the runtime and close the relay socket.
 
 ### When the relay connection drops
 
-A relay room lives exactly as long as its display's socket. If that socket
-closes — the tab loses its network, the relay restarts — the relay closes every
-phone in the room, and the display host:
+When the room is created the relay hands the display a resume token. If the
+display's socket then dies without closing — the tab's network blinks — the
+relay keeps the room for 30 seconds, phones stay connected, and what they send
+is held for the display. Meanwhile the display host:
 
-- marks every player `connected: false` in the game state,
-- moves to `status: "closed"` and calls `onStatusChange("closed")`,
-- reports the loss through `onError`.
+- moves to `status: "reconnecting"`, keeping every player as they were,
+- reconnects with backoff and claims the room with its token,
+- on success, disconnects phones that left while it was away, connects phones
+  that arrived (their held JOINs follow), re-sends the current state to
+  everyone, and returns to `open`. The room code does not change.
 
-It does not reconnect: a new connection is a new room with a new code. The game
-state stays readable, so the display can show what happened rather than a board
-that silently stopped updating. Phones see `disconnectReason: "HOST_LEFT"`,
-which `describeRelayError` turns into a message for the join screen.
+The room ends instead — the display marks every player `connected: false`,
+moves to `status: "closed"`, and reports the loss through `onError` — when:
+
+- the 30 seconds run out, or the relay no longer has the room (it restarted);
+- the relay closed the display on purpose (a rate-limit breach);
+- `resume: false` is set, or the relay predates resumption and issued no token.
+
+The game state stays readable after `closed`, so the display can show what
+happened rather than a board that silently stopped updating. Phones see
+`disconnectReason: "HOST_LEFT"`, which `describeRelayError` turns into a
+message for the join screen.
+
+A page reload is not a drop: the browser closes the socket on purpose and the
+game state is gone with the page, so the relay ends the room at once. So does
+`stop()`.
 
 The host maps relay `PEER_JOINED` / `DATA` / `PEER_LEFT` to the runtime's
 `handleConnection` / `handleMessage` / `handleDisconnect`, and implements the

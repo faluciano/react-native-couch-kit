@@ -1,6 +1,18 @@
-import { describe, expect, test, beforeEach, afterEach } from "bun:test";
+import {
+  describe,
+  expect,
+  test,
+  beforeEach,
+  afterEach,
+  setSystemTime,
+} from "bun:test";
 import type { IGameState, IAction } from "@couch-kit/core";
-import { RelayMessageTypes } from "@couch-kit/client";
+import {
+  RELAY_CLOSE_HOST_REPLACED,
+  RELAY_HOST_RESUME_GRACE_MS,
+  RelayErrorCodes,
+  RelayMessageTypes,
+} from "@couch-kit/client";
 import {
   DEFAULT_RELAY_STATE_THROTTLE_MS,
   RelayDisplayHost,
@@ -26,9 +38,11 @@ const SECRET = "11111111-1111-1111-1111-111111111111";
 
 class MockWebSocket {
   static last: MockWebSocket | null = null;
+  static all: MockWebSocket[] = [];
   url: string;
   sent: string[] = [];
   closed = false;
+  closeCode: number | undefined;
   onopen: (() => void) | null = null;
   onmessage: ((event: { data: string }) => void) | null = null;
   onerror: ((event: unknown) => void) | null = null;
@@ -37,12 +51,14 @@ class MockWebSocket {
   constructor(url: string) {
     this.url = url;
     MockWebSocket.last = this;
+    MockWebSocket.all.push(this);
   }
   send(data: string): void {
     this.sent.push(data);
   }
-  close(): void {
+  close(code?: number): void {
     this.closed = true;
+    this.closeCode = code;
   }
 
   // Test helpers to simulate the wire.
@@ -79,6 +95,7 @@ beforeEach(() => {
   originalWebSocket = (globalThis as any).WebSocket;
   (globalThis as any).WebSocket = MockWebSocket;
   MockWebSocket.last = null;
+  MockWebSocket.all = [];
 });
 afterEach(() => {
   (globalThis as any).WebSocket = originalWebSocket;
@@ -652,5 +669,251 @@ describe("relay-assigned room codes", () => {
     for (const envelope of envelopes) {
       expect(envelope.roomId).toBe("K7M2QX");
     }
+  });
+});
+
+describe("resuming after a dropped connection", () => {
+  const TOKEN = "ab".repeat(16);
+
+  function makeResumable(options: { resume?: boolean } = {}) {
+    const statuses: RelayDisplayStatus[] = [];
+    const errors: Error[] = [];
+    const host = new RelayDisplayHost<TestState, TestAction>({
+      url: "wss://relay.test",
+      reducer,
+      initialState,
+      stateThrottleMs: 1,
+      onStatusChange: (status) => statuses.push(status),
+      onError: (error) => errors.push(error),
+      ...options,
+    });
+    const ws = MockWebSocket.last!;
+    ws.open();
+    ws.fromServer({
+      type: RelayMessageTypes.ROOM_CREATED,
+      roomId: "ROOM",
+      peerId: "h",
+      resumeToken: TOKEN,
+    });
+    return { host, ws, statuses, errors };
+  }
+
+  async function joinPeer(ws: MockWebSocket, peerId: string, secret: string) {
+    ws.fromServer({
+      type: RelayMessageTypes.PEER_JOINED,
+      roomId: "ROOM",
+      peerId,
+    });
+    ws.fromServer({
+      type: RelayMessageTypes.DATA,
+      roomId: "ROOM",
+      from: peerId,
+      data: JSON.stringify({ type: "JOIN", payload: { name: peerId, secret } }),
+    });
+    await flush();
+  }
+
+  /** Waits for the reconnect attempt and returns its socket. */
+  async function nextSocket(after: MockWebSocket): Promise<MockWebSocket> {
+    for (let i = 0; i < 100 && MockWebSocket.last === after; i++) {
+      await flush(10);
+    }
+    expect(MockWebSocket.last).not.toBe(after);
+    return MockWebSocket.last!;
+  }
+
+  const SECRET_2 = "22222222-2222-2222-2222-222222222222";
+
+  afterEach(() => {
+    setSystemTime();
+  });
+
+  test("a drop keeps the phones, reconnects and takes the room back", async () => {
+    const { host, ws, statuses, errors } = makeResumable();
+    await joinPeer(ws, "p1", SECRET);
+
+    ws.serverClose(1006);
+
+    expect(host.status).toBe("reconnecting");
+    // The phones are still connected to the relay; nothing is torn down.
+    expect(Object.values(host.getState().players)[0]?.connected).toBe(true);
+    expect(errors).toEqual([]);
+
+    const next = await nextSocket(ws);
+    // Straight to the room, not the mint path, claiming it with the token.
+    expect(next.url).toBe("wss://relay.test/r/ROOM");
+    next.open();
+    expect(next.frames()).toEqual([
+      {
+        type: RelayMessageTypes.CREATE_ROOM,
+        roomId: "ROOM",
+        resumeToken: TOKEN,
+      },
+    ]);
+
+    next.fromServer({
+      type: RelayMessageTypes.ROOM_RESUMED,
+      roomId: "ROOM",
+      peerId: "h2",
+      peers: ["p1"],
+    });
+    await flush();
+
+    expect(host.status).toBe("open");
+    expect(statuses).toEqual(["open", "reconnecting", "open"]);
+    // Updates sent while the socket was down never arrived: catch everyone up.
+    expect(
+      next.dataMessages().some(({ msg }) => msg.type === "STATE_UPDATE"),
+    ).toBe(true);
+    expect(errors).toEqual([]);
+    host.stop();
+  });
+
+  test("reconciles phones that left or arrived while the display was away", async () => {
+    const { host, ws } = makeResumable();
+    await joinPeer(ws, "p1", SECRET);
+    ws.serverClose(1006);
+    const next = await nextSocket(ws);
+    next.open();
+
+    next.fromServer({
+      type: RelayMessageTypes.ROOM_RESUMED,
+      roomId: "ROOM",
+      peerId: "h2",
+      peers: ["p2"],
+    });
+    // p2's JOIN was held by the relay and follows the resume.
+    next.fromServer({
+      type: RelayMessageTypes.DATA,
+      roomId: "ROOM",
+      from: "p2",
+      data: JSON.stringify({
+        type: "JOIN",
+        payload: { name: "p2", secret: SECRET_2 },
+      }),
+    });
+    await flush();
+
+    const players = Object.values(host.getState().players);
+    expect(players.find((p) => p.name === "p1")?.connected).toBe(false);
+    expect(players.find((p) => p.name === "p2")?.connected).toBe(true);
+    expect(
+      next
+        .dataMessages()
+        .find(({ msg, to }) => msg.type === "WELCOME" && to === "p2"),
+    ).toBeDefined();
+    host.stop();
+  });
+
+  test("a room the relay no longer has ends the game", async () => {
+    const { host, ws, errors } = makeResumable();
+    await joinPeer(ws, "p1", SECRET);
+    ws.serverClose(1006);
+    const next = await nextSocket(ws);
+    next.open();
+
+    next.fromServer({
+      type: RelayMessageTypes.ERROR,
+      code: RelayErrorCodes.ROOM_NOT_FOUND,
+      message: "Room not found",
+    });
+
+    expect(host.status).toBe("closed");
+    expect(next.closed).toBe(true);
+    expect(Object.values(host.getState().players)[0]?.connected).toBe(false);
+    expect(errors.at(-1)?.message).toContain("expired");
+
+    // Its close event arriving afterwards changes nothing.
+    next.serverClose(1000);
+    await flush(300);
+    expect(MockWebSocket.last).toBe(next);
+  });
+
+  test("gives up once the relay's grace period has passed", async () => {
+    const { host, ws } = makeResumable();
+    const start = Date.now();
+    ws.serverClose(1006);
+    const next = await nextSocket(ws);
+
+    setSystemTime(new Date(start + RELAY_HOST_RESUME_GRACE_MS + 1));
+    next.serverClose(1006);
+
+    expect(host.status).toBe("closed");
+    await flush(300);
+    expect(MockWebSocket.last).toBe(next);
+  });
+
+  test("a deliberate close from the relay is not retried", () => {
+    for (const code of [1008, RELAY_CLOSE_HOST_REPLACED]) {
+      MockWebSocket.all = [];
+      const { host, ws } = makeResumable();
+      ws.serverClose(code);
+      expect(host.status).toBe("closed");
+      expect(MockWebSocket.all).toHaveLength(1);
+    }
+  });
+
+  test("resume: false ends the room on any drop", () => {
+    const { host, ws } = makeResumable({ resume: false });
+    ws.serverClose(1006);
+    expect(host.status).toBe("closed");
+  });
+
+  test("a relay that issues no token is not resumed", () => {
+    const host = new RelayDisplayHost<TestState, TestAction>({
+      url: "wss://relay.test",
+      reducer,
+      initialState,
+      onError: () => {},
+    });
+    const ws = MockWebSocket.last!;
+    ws.open();
+    ws.fromServer({
+      type: RelayMessageTypes.ROOM_CREATED,
+      roomId: "ROOM",
+      peerId: "h",
+    });
+    ws.serverClose(1006);
+    expect(host.status).toBe("closed");
+  });
+
+  test("stop() while reconnecting cancels the attempt", async () => {
+    const { host, ws } = makeResumable();
+    ws.serverClose(1006);
+    host.stop();
+
+    await flush(400);
+    expect(MockWebSocket.all).toHaveLength(1);
+    expect(host.status).toBe("closed");
+  });
+
+  test("stop() closes deliberately, so the relay ends the room at once", () => {
+    const { host, ws } = makeResumable();
+    host.stop();
+    expect(ws.closeCode).toBe(1000);
+  });
+
+  test("late events from a replaced socket are ignored", async () => {
+    const { host, ws } = makeResumable();
+    ws.serverClose(1006);
+    const next = await nextSocket(ws);
+    next.open();
+    next.fromServer({
+      type: RelayMessageTypes.ROOM_RESUMED,
+      roomId: "ROOM",
+      peerId: "h2",
+      peers: [],
+    });
+
+    ws.serverClose(1006);
+    ws.fromServer({
+      type: RelayMessageTypes.PEER_JOINED,
+      roomId: "ROOM",
+      peerId: "ghost",
+    });
+
+    expect(host.status).toBe("open");
+    expect(MockWebSocket.last).toBe(next);
+    host.stop();
   });
 });

@@ -3,12 +3,16 @@ import {
   RelayMessageTypes as ClientMessageTypes,
   RelayErrorCodes as ClientErrorCodes,
   RELAY_CLOSE_HOST_LEFT as CLIENT_CLOSE_HOST_LEFT,
+  RELAY_CLOSE_HOST_REPLACED as CLIENT_CLOSE_HOST_REPLACED,
+  RELAY_HOST_RESUME_GRACE_MS as CLIENT_HOST_RESUME_GRACE_MS,
 } from "../src/relay-protocol";
 import {
   RelayMessageTypes as ServerMessageTypes,
   RelayErrorCodes as ServerErrorCodes,
   MAX_MESSAGE_BYTES as SERVER_MAX_MESSAGE_BYTES,
   RELAY_CLOSE_HOST_LEFT as SERVER_CLOSE_HOST_LEFT,
+  RELAY_CLOSE_HOST_REPLACED as SERVER_CLOSE_HOST_REPLACED,
+  DEFAULT_LIMITS as SERVER_DEFAULT_LIMITS,
 } from "../../../services/relay/src/rooms";
 
 /**
@@ -34,6 +38,19 @@ describe("relay protocol contract (client ↔ relay)", () => {
     // The relay closes phones with it; the client transport has to recognize
     // it to report HOST_LEFT instead of retrying a room that is gone.
     expect(CLIENT_CLOSE_HOST_LEFT).toBe(SERVER_CLOSE_HOST_LEFT);
+  });
+
+  test("the host-replaced close code matches", () => {
+    expect(CLIENT_CLOSE_HOST_REPLACED).toBe(SERVER_CLOSE_HOST_REPLACED);
+  });
+
+  test("the display and the relay agree on how long a room waits", () => {
+    // The display stops retrying when it believes the room is gone. Retrying
+    // past the relay's grace is wasted; giving up before it abandons a room
+    // that was still there.
+    expect(CLIENT_HOST_RESUME_GRACE_MS).toBe(
+      SERVER_DEFAULT_LIMITS.hostResumeGraceMs,
+    );
   });
 
   test("both sides bound messages at the same size", () => {

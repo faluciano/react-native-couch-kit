@@ -186,6 +186,17 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
     }
   }
 
+  /**
+   * Schedules a state update to every joined connection, as though the state
+   * had just changed. For a transport that may have lost updates — a relay
+   * connection that dropped and came back — so players do not wait for the
+   * next real change to catch up.
+   */
+  resendState(): void {
+    this.stateDirty = true;
+    this.broadcastScheduler.schedule(this.broadcastState);
+  }
+
   /** Updates mutable callbacks and timing options while preserving state. */
   updateConfig(config: GameHostRuntimeConfig<S, A>): void {
     this.config = config;

@@ -49,10 +49,24 @@ chose. The code is the only credential a phone needs, so the per-connection
 rate limit plus per-IP cap are what throttle brute-force `JOIN_ROOM` scanning.
 Auth tokens remain future work.
 
-A room lives exactly as long as its host's socket. When the host disconnects,
-the relay drops the room and closes every phone in it with code `4001`
-(`HOST_LEFT`), so no phone is left connected to a room that no longer exists.
-There is no host resumption: a display that reconnects creates a new room.
+A room ends when its host leaves, and the relay closes every phone in it with
+code `4001` (`HOST_LEFT`), so no phone is left connected to a room that no
+longer exists. A host that closes its socket leaves at once.
+
+A host whose socket dies without a close frame (code `1006` — a network drop)
+gets 30 seconds (`hostResumeGraceMs`) to come back. `ROOM_CREATED` carries a
+128-bit `resumeToken`, sent only to the host; a connection that sends
+`CREATE_ROOM` with the room's code and that token takes the room back and is
+answered `ROOM_RESUMED` with the phones now in it. Phones stay connected
+throughout, and what they send meanwhile is held (up to 256 messages / 1 MiB)
+and delivered after `ROOM_RESUMED`. A wrong token and a room that has ended
+both get `ROOM_NOT_FOUND`. If the relay still thinks the old host connection
+is alive, the resuming one replaces it, closing it with `4002`.
+
+The Worker persists each room's resume state in Durable Object storage and
+sets an alarm for its expiry, so a room survives hibernation; while its host
+is away it also keeps a timer pending, which holds the object in memory so
+held messages are not lost to hibernation.
 
 ## Protocol (summary)
 
@@ -67,7 +81,8 @@ them in one place.
 
 | From    | Message                                   | Effect                                  |
 | ------- | ----------------------------------------- | --------------------------------------- |
-| display | `{type:"CREATE_ROOM", roomId}`            | creates room → `ROOM_CREATED`           |
+| display | `{type:"CREATE_ROOM", roomId}`            | creates room → `ROOM_CREATED` (with `resumeToken`) |
+| display | `{type:"CREATE_ROOM", roomId, resumeToken}` | takes the room back → `ROOM_RESUMED` (with `peers`) + held phone `DATA` |
 | phone   | `{type:"JOIN_ROOM", roomId}`              | joins → `ROOM_JOINED` + host `PEER_JOINED` |
 | phone   | `{type:"DATA", roomId, data}`             | → host as `{...,from:<peerId>}`          |
 | display | `{type:"DATA", roomId, to, data}`         | → that player (unicast)                 |
