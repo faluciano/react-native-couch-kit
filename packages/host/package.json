@@ -70,7 +70,7 @@
     "react-dom": "19.3.0",
     "react-native": "0.87.1",
     "react-native-nitro-modules": "0.35.10",
-    "del-cli": "^7.0.0",
+    "del-cli": "^8.0.0",
     "jest": "^30.0.0"
   },
   "peerDependencies": {
