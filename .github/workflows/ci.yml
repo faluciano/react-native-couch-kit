@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.4.2"
+          bun-version: "1.4.3"
       - name: Cache Bun dependencies
         uses: actions/cache@v6
         with:
@@ -35,7 +35,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.4.2"
+          bun-version: "1.4.3"
       - name: Cache Bun dependencies
         uses: actions/cache@v6
         with:
@@ -56,7 +56,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.4.2"
+          bun-version: "1.4.3"
       - name: Test relay routing core
         working-directory: services/relay
         run: bun test
@@ -72,7 +72,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.4.2"
+          bun-version: "1.4.3"
       - name: Cache Bun dependencies
         uses: actions/cache@v6
         with:
@@ -93,7 +93,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.4.2"
+          bun-version: "1.4.3"
       - name: Cache Bun dependencies
         uses: actions/cache@v6
         with:
@@ -122,7 +122,7 @@ jobs:
           fetch-depth: 0
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.4.2"
+          bun-version: "1.4.3"
       - name: Cache Bun dependencies
         uses: actions/cache@v6
         with:
