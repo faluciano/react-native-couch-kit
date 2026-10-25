@@ -23,7 +23,7 @@ Unpublished services (outside the `packages/*` workspace):
 
 ## Build & Verify
 
-Package manager: **Bun** (pinned to 1.4.2 via `packageManager` field). Never use npm, yarn, or pnpm.
+Package manager: **Bun** (version pinned by the `packageManager` field in the root `package.json`). Never use npm, yarn, or pnpm.
 
 ```bash
 bun install        # install dependencies
