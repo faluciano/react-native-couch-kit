@@ -629,6 +629,10 @@ interface ClientConfig<S extends IGameState, A extends IAction> {
   maxRetries?: number;    // Max reconnection attempts (default: 5)
   baseDelay?: number;     // Base delay ms for exponential backoff (default: 1000)
   maxDelay?: number;      // Max delay ms cap for backoff (default: 10000)
+  createTransport?: CreateClientTransport; // e.g. createRelayTransport({ url, roomId })
+  connectionKey?: string | number | null;  // change it to reconnect (pass the relay room code)
+  reconnectOnResume?: boolean; // reconnect when visible/online again (default: true)
+  sessionScope?: string;  // separate secret per scope (relay transports set their own)
   onConnect?: () => void;
   onDisconnect?: () => void;
   debug?: boolean;
@@ -647,7 +651,7 @@ function useGameClient<S extends IGameState, A extends IAction>(
   state: S;
   playerId: string | null;
   disconnectReason: string | null;  // relay error code (ROOM_NOT_FOUND, ...) on terminal failures
-  sendAction: (action: A) => void;
+  sendAction: (action: A) => boolean;  // false when not connected (nothing applied)
   getServerTime: () => number;
   rtt: number;
   disconnect: () => void;
@@ -662,7 +666,7 @@ function useGameClient<S extends IGameState, A extends IAction>(
 3. Receives \`WELCOME\` or \`RECONNECTED\`, hydrates local state from server
 4. On \`STATE_UPDATE\`, replaces local state with server's authoritative state
 5. \`sendAction()\` applies optimistic local update then sends to host
-6. On close, automatically reconnects with exponential backoff (up to \`maxRetries\`)
+6. On close, automatically reconnects with exponential backoff (up to \`maxRetries\`); when the page becomes visible or the browser comes back online, it reconnects at once with a fresh budget
 7. \`disconnect()\` prevents auto-reconnect; \`reconnect()\` resets attempts and reconnects
 
 ### Cross-network play (relay)
@@ -678,6 +682,7 @@ import {
   createRelayTransport,
   useRelayRoom,
   describeRelayError,
+  normalizeRoomCode,
 } from "@couch-kit/client";
 
 function App() {
@@ -690,14 +695,20 @@ function App() {
 }
 
 function Controller({ roomId, onRejoin }) {
-  const { state, sendAction, disconnectReason } = useGameClient({
+  const { state, sendAction, disconnectReason, reconnect } = useGameClient({
     reducer, initialState,
     createTransport: createRelayTransport({ url: RELAY_URL, roomId }),
+    connectionKey: roomId, // a new code reconnects
   });
 
   // Terminal room failures are worth explaining; ordinary drops are retried.
   const joinError = describeRelayError(disconnectReason);
-  if (joinError) return <JoinScreen onJoin={onRejoin} error={joinError} />;
+  if (joinError) {
+    // The same code again (the TV has opened the room since) needs reconnect().
+    const retry = (code) =>
+      normalizeRoomCode(code) === roomId ? reconnect() : onRejoin(code);
+    return <JoinScreen onJoin={retry} error={joinError} />;
+  }
   // ...
 }
 \`\`\`

@@ -43,7 +43,7 @@ export interface IAction {
  * - `__HYDRATE__` -- Replaces state wholesale (server-to-client sync).
  * - `__PLAYER_JOINED__` -- Adds a player to `state.players`.
  * - `__PLAYER_LEFT__` -- Marks a player as disconnected (`connected: false`).
- * - `__PLAYER_RECONNECTED__` -- Restores a returning player (`connected: true`), preserving existing data.
+ * - `__PLAYER_RECONNECTED__` -- Restores a returning player (`connected: true`), preserving existing data. A `name` or `avatar` in the payload replaces the stored one, so a player who rejoins under a new name is renamed.
  * - `__PLAYER_REMOVED__` -- Permanently removes a timed-out disconnected player from `state.players`.
  */
 export type InternalAction<S extends IGameState = IGameState> =
@@ -53,7 +53,10 @@ export type InternalAction<S extends IGameState = IGameState> =
       payload: { id: string; name: string; avatar?: string };
     }
   | { type: "__PLAYER_LEFT__"; payload: { playerId: string } }
-  | { type: "__PLAYER_RECONNECTED__"; payload: { playerId: string } }
+  | {
+      type: "__PLAYER_RECONNECTED__";
+      payload: { playerId: string; name?: string; avatar?: string };
+    }
   | { type: "__PLAYER_REMOVED__"; payload: { playerId: string } };
 
 /** Well-known internal action type strings. */

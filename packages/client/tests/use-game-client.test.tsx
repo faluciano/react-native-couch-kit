@@ -248,7 +248,7 @@ describe("useGameClient connection lifecycle", () => {
     expect(result.current.status).toBe("connecting");
   });
 
-  test("a terminal close is not retried and explains itself until the next open", async () => {
+  test("a terminal close is not retried and explains itself until the next connect", async () => {
     const { result, transports } = setup();
     await act(async () => {
       transports[0].open();
@@ -267,6 +267,141 @@ describe("useGameClient connection lifecycle", () => {
       transports[1].open();
     });
     expect(result.current.disconnectReason).toBeNull();
+  });
+
+  test("a new connectionKey connects again after a terminal close", async () => {
+    const { result, transports, rerender } = setup({ connectionKey: "WRONG" });
+    await act(async () => {
+      transports[0].open();
+      transports[0].drop(1008, "ROOM_NOT_FOUND");
+      await wait(40);
+    });
+    expect(transports).toHaveLength(1);
+    expect(result.current.disconnectReason).toBe("ROOM_NOT_FOUND");
+
+    await act(async () => {
+      rerender({ connectionKey: "RIGHT" });
+    });
+
+    expect(transports).toHaveLength(2);
+    expect(result.current.status).toBe("connecting");
+    expect(result.current.disconnectReason).toBeNull();
+  });
+
+  test("an unchanged connectionKey does not reconnect on re-render", async () => {
+    const { transports, rerender } = setup({ connectionKey: "ROOM" });
+    await act(async () => {
+      transports[0].open();
+      rerender({ connectionKey: "ROOM", name: "Renamed" });
+    });
+    expect(transports).toHaveLength(1);
+  });
+
+  test("coming back online reconnects after the retries ran out", async () => {
+    const { result, transports } = setup({ maxRetries: 1 });
+    await act(async () => {
+      transports[0].open();
+      transports[0].drop(1006);
+      await wait(40);
+    });
+    await act(async () => {
+      transports[1].drop(1006);
+      await wait(40);
+    });
+    expect(transports).toHaveLength(2);
+    expect(result.current.status).toBe("disconnected");
+
+    await act(async () => {
+      window.dispatchEvent(new Event("online"));
+    });
+
+    expect(transports).toHaveLength(3);
+    expect(result.current.status).toBe("connecting");
+  });
+
+  test("becoming visible skips the pending backoff and connects now", async () => {
+    const { transports } = setup({ baseDelay: 10_000, maxDelay: 10_000 });
+    await act(async () => {
+      transports[0].open();
+      transports[0].drop(1006);
+    });
+    expect(transports).toHaveLength(1);
+
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    expect(transports).toHaveLength(2);
+  });
+
+  test("resuming does not undo a terminal close or disconnect()", async () => {
+    const terminal = setup();
+    await act(async () => {
+      terminal.transports[0].open();
+      terminal.transports[0].drop(1008, "ROOM_NOT_FOUND");
+      window.dispatchEvent(new Event("online"));
+    });
+    expect(terminal.transports).toHaveLength(1);
+    cleanup();
+
+    const manual = setup();
+    await act(async () => {
+      manual.transports[0].open();
+      manual.result.current.disconnect();
+      await wait(40);
+      window.dispatchEvent(new Event("online"));
+    });
+    expect(manual.transports).toHaveLength(1);
+  });
+
+  test("reconnectOnResume: false leaves resuming to the app", async () => {
+    const { transports } = setup({ maxRetries: 0, reconnectOnResume: false });
+    await act(async () => {
+      transports[0].open();
+      transports[0].drop(1006);
+      window.dispatchEvent(new Event("online"));
+    });
+    expect(transports).toHaveLength(1);
+  });
+
+  test("a transport's sessionScope keeps a separate secret per scope", async () => {
+    localStorage.clear();
+    let scope = "relay:wss://r#AAAA";
+    const transports: FakeTransport[] = [];
+    const { rerender } = renderHook(
+      (props: { key: string }) =>
+        useGameClient<CounterState, CounterAction>({
+          initialState,
+          connectionKey: props.key,
+          createTransport: () => {
+            const transport = Object.assign(new FakeTransport(), {
+              sessionScope: scope,
+            });
+            transports.push(transport);
+            return transport;
+          },
+        }),
+      { initialProps: { key: "AAAA" } },
+    );
+    await act(async () => {
+      transports[0].open();
+    });
+    scope = "relay:wss://r#BBBB";
+    await act(async () => {
+      rerender({ key: "BBBB" });
+    });
+    await act(async () => {
+      transports[1].open();
+    });
+
+    const secretOf = (t: FakeTransport) =>
+      (t.sent.find((m) => m.type === "JOIN")?.payload as { secret: string })
+        .secret;
+    expect(secretOf(transports[0])).not.toBe(secretOf(transports[1]));
+    expect(localStorage.getItem("ck_secret:relay:wss://r#AAAA")).toBe(
+      secretOf(transports[0]),
+    );
+    expect(localStorage.getItem("ck_secret")).toBeNull();
   });
 
   test("disconnect() closes the socket and stays disconnected", async () => {
@@ -323,6 +458,26 @@ describe("useGameClient optimistic updates", () => {
       type: "ACTION",
       payload: { type: "INC" },
     });
+  });
+
+  test("sendAction reports false and applies nothing while not connected", async () => {
+    const { result, transports } = setup({ reducer });
+    let sent = true;
+    await act(async () => {
+      sent = result.current.sendAction({ type: "INC" });
+    });
+    expect(sent).toBe(false);
+    expect(result.current.state.count).toBe(0);
+    expect(transports[0].sent).toHaveLength(0);
+  });
+
+  test("sendAction reports true once sent", async () => {
+    const { result } = await connected();
+    let sent = false;
+    await act(async () => {
+      sent = result.current.sendAction({ type: "INC" });
+    });
+    expect(sent).toBe(true);
   });
 
   test("falls back to the host's state when the host never confirms", async () => {

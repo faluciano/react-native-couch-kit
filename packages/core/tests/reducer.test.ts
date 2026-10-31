@@ -114,6 +114,45 @@ describe("createGameReducer", () => {
     expect(result).toBe(initialState);
   });
 
+  test("PLAYER_RECONNECTED renames a player who rejoins under a new name", () => {
+    const stateWithPlayer: TestState = {
+      ...initialState,
+      players: {
+        p1: {
+          id: "p1",
+          name: "Alice",
+          avatar: "a",
+          isHost: false,
+          connected: false,
+        },
+      },
+    };
+    const result = reducer(stateWithPlayer, {
+      type: InternalActionTypes.PLAYER_RECONNECTED,
+      payload: { playerId: "p1", name: "Alicia", avatar: "b" },
+    } as InternalAction<TestState>);
+    expect(result.players["p1"]).toMatchObject({
+      name: "Alicia",
+      avatar: "b",
+      connected: true,
+    });
+  });
+
+  test("PLAYER_RECONNECTED without a name keeps the stored one", () => {
+    const stateWithPlayer: TestState = {
+      ...initialState,
+      players: {
+        p1: { id: "p1", name: "Alice", isHost: false, connected: false },
+      },
+    };
+    const result = reducer(stateWithPlayer, {
+      type: InternalActionTypes.PLAYER_RECONNECTED,
+      payload: { playerId: "p1" },
+    } as InternalAction<TestState>);
+    expect(result.players["p1"].name).toBe("Alice");
+    expect(result.players["p1"].connected).toBe(true);
+  });
+
   test("unknown action types should pass through to user reducer", () => {
     const result = reducer(initialState, { type: "DECREMENT" });
     expect(result.count).toBe(-1);
