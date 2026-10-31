@@ -63,6 +63,13 @@ const joined = (roomId = "R", peerId = "p") => ({
 });
 
 describe("RelayClientTransport", () => {
+  test("scopes the session secret to its relay and room", () => {
+    const a = new RelayClientTransport({ url: "ws://relay", roomId: "abcd" });
+    const b = new RelayClientTransport({ url: "ws://relay", roomId: "WXYZ" });
+    expect(a.sessionScope).toBe("relay:ws://relay#ABCD");
+    expect(b.sessionScope).not.toBe(a.sessionScope);
+  });
+
   test("sends JOIN_ROOM once the relay socket opens", () => {
     new RelayClientTransport({ url: "ws://relay", roomId: "R" });
     const ws = MockWebSocket.last();

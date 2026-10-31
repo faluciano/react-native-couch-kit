@@ -51,6 +51,14 @@ export interface ClientTransport {
   onclose?: (code: number, reason?: string) => void;
   /** Invoked on a transport-level error. */
   onerror?: (error?: unknown) => void;
+  /**
+   * Scope for the session secret this transport's JOIN carries. The client
+   * keeps one secret per scope, so a secret sent to one game never reaches
+   * another. The relay transport sets it to the relay URL and room code: any
+   * party can open a relay room, and a phone's secret is what proves it is
+   * that player. Omit for a single trusted host (the LAN default).
+   */
+  readonly sessionScope?: string;
 }
 
 /**

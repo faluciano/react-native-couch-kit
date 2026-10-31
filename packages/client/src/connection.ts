@@ -21,6 +21,15 @@ import {
 export const SESSION_SECRET_KEY = "ck_secret";
 
 /**
+ * The storage key for a session scope: {@link SESSION_SECRET_KEY} itself when
+ * unscoped (so existing LAN players keep their identity), otherwise suffixed
+ * with the scope.
+ */
+export function sessionSecretKey(scope?: string): string {
+  return scope ? `${SESSION_SECRET_KEY}:${scope}` : SESSION_SECRET_KEY;
+}
+
+/**
  * Default time (ms) an optimistic update may stand without the host confirming
  * it before the client falls back to the last state the host sent.
  */
@@ -98,6 +107,14 @@ export interface ReconnectDecision {
 }
 
 /**
+ * Whether a close with this code may be retried at all, regardless of how many
+ * attempts remain. Policy (1008) and internal-error (1011) closes are final.
+ */
+export function isRecoverableClose(closeCode: number): boolean {
+  return !NON_RECOVERABLE_CLOSE_CODES.has(closeCode);
+}
+
+/**
  * Decide whether the client should attempt an automatic reconnect.
  *
  * Returns `false` for intentional closes, for non-recoverable server close
@@ -106,7 +123,7 @@ export interface ReconnectDecision {
  */
 export function shouldReconnect(decision: ReconnectDecision): boolean {
   if (decision.intentionalClose) return false;
-  if (NON_RECOVERABLE_CLOSE_CODES.has(decision.closeCode)) return false;
+  if (!isRecoverableClose(decision.closeCode)) return false;
   return decision.attempts < decision.maxRetries;
 }
 
@@ -123,17 +140,22 @@ export type SecretStorage = Pick<Storage, "getItem" | "setItem">;
  * storage is unavailable or throws (e.g. Safari private browsing, restrictive
  * WebViews), a fresh secret is generated without persistence so a JOIN can
  * still proceed.
+ *
+ * `scope` keeps a separate secret per scope (see
+ * `ClientTransport.sessionScope`).
  */
 export function resolveSessionSecret(
   storage: SecretStorage | null | undefined,
   generate: () => string = generateId,
+  scope?: string,
 ): string {
+  const key = sessionSecretKey(scope);
   try {
     if (!storage) return generate();
-    const stored = storage.getItem(SESSION_SECRET_KEY);
+    const stored = storage.getItem(key);
     if (stored && isValidSecret(stored)) return stored;
     const secret = generate();
-    storage.setItem(SESSION_SECRET_KEY, secret);
+    storage.setItem(key, secret);
     return secret;
   } catch {
     return generate();

@@ -123,7 +123,7 @@ export class HostSessionManager<TTimer = ReturnType<typeof setTimeout>> {
     const action = isReconnect
       ? ({
           type: InternalActionTypes.PLAYER_RECONNECTED,
-          payload: { playerId },
+          payload: { playerId, name: payload.name, avatar: payload.avatar },
         } as InternalAction<S>)
       : ({
           type: InternalActionTypes.PLAYER_JOINED,

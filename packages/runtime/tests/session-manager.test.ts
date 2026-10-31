@@ -89,16 +89,17 @@ describe("runtime HostSessionManager", () => {
 
     const reconnected = await manager.handleJoin<TestState>(
       "socket-2",
-      { name: "Alice", secret },
+      { name: "Alicia", avatar: "cat", secret },
       { [joined.playerId]: createPlayer(joined.playerId, false) },
     );
     const staleDisconnect = manager.handleDisconnect<TestState>("socket-1");
 
     expect(reconnected.playerId).toBe(joined.playerId);
     expect(reconnected.isReconnect).toBe(true);
+    // The rejoining JOIN's name and avatar ride along, so a rename sticks.
     expect(reconnected.action).toEqual({
       type: InternalActionTypes.PLAYER_RECONNECTED,
-      payload: { playerId: joined.playerId },
+      payload: { playerId: joined.playerId, name: "Alicia", avatar: "cat" },
     });
     expect(staleDisconnect).toEqual({
       kind: "stale",
