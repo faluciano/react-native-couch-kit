@@ -557,3 +557,112 @@ describe("useGameClient optimistic updates", () => {
     expect(transports[0].sentTypes()).toContain("ACTION");
   });
 });
+
+describe("useGameClient sendActionWithResult", () => {
+  async function connected(
+    overrides: Partial<ClientConfig<CounterState, CounterAction>> = {},
+  ) {
+    const harness = setup({ reducer, optimisticTimeoutMs: 0, ...overrides });
+    await act(async () => {
+      harness.transports[0].open();
+      harness.transports[0].receive(welcome(1));
+    });
+    return harness;
+  }
+
+  test("sends the action with an id and resolves on the host's ok", async () => {
+    const { result, transports } = await connected();
+    let promise!: Promise<unknown>;
+    await act(async () => {
+      promise = result.current.sendActionWithResult({ type: "INC" });
+    });
+    const sent = transports[0].sent.at(-1) as unknown as { id: string };
+    expect(sent).toMatchObject({ type: "ACTION", payload: { type: "INC" } });
+    expect(typeof sent.id).toBe("string");
+
+    await act(async () => {
+      transports[0].receive({
+        type: "ACTION_RESULT",
+        payload: { id: sent.id, ok: true },
+      });
+    });
+    expect(await promise).toEqual({ ok: true });
+    expect(result.current.state.count).toBe(2);
+  });
+
+  test("a refusal resolves with the reason, rolls back, and reaches onError", async () => {
+    const errors: unknown[] = [];
+    const { result, transports } = await connected({
+      onError: (error) => errors.push(error),
+    });
+    let promise!: Promise<unknown>;
+    await act(async () => {
+      promise = result.current.sendActionWithResult({ type: "ILLEGAL" });
+    });
+    expect(result.current.state.count).toBe(2);
+    const { id } = transports[0].sent.at(-1) as unknown as { id: string };
+
+    await act(async () => {
+      transports[0].receive({
+        type: "ACTION_RESULT",
+        payload: {
+          id,
+          ok: false,
+          code: "FORBIDDEN_ACTION",
+          message: "Not your turn",
+        },
+      });
+    });
+
+    expect(await promise).toEqual({
+      ok: false,
+      code: "FORBIDDEN_ACTION",
+      message: "Not your turn",
+    });
+    expect(result.current.state.count).toBe(1);
+    expect(errors).toEqual([
+      { code: "FORBIDDEN_ACTION", message: "Not your turn" },
+    ]);
+  });
+
+  test("settles NOT_CONNECTED without sending when offline", async () => {
+    const { result, transports } = setup({ reducer });
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await result.current.sendActionWithResult({ type: "INC" });
+    });
+    expect(outcome).toMatchObject({ ok: false, code: "NOT_CONNECTED" });
+    expect(transports[0].sent).toHaveLength(0);
+  });
+
+  test("settles DISCONNECTED when the connection drops first", async () => {
+    const { result, transports } = await connected();
+    let promise!: Promise<unknown>;
+    await act(async () => {
+      promise = result.current.sendActionWithResult({ type: "INC" });
+      transports[0].drop(1006);
+    });
+    expect(await promise).toMatchObject({ ok: false, code: "DISCONNECTED" });
+  });
+
+  test("settles NO_RESULT when an older host never answers", async () => {
+    const { result } = await connected({ actionResultTimeoutMs: 20 });
+    let promise!: Promise<unknown>;
+    await act(async () => {
+      promise = result.current.sendActionWithResult({ type: "INC" });
+      await wait(40);
+    });
+    expect(await promise).toMatchObject({ ok: false, code: "NO_RESULT" });
+  });
+
+  test("plain sendAction carries no id", async () => {
+    const { result, transports } = await connected();
+    await act(async () => {
+      result.current.sendAction({ type: "INC" });
+    });
+    expect(transports[0].sent.at(-1)).toEqual({
+      type: "ACTION",
+      payload: { type: "INC" },
+    });
+  });
+});
