@@ -1,5 +1,13 @@
 # @couch-kit/runtime
 
+## 0.7.1
+
+### Patch Changes
+
+- [#227](https://github.com/faluciano/react-native-couch-kit/pull/227) [`8ef31ad`](https://github.com/faluciano/react-native-couch-kit/commit/8ef31adc53dc7342f1d81f8ba2e4acb6c8c1433e) Thanks [@faluciano](https://github.com/faluciano)! - A player who rejoins under a new name or avatar is renamed. `__PLAYER_RECONNECTED__` now carries the rejoining JOIN's `name` and `avatar`, and the reducer applies them. Before, a reconnect kept the old name, so "change name" in a controller did nothing. Recordings without them replay as before.
+- Updated dependencies [[`8ef31ad`](https://github.com/faluciano/react-native-couch-kit/commit/8ef31adc53dc7342f1d81f8ba2e4acb6c8c1433e)]:
+  - @couch-kit/core@0.10.3
+
 ## 0.7.0
 
 ### Minor Changes
