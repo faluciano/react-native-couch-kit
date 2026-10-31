@@ -491,7 +491,7 @@ function isValidSecret(secret: string): boolean;
 
 #### derivePlayerId
 
-Derives a stable, public player ID from a secret UUID using SHA-256. Takes the first 16 hex characters of the hash. Falls back to \`derivePlayerIdLegacy\` when Web Crypto is unavailable.
+Derives a stable, public player ID from a secret UUID using SHA-256. Takes the first 16 hex characters of the hash. Uses a pure-JS SHA-256 when Web Crypto is unavailable (Hermes).
 
 \`\`\`typescript
 async function derivePlayerId(secret: string): Promise<string>;

@@ -73,10 +73,11 @@ export class RelayRoom implements DurableObject {
     if (this.core) return this.core;
 
     // The core's default minting scans a table of every room, which a single
-    // room cannot do. The router already claimed a code for us, so hand that
-    // back instead.
-    const core = new RelayRooms({ maxRooms: 1 }, Date.now, () =>
-      this.claimedCode(),
+    // room cannot do. The router claimed a code for the socket that asked to
+    // mint, so hand back that socket's claim — and only that socket's: a phone
+    // that joined by code carries no claim and gets nothing to open.
+    const core = new RelayRooms({ maxRooms: 1 }, Date.now, (conn) =>
+      this.claimedCode(conn.id),
     );
     const entries: {
       conn: RelayConnection;
@@ -156,11 +157,11 @@ export class RelayRoom implements DurableObject {
     await this.sync();
   }
 
-  /** The code the router claimed for this object, read back off the sockets. */
-  private claimedCode(): string | null {
+  /** The code the router claimed for one socket, read back off its attachment. */
+  private claimedCode(peerId: string): string | null {
     for (const ws of this.ctx.getWebSockets()) {
-      const code = this.attachment(ws)?.assignedCode;
-      if (code) return code;
+      const att = this.attachment(ws);
+      if (att?.peerId === peerId) return att.assignedCode ?? null;
     }
     return null;
   }

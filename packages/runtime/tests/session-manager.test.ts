@@ -52,7 +52,6 @@ function createManager(scheduler = new FakeScheduler()) {
     manager: new HostSessionManager<number>({
       scheduler,
       derivePlayerId: async (secret) => `hashed-${secret}`,
-      derivePlayerIdLegacy: (secret) => `legacy-${secret}`,
     }),
   };
 }
@@ -110,22 +109,31 @@ describe("runtime HostSessionManager", () => {
     expect(manager.getPlayerIdForSocket("socket-2")).toBe(joined.playerId);
   });
 
-  test("uses the legacy player ID when existing state contains only the legacy ID", async () => {
-    const { manager } = createManager();
-    const secret = "secret-a";
-    const legacyId = `legacy-${secret}`;
+  test("a secret built from another player's public ID does not resolve to that player", async () => {
+    // Player IDs are public: they key `state.players`, which every client
+    // receives. A secret that starts with a victim's ID must not reconnect as
+    // the victim (the old legacy derivation was `secret.slice(0, 16)`).
+    const manager = new HostSessionManager<number>({
+      scheduler: new FakeScheduler(),
+    });
+    const victimSecret = "0123456789abcdef0123456789abcdef";
+    const victim = await manager.handleJoin<TestState>(
+      "socket-victim",
+      { name: "Victim", secret: victimSecret },
+      {},
+    );
+    const players = { [victim.playerId]: createPlayer(victim.playerId) };
 
-    const result = await manager.handleJoin<TestState>(
-      "socket-1",
-      { name: "Alice", secret },
-      { [legacyId]: createPlayer(legacyId, false) },
+    const attacker = await manager.handleJoin<TestState>(
+      "socket-attacker",
+      { name: "Mallory", secret: `${victim.playerId}0000000000000000` },
+      players,
     );
 
-    expect(result.playerId).toBe(legacyId);
-    expect(result.action).toEqual({
-      type: InternalActionTypes.PLAYER_RECONNECTED,
-      payload: { playerId: legacyId },
-    });
+    expect(attacker.playerId).not.toBe(victim.playerId);
+    expect(attacker.isReconnect).toBe(false);
+    expect(attacker.action.type).toBe(InternalActionTypes.PLAYER_JOINED);
+    expect(manager.getPlayerIdForSocket("socket-victim")).toBe(victim.playerId);
   });
 
   test("classifies reconnects against latest players after async ID derivation", async () => {
@@ -141,7 +149,6 @@ describe("runtime HostSessionManager", () => {
         new Promise((resolve) => {
           resolveDerivation = resolve;
         }),
-      derivePlayerIdLegacy: (value) => `legacy-${value}`,
     });
 
     const join = manager.handleJoin<TestState>(
