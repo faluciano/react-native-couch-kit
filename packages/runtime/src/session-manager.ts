@@ -2,7 +2,6 @@ import {
   DEFAULT_DISCONNECT_TIMEOUT,
   InternalActionTypes,
   derivePlayerId,
-  derivePlayerIdLegacy,
   type IGameState,
   type InternalAction,
 } from "@couch-kit/core";
@@ -30,7 +29,6 @@ export interface HostSessionManagerOptions<TTimer> {
   getDisconnectTimeout?: () => number;
   scheduler?: SessionTimerScheduler<TTimer>;
   derivePlayerId?: (secret: string) => Promise<string>;
-  derivePlayerIdLegacy?: (secret: string) => string;
 }
 
 export type JoinSessionResult<S extends IGameState> = {
@@ -65,7 +63,6 @@ export class HostSessionManager<TTimer = ReturnType<typeof setTimeout>> {
   private readonly scheduler: SessionTimerScheduler<TTimer>;
   private readonly getDisconnectTimeout: () => number;
   private readonly derivePlayerIdFn: (secret: string) => Promise<string>;
-  private readonly derivePlayerIdLegacyFn: (secret: string) => string;
 
   constructor(options: HostSessionManagerOptions<TTimer> = {}) {
     this.scheduler =
@@ -75,8 +72,6 @@ export class HostSessionManager<TTimer = ReturnType<typeof setTimeout>> {
       options.getDisconnectTimeout ??
       (() => options.disconnectTimeout ?? DEFAULT_DISCONNECT_TIMEOUT);
     this.derivePlayerIdFn = options.derivePlayerId ?? derivePlayerId;
-    this.derivePlayerIdLegacyFn =
-      options.derivePlayerIdLegacy ?? derivePlayerIdLegacy;
   }
 
   /**
@@ -113,12 +108,11 @@ export class HostSessionManager<TTimer = ReturnType<typeof setTimeout>> {
   ): JoinSessionResult<S> {
     const players =
       typeof playersSource === "function" ? playersSource() : playersSource;
-    let playerId = hashedId;
-
-    const legacyId = this.derivePlayerIdLegacyFn(payload.secret);
-    if (!players[playerId] && players[legacyId]) {
-      playerId = legacyId;
-    }
+    // The hashed ID is the only identity a secret maps to. There is deliberately
+    // no fallback to another derivation: player IDs are public (they key
+    // `state.players`), so any fallback computable from the secret lets a
+    // client pick a secret that resolves to someone else's ID.
+    const playerId = hashedId;
 
     this.socketIdToPlayerId.set(socketId, playerId);
     this.sessions.set(payload.secret, socketId);

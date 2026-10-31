@@ -27,6 +27,10 @@ import {
   type JoinSessionPayload,
 } from "./session-manager.js";
 
+function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
 /**
  * Most client actions kept for the next `STATE_UPDATE`. A transport that is
  * detached for a while must not grow the queue without bound; the newest
@@ -353,7 +357,10 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
             });
           }
         } catch (error) {
-          this.log("[GameRuntime] Failed to derive player ID:", error);
+          const cause = toError(error);
+          this.notifyError(
+            new Error(`Join failed: ${cause.message}`, { cause }),
+          );
           this.send(connectionId, {
             type: MessageTypes.ERROR,
             payload: {
@@ -483,7 +490,21 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
 
   /** @returns whether the action changed the canonical state. */
   private applyAction(action: A | InternalAction<S>): boolean {
-    const nextState = this.reducer(this.state, action);
+    // A reducer that throws leaves the state as it was. Player actions are
+    // untrusted input; a malformed payload must cost that action, not the
+    // message handler (or, from a timer, an uncaught exception).
+    let nextState: S;
+    try {
+      nextState = this.reducer(this.state, action);
+    } catch (error) {
+      const cause = toError(error);
+      this.notifyError(
+        new Error(`Reducer failed on "${action.type}": ${cause.message}`, {
+          cause,
+        }),
+      );
+      return false;
+    }
     const changed = !Object.is(nextState, this.state);
     if (changed) this.state = nextState;
 
@@ -493,7 +514,7 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
       try {
         listener(action);
       } catch (error) {
-        const cause = error instanceof Error ? error : new Error(String(error));
+        const cause = toError(error);
         this.notifyError(
           new Error(`Action listener failed: ${cause.message}`, { cause }),
         );
@@ -503,12 +524,21 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
     if (!changed) return false;
 
     this.stateDirty = true;
+    // Scheduled before the listeners run, so a listener that throws cannot
+    // keep the change from reaching players.
+    this.broadcastScheduler.schedule(this.broadcastState);
 
     for (const listener of this.listeners) {
-      listener();
+      try {
+        listener();
+      } catch (error) {
+        const cause = toError(error);
+        this.notifyError(
+          new Error(`State listener failed: ${cause.message}`, { cause }),
+        );
+      }
     }
 
-    this.broadcastScheduler.schedule(this.broadcastState);
     return true;
   }
 
@@ -549,9 +579,24 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
     for (const connectionId of this.joinedConnections) {
       const playerId = this.sessionManager.getPlayerIdForSocket(connectionId);
       if (!playerId) continue;
+      // A projection that throws for one player skips that player's update
+      // only. This runs from the throttle timer, so an escaped exception would
+      // be uncaught and lose the update for everyone.
+      let view: unknown;
+      try {
+        view = this.viewFor(playerId);
+      } catch (error) {
+        const cause = toError(error);
+        this.notifyError(
+          new Error(`project failed for player ${playerId}: ${cause.message}`, {
+            cause,
+          }),
+        );
+        continue;
+      }
       entries.push({
         connectionId,
-        message: createStateUpdateMessage(this.viewFor(playerId), []),
+        message: createStateUpdateMessage(view, []),
       });
     }
     if (entries.length === 0) return;
@@ -578,7 +623,7 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
     try {
       callback();
     } catch (error) {
-      const cause = error instanceof Error ? error : new Error(String(error));
+      const cause = toError(error);
       this.notifyError(
         new Error(`${name} callback failed: ${cause.message}`, { cause }),
       );

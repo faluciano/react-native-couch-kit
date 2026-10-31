@@ -588,6 +588,108 @@ describe("GameHostRuntime hardening", () => {
     expect(errors[0]?.message).toContain("boom");
   });
 
+  test("a reducer that throws on a player action keeps state and reports", async () => {
+    const errors: Error[] = [];
+    const { runtime, transport } = createRuntime({
+      reducer: (state, action) => {
+        if (action.type === "INCREMENT" && typeof action.payload !== "number") {
+          throw new Error("bad payload");
+        }
+        return reducer(state, action);
+      },
+      onError: (error) => errors.push(error),
+    });
+    await joinPlayer(runtime, "connection-1");
+    const before = runtime.getState();
+
+    await runtime.handleMessage("connection-1", {
+      type: MessageTypes.ACTION,
+      payload: { type: "INCREMENT" },
+    });
+
+    expect(runtime.getState()).toBe(before);
+    expect(errors[0]?.message).toContain('Reducer failed on "INCREMENT"');
+    // The runtime keeps serving: a valid action still applies.
+    await runtime.handleMessage("connection-1", {
+      type: MessageTypes.ACTION,
+      payload: { type: "INCREMENT", payload: 2 },
+    });
+    await flushBroadcast();
+    expect(Object.values(runtime.getState().scores)).toEqual([2]);
+    expect(transport.broadcasts.length).toBeGreaterThan(0);
+    runtime.stop();
+  });
+
+  test("a throwing state subscriber does not stop broadcasts", async () => {
+    const errors: Error[] = [];
+    const { runtime, transport } = createRuntime({
+      onError: (error) => errors.push(error),
+    });
+    await joinPlayer(runtime, "connection-1");
+    await flushBroadcast();
+    runtime.subscribe(() => {
+      throw new Error("subscriber boom");
+    });
+    const before = transport.broadcasts.length;
+
+    runtime.dispatch({ type: "INCREMENT", payload: 1, playerId: "p" });
+    await flushBroadcast();
+
+    expect(transport.broadcasts.length).toBe(before + 1);
+    expect(errors[0]?.message).toContain("subscriber boom");
+    runtime.stop();
+  });
+
+  test("a projection that throws for one player still updates the others", async () => {
+    const errors: Error[] = [];
+    let failFor: string | null = null;
+    const { runtime, transport } = createRuntime({
+      project: (state, playerId) => {
+        if (playerId === failFor) throw new Error("project boom");
+        return { scores: state.scores, me: playerId };
+      },
+      onError: (error) => errors.push(error),
+    });
+    await joinPlayer(runtime, "connection-1");
+    await joinPlayer(runtime, "connection-2");
+    const welcome = transport.sent.get("connection-1")?.[0];
+    if (welcome?.type !== MessageTypes.WELCOME)
+      throw new Error("Expected WELCOME");
+    failFor = welcome.payload.playerId;
+    await flushBroadcast();
+    const sentTo2 = transport.sent.get("connection-2")?.length ?? 0;
+
+    runtime.dispatch({ type: "INCREMENT", payload: 1, playerId: "x" });
+    await flushBroadcast();
+
+    expect(transport.sent.get("connection-2")?.length).toBe(sentTo2 + 1);
+    expect(errors.some((e) => e.message.includes("project boom"))).toBe(true);
+    runtime.stop();
+  });
+
+  test("a JOIN whose secret embeds another player's ID joins as a new player", async () => {
+    const { runtime, transport } = createRuntime({
+      project: (state, playerId) => ({
+        me: playerId,
+        n: Object.keys(state.players).length,
+      }),
+    });
+    await joinPlayer(runtime, "victim");
+    const welcome = transport.lastSent("victim");
+    if (welcome?.type !== MessageTypes.WELCOME)
+      throw new Error("Expected WELCOME");
+    const victimId = welcome.payload.playerId;
+
+    await joinPlayer(runtime, "attacker", `${victimId}0000000000000000`);
+
+    const reply = transport.lastSent("attacker");
+    expect(reply?.type).toBe(MessageTypes.WELCOME);
+    if (reply?.type !== MessageTypes.WELCOME) return;
+    expect(reply.payload.playerId).not.toBe(victimId);
+    expect(Object.keys(runtime.getState().players)).toHaveLength(2);
+    runtime.stop();
+  });
+
   test("resendState re-sends unchanged state to joined players", async () => {
     const { runtime, transport } = createRuntime();
     await joinPlayer(runtime, "connection-1");

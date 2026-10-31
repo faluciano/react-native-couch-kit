@@ -84,7 +84,7 @@ actionLogger({ collapsed: false }); // expanded groups
 
 #### `actionValidator(schema)`
 
-Validates actions against a schema before they reach the reducer. If a validator returns `false`, the action is dropped and a warning is logged.
+Validates actions against a schema before they reach the reducer. If a validator returns `false` or throws, the action is dropped and a warning is logged.
 
 ```typescript
 import { actionValidator, type ActionSchema } from "@couch-kit/core";
@@ -188,7 +188,7 @@ try {
 
 #### `isValidSecret(secret: string): boolean`
 
-Validates that a string is a valid UUID format (32+ hex characters, with or without dashes).
+Validates that a string is a valid UUID format (32 to 128 hex characters, with or without dashes).
 
 #### `derivePlayerId(secret: string): Promise<string>`
 
