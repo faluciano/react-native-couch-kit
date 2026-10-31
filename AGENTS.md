@@ -44,7 +44,7 @@ Build order: `core` → `runtime` → `client` → `display`, then `host`, `cli`
 - **State broadcasts are throttled**: at most one broadcast per `stateThrottleMs` window (default 33ms, ~30fps), with every change inside the window coalesced into it.
 - **WebSocket port = HTTP port + 2** (default 8082) to avoid Metro dev server on 8081.
 - **Session recovery**: disconnected players have a 5-minute timeout before `__PLAYER_REMOVED__` fires.
-- **Security**: Rate limiting (60 messages/sec per connection, answered with one `RATE_LIMITED` per window), internal action injection prevention, secrets never broadcast.
+- **Security**: Rate limiting (60 messages/sec per connection, answered with one `RATE_LIMITED` per window), internal action injection prevention, secrets never broadcast. Games police player actions with the runtime's `authorizeAction` (rewrite or `{ reject }`, fails closed); errors thrown by game code (reducer, `project`, `authorizeAction`, subscribers) are contained and reported through `onError`.
 
 ## Protocol Flow
 
@@ -53,13 +53,14 @@ Client → Host: JOIN { name, avatar?, secret }
 Host → Client: WELCOME { playerId, state, serverTime }  (new player)
 Host → Client: RECONNECTED { playerId, state }          (returning player, instead of WELCOME)
 Client → Host: ASSETS_LOADED                            (controller finished preloading)
-Client → Host: ACTION { type, payload? }                (game action from player)
+Client → Host: ACTION { type, payload? }, id?           (game action from player)
 Host → Client: STATE_UPDATE { newState, timestamp }     (throttled, one per window)
 Client → Host: PING { id, timestamp }                   (time sync)
 Host → Client: PONG { id, origTimestamp, serverTime }
+Host → Client: ACTION_RESULT { id, ok, code?, message? } (only for an ACTION sent with an id)
 Host → Client: ERROR { code, message }
-  codes: INVALID_MESSAGE | INVALID_SECRET | ALREADY_JOINED | JOIN_FAILED |
-         FORBIDDEN_ACTION | NOT_JOINED | RATE_LIMITED
+  codes (ErrorCodes): INVALID_MESSAGE | INVALID_SECRET | ALREADY_JOINED | JOIN_FAILED |
+         FORBIDDEN_ACTION | NOT_JOINED | RATE_LIMITED | ACTION_FAILED
 ```
 
 In relay mode the same messages travel inside relay `DATA` envelopes; the relay routes them by room and never inspects them.

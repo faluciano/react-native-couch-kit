@@ -1,4 +1,4 @@
-import { InternalActionTypes } from "@couch-kit/core";
+import { isInternalActionType, type IAction } from "@couch-kit/core";
 
 /** Error codes surfaced when a client ACTION is rejected before dispatch. */
 export type ActionRejectionCode = "FORBIDDEN_ACTION" | "NOT_JOINED";
@@ -7,14 +7,6 @@ export type ActionRejectionCode = "FORBIDDEN_ACTION" | "NOT_JOINED";
 export type ActionAuthorization =
   | { kind: "allow"; playerId: string }
   | { kind: "reject"; code: ActionRejectionCode; message: string };
-
-const INTERNAL_ACTION_TYPES = new Set<string>([
-  InternalActionTypes.HYDRATE,
-  InternalActionTypes.PLAYER_JOINED,
-  InternalActionTypes.PLAYER_LEFT,
-  InternalActionTypes.PLAYER_RECONNECTED,
-  InternalActionTypes.PLAYER_REMOVED,
-]);
 
 /**
  * Decide whether an inbound client ACTION may be dispatched by the runtime.
@@ -35,7 +27,7 @@ export function authorizeClientAction(
   actionType: string,
   resolvedPlayerId: string | undefined,
 ): ActionAuthorization {
-  if (INTERNAL_ACTION_TYPES.has(actionType)) {
+  if (isInternalActionType(actionType)) {
     return {
       kind: "reject",
       code: "FORBIDDEN_ACTION",
@@ -53,3 +45,42 @@ export function authorizeClientAction(
 
   return { kind: "allow", playerId: resolvedPlayerId };
 }
+
+/**
+ * What a game's `authorizeAction` returns to refuse a player's action. The
+ * reason is sent to that player (as the `FORBIDDEN_ACTION` message).
+ */
+export interface ActionRejection {
+  reject: string;
+}
+
+/** Whether an `authorizeAction` result is a {@link ActionRejection}. */
+export function isActionRejection(value: unknown): value is ActionRejection {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { reject?: unknown }).reject === "string" &&
+    typeof (value as { type?: unknown }).type !== "string"
+  );
+}
+
+/**
+ * A game's rule for which player actions the host accepts, and in what form.
+ *
+ * Runs for every player action after the runtime's own checks (internal types,
+ * un-joined sockets), with the action already stamped with the sender's
+ * `playerId`. Return the action to apply (the same one, or a rewritten copy:
+ * overwrite a nested player ID with the sender's, strip a field players may not
+ * set), or `{ reject: reason }` to refuse it. Host dispatches never pass
+ * through here.
+ *
+ * Fails closed: a hook that throws, or returns something that is neither an
+ * action nor a rejection, refuses the action and reports through `onError`. The
+ * returned action is re-stamped with the sender's `playerId`, and may not be an
+ * internal action type.
+ */
+export type AuthorizeAction<S, A extends IAction> = (
+  action: A,
+  playerId: string,
+  state: S,
+) => A | ActionRejection;

@@ -68,6 +68,19 @@ export const InternalActionTypes = {
   PLAYER_REMOVED: "__PLAYER_REMOVED__",
 } as const;
 
+const INTERNAL_ACTION_TYPE_SET: ReadonlySet<string> = new Set(
+  Object.values(InternalActionTypes),
+);
+
+/**
+ * Whether `type` is one of the framework's {@link InternalActionTypes}. The one
+ * list every check uses, so a new internal type cannot be missed by one of them
+ * (clients must never be able to dispatch these).
+ */
+export function isInternalActionType(type: string): boolean {
+  return INTERNAL_ACTION_TYPE_SET.has(type);
+}
+
 /**
  * Type alias for a game reducer function.
  *

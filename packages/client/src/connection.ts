@@ -4,6 +4,7 @@ import {
   DEFAULT_WS_PATH,
   generateId,
   isValidSecret,
+  type ActionResult,
   type HostMessage,
 } from "@couch-kit/core";
 
@@ -171,7 +172,8 @@ export type HostMessageEffect<S> =
   | { kind: "setPlayerId"; playerId: string }
   | { kind: "hydrate"; state: S }
   | { kind: "pong"; payload: PongPayload }
-  | { kind: "error"; error: HostError };
+  | { kind: "error"; error: HostError }
+  | { kind: "actionResult"; id: string; result: ActionResult };
 
 /**
  * A rejection reported by the host — e.g. `RATE_LIMITED`, `NOT_JOINED`,
@@ -206,6 +208,10 @@ export function interpretHostMessage<S>(
       ];
     case MessageTypes.ERROR:
       return [{ kind: "error", error: msg.payload }];
+    case MessageTypes.ACTION_RESULT: {
+      const { id, ...result } = msg.payload;
+      return [{ kind: "actionResult", id, result: result as ActionResult }];
+    }
     default:
       return [];
   }

@@ -4,7 +4,7 @@ import type {
   InternalAction,
   GameReducer,
 } from "./types.js";
-import { InternalActionTypes } from "./types.js";
+import { isInternalActionType } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Middleware types
@@ -159,15 +159,6 @@ export function actionLogger<S extends IGameState, A extends IAction>(
 // actionValidator
 // ---------------------------------------------------------------------------
 
-/** Lazily-initialised set of internal action type strings for fast lookup. */
-let _internalTypes: Set<string> | undefined;
-function getInternalTypes(): Set<string> {
-  if (!_internalTypes) {
-    _internalTypes = new Set<string>(Object.values(InternalActionTypes));
-  }
-  return _internalTypes;
-}
-
 /**
  * A map from action type strings to validator functions. Each validator receives
  * the fully-typed action and returns `true` if the action is valid.
@@ -194,7 +185,7 @@ export function actionValidator<S extends IGameState, A extends IAction>(
 ): Middleware<S, A> {
   return (_api) => (next) => (action) => {
     // Internal actions always pass through — never validate them.
-    if (getInternalTypes().has(action.type)) return next(action);
+    if (isInternalActionType(action.type)) return next(action);
 
     const validate = schema[action.type as A["type"]];
     if (!validate) return next(action);
