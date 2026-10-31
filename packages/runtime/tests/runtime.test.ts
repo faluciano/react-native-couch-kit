@@ -1265,3 +1265,71 @@ describe("GameHostRuntime authorizeAction and action results", () => {
     expect(runtime.getState().moves).toHaveLength(0);
   });
 });
+
+describe("GameHostRuntime stop and restart", () => {
+  test("stop marks live players disconnected", async () => {
+    const { runtime } = createRuntime();
+    await joinPlayer(runtime, "c1");
+    const [id] = Object.keys(runtime.getState().players);
+
+    runtime.stop();
+
+    expect(runtime.getState().players[id].connected).toBe(false);
+  });
+
+  test("after a restart, a player who never returns is removed", async () => {
+    const { runtime, transport } = createRuntime({ disconnectTimeout: 10 });
+    await joinPlayer(runtime, "c1");
+    const [id] = Object.keys(runtime.getState().players);
+
+    // What GameHostProvider does on a StrictMode or Fast Refresh remount.
+    runtime.setTransport(null);
+    runtime.stop();
+    runtime.setTransport(transport);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    expect(runtime.getState().players[id]).toBeUndefined();
+    runtime.stop();
+  });
+
+  test("a removal pending at stop is re-armed on restart", async () => {
+    const { runtime, transport } = createRuntime({ disconnectTimeout: 20 });
+    await joinPlayer(runtime, "c1");
+    const [id] = Object.keys(runtime.getState().players);
+    runtime.handleDisconnect("c1");
+
+    runtime.stop();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    // Stopped for good so far: nothing ran while stopped.
+    expect(runtime.getState().players[id]).toBeDefined();
+
+    runtime.setTransport(transport);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(runtime.getState().players[id]).toBeUndefined();
+    runtime.stop();
+  });
+
+  test("a player who rejoins after the restart is kept and reconnected", async () => {
+    const { runtime, transport } = createRuntime({ disconnectTimeout: 20 });
+    const secret = await joinPlayer(runtime, "c1");
+    const [id] = Object.keys(runtime.getState().players);
+    runtime.stop();
+    runtime.setTransport(transport);
+
+    await joinPlayer(runtime, "c2", secret);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+
+    expect(runtime.getState().players[id]?.connected).toBe(true);
+    expect(transport.lastSent("c2")?.type).toBe(MessageTypes.RECONNECTED);
+    runtime.stop();
+  });
+
+  test("a final stop leaves no removal timer running", async () => {
+    const { runtime } = createRuntime({ disconnectTimeout: 10 });
+    await joinPlayer(runtime, "c1");
+    const [id] = Object.keys(runtime.getState().players);
+    runtime.stop();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(runtime.getState().players[id]).toBeDefined();
+  });
+});

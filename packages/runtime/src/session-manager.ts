@@ -58,7 +58,10 @@ type PlayersSource<S extends IGameState> = S["players"] | (() => S["players"]);
 export class HostSessionManager<TTimer = ReturnType<typeof setTimeout>> {
   private readonly sessions = new Map<string, string>();
   private readonly reverseMap = new Map<string, string>();
-  private readonly cleanupTimers = new Map<string, TTimer>();
+  private readonly cleanupTimers = new Map<
+    string,
+    { timer: TTimer; secret: string }
+  >();
   private readonly socketIdToPlayerId = new Map<string, string>();
   private readonly scheduler: SessionTimerScheduler<TTimer>;
   private readonly getDisconnectTimeout: () => number;
@@ -170,28 +173,36 @@ export class HostSessionManager<TTimer = ReturnType<typeof setTimeout>> {
     secret: string,
     onRemove: (playerId: string) => void,
   ): void {
+    this.cancelRemoval(playerId);
     const timer = this.scheduler.setTimeout(() => {
       this.cleanupTimers.delete(playerId);
       this.sessions.delete(secret);
       onRemove(playerId);
     }, this.getDisconnectTimeout());
 
-    this.cleanupTimers.set(playerId, timer);
+    this.cleanupTimers.set(playerId, { timer, secret });
   }
 
   cancelRemoval(playerId: string): void {
-    const existingTimer = this.cleanupTimers.get(playerId);
-    if (existingTimer) {
-      this.scheduler.clearTimeout(existingTimer);
+    const existing = this.cleanupTimers.get(playerId);
+    if (existing) {
+      this.scheduler.clearTimeout(existing.timer);
       this.cleanupTimers.delete(playerId);
     }
   }
 
-  clearRemovalTimers(): void {
-    for (const timer of this.cleanupTimers.values()) {
+  /**
+   * Cancels every pending removal and returns what was pending, so a caller
+   * that is pausing (not ending) can schedule them again later.
+   */
+  clearRemovalTimers(): { playerId: string; secret: string }[] {
+    const pending: { playerId: string; secret: string }[] = [];
+    for (const [playerId, { timer, secret }] of this.cleanupTimers) {
       this.scheduler.clearTimeout(timer);
+      pending.push({ playerId, secret });
     }
     this.cleanupTimers.clear();
+    return pending;
   }
 
   getPlayerIdForSocket(socketId: string): string | undefined {

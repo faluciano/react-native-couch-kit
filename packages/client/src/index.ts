@@ -4,6 +4,7 @@ export * from "./transport";
 export * from "./relay-protocol";
 export * from "./relay-transport";
 export * from "./relay-room";
+export * from "./auto-transport";
 export * from "./time-sync";
 export * from "./assets";
 export * from "./debug-panel";

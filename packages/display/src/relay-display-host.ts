@@ -289,7 +289,9 @@ export class RelayDisplayHost<S extends IGameState, A extends IAction> {
    */
   private handleSocketClose(event: CloseEvent): void {
     this.socketOpen = false;
-    if (this.stopped) return;
+    // Already over: stopped, or the room was ended (and reported) before this
+    // socket's close event arrived.
+    if (this.stopped || this.currentStatus === "closed") return;
 
     if (this.canResume(event)) {
       this.awaySince ??= Date.now();
@@ -489,6 +491,19 @@ export class RelayDisplayHost<S extends IGameState, A extends IAction> {
         this.handleResumed(msg.peers);
         break;
       case RelayMessageTypes.ERROR:
+        // No room yet, so this is the relay refusing to create one
+        // (ROOM_EXISTS, SERVER_BUSY, …). It leaves the socket open but nothing
+        // more will come on it: without this the display would sit at
+        // "connecting" forever.
+        if (this.currentStatus === "connecting") {
+          this.socketOpen = false;
+          this.ws.close(1000, "Room not created");
+          this.clearReconnectTimer();
+          this.resumeToken = null;
+          this.setStatus("closed");
+          this.runtime.handleError(new RelayError(msg.code, msg.message));
+          break;
+        }
         // The relay no longer has the room (or the token): it expired, or
         // the relay restarted. Nothing left to reconnect to.
         if (
