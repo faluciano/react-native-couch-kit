@@ -1,5 +1,11 @@
 # @couch-kit/core
 
+## 0.10.2
+
+### Patch Changes
+
+- [#225](https://github.com/faluciano/react-native-couch-kit/pull/225) [`072bc40`](https://github.com/faluciano/react-native-couch-kit/commit/072bc40f923dd9169f2bcb344deb733223402323) Thanks [@faluciano](https://github.com/faluciano)! - **Security:** `actionValidator` drops an action whose validator throws. Before, the middleware error boundary passed it on to the reducer, so a malformed payload (exactly what makes a validator like `(a) => a.payload.points > 0` throw) skipped validation. `isValidSecret` now also rejects secrets longer than 128 hex characters (`MAX_SECRET_HEX_LENGTH`), so a client cannot make the host hash and store an arbitrarily long string.
+
 ## 0.10.1
 
 ### Patch Changes
