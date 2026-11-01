@@ -1,5 +1,11 @@
 # @couch-kit/host
 
+## 2.1.7
+
+### Patch Changes
+
+- [#234](https://github.com/faluciano/react-native-couch-kit/pull/234) [`c021c8b`](https://github.com/faluciano/react-native-couch-kit/commit/c021c8b61b227dc913a4ede4a3745cd198365ac7) Thanks [@faluciano](https://github.com/faluciano)! - The `react-native-nitro-modules` peer range is now `~0.35.0` instead of `>=0.35.0`. `react-native-nitro-http-server` is generated against Nitro 0.35, and Nitro minor versions change the generated C++ ABI, so 0.36 satisfied the old range but would break the native server. The README's install command and version table now say 0.35.x as well (the table said `>= 0.33.0`).
+
 ## 2.1.6
 
 ### Patch Changes
