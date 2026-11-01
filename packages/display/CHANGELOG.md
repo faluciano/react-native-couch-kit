@@ -1,5 +1,14 @@
 # @couch-kit/display
 
+## 0.7.3
+
+### Patch Changes
+
+- Updated dependencies [[`a899a61`](https://github.com/faluciano/react-native-couch-kit/commit/a899a6146a1de19d6c81807e622a1719046fc8ea)]:
+  - @couch-kit/core@0.11.0
+  - @couch-kit/runtime@0.8.0
+  - @couch-kit/client@0.18.0
+
 ## 0.7.2
 
 ### Patch Changes
