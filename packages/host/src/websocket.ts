@@ -28,9 +28,9 @@ export interface WebSocketConfig {
    */
   maxMessageBytes?: number;
   /**
-   * @deprecated No effect. The underlying nitro-http WebSocket transport
-   * manages frame sizing internally and this value is never read. This field
-   * will be removed in a future major release. Do not set it.
+   * @deprecated No effect; use {@link WebSocketConfig.maxMessageBytes}, which
+   * also caps what the native transport will buffer. This field will be
+   * removed in a future major release. Do not set it.
    */
   maxFrameSize?: number;
   /**
@@ -156,7 +156,7 @@ export class GameWebSocketServer extends EventEmitter<WebSocketServerEvents> {
 
     // Start the server with WebSocket plugin
     try {
-      await this.server.start(
+      const boundPort = await this.server.start(
         this.port,
         async () => {
           // Dummy HTTP handler - we're only using WebSocket functionality
@@ -170,11 +170,23 @@ export class GameWebSocketServer extends EventEmitter<WebSocketServerEvents> {
             {
               type: "websocket",
               path: DEFAULT_WS_PATH,
+              // The native transport buffers a whole message before handing
+              // it to JS, up to 64 MB by default. Cap it at the same limit the
+              // JS check enforces, so an oversized frame is refused natively
+              // instead of being held in a TV's memory first.
+              max_message_size: this.maxMessageBytes,
             },
           ],
         },
         "0.0.0.0", // Bind to all interfaces
       );
+      // A failed bind (port in use) is reported as a port <= 0, not thrown.
+      if (!(boundPort > 0)) {
+        throw new Error(
+          `Could not start the WebSocket server on port ${this.port}. ` +
+            "Is another app using it?",
+        );
+      }
       this.emit("listening", this.port);
       this.log(`[WebSocket] Server listening on port ${this.port}`);
     } catch (error) {

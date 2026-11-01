@@ -144,7 +144,22 @@ describe("useStaticServer in production", () => {
 
     unmount();
 
-    expect(FakeStaticServer.instances[0]?.stopCalls).toBe(1);
+    await waitFor(() =>
+      expect(FakeStaticServer.instances[0]?.stopCalls).toBe(1),
+    );
+    expect(FakeStaticServer.native).toBeNull();
+  });
+
+  test("a port that fails to bind is an error, not a dead URL", async () => {
+    // The native server reports a failed bind by resolving with port 0.
+    FakeStaticServer.nextStartPort = 0;
+    const { result } = renderHook(() =>
+      useStaticServer({ staticDir: "/data/www", port: 8080 }),
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.url).toBeNull();
+    expect(result.current.error?.message).toContain("port 8080");
   });
 
   test("a server that finishes starting after unmount is stopped", async () => {
@@ -152,19 +167,22 @@ describe("useStaticServer in production", () => {
     const { result, unmount } = renderHook(() =>
       useStaticServer({ staticDir: "/data/www" }),
     );
+    await settle();
     const [server] = FakeStaticServer.instances;
     expect(server).toBeDefined();
 
     unmount();
-    const stopsAtUnmount = server!.stopCalls;
 
     await act(async () => {
       server!.finishStart();
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
+    await settle();
 
-    // Stopped again once actually up, and its result is never published.
-    expect(server!.stopCalls).toBe(stopsAtUnmount + 1);
+    // Stopped once actually up, so nothing holds the port, and its result is
+    // never published.
+    expect(server!.stopCalls).toBe(1);
+    expect(FakeStaticServer.native).toBeNull();
     expect(result.current.url).toBeNull();
     expect(result.current.loading).toBe(true);
   });
@@ -175,21 +193,33 @@ describe("useStaticServer in production", () => {
       (config: CouchKitHostConfig) => useStaticServer(config),
       { initialProps: { port: 9000, staticDir: "/data/www" } },
     );
+    await settle();
     const [first] = FakeStaticServer.instances;
 
+    // The replacement waits for the first server to start and stop: the
+    // native server is one process-wide instance, so starting the second
+    // while the first holds it would fail to bind.
     rerender({ port: 9100, staticDir: "/data/www" });
+    await settle();
+    expect(FakeStaticServer.instances).toHaveLength(1);
+
+    await act(async () => {
+      first!.finishStart();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await settle();
     const second = FakeStaticServer.instances[1];
     expect(second?.startArgs?.port).toBe(9100);
 
     await act(async () => {
       second!.finishStart();
-      first!.finishStart();
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
     await settle();
 
     expect(result.current.url).toBe("http://192.168.1.20:9100/index.html");
-    expect(first!.stopCalls).toBeGreaterThanOrEqual(1);
+    expect(first!.stopCalls).toBe(1);
     expect(second!.stopCalls).toBe(0);
+    expect(FakeStaticServer.native).toBe(second!);
   });
 });
