@@ -57,6 +57,34 @@ Returns:
 - `disconnect()`: manually disconnect from the host (prevents automatic reconnection)
 - `reconnect()`: manually reconnect to the host (resets the reconnection attempt counter)
 
+### One controller for LAN and relay: `createAutoTransport`
+
+```tsx
+const { roomId, setRoomId } = useRelayRoom();
+const transport = useMemo(
+  () => createAutoTransport({ relayUrl: import.meta.env.VITE_RELAY_URL, roomId }),
+  [roomId],
+);
+if (transport.kind === "none") return <JoinScreen onJoin={setRoomId} />;
+
+// In the controller component:
+useGameClient({
+  reducer,
+  initialState,
+  createTransport: transport.createTransport,
+  connectionKey: transport.connectionKey,
+});
+// transport.kind is "lan" or "relay": show "Local" or `Room ${transport.roomId}`.
+```
+
+It picks the transport like this:
+
+- A room code, given or from `?room=` in the page URL, always selects the relay. A hosted controller never tries a LAN socket.
+- Otherwise, a page served over `http:` from a local-network address (the TV host's static server) selects the LAN socket at HTTP port + 2. An explicit `url` does the same.
+- Otherwise it returns `kind: "none"`, with reason `NEEDS_ROOM_CODE` or `NO_RELAY_URL`.
+
+Take `relayUrl` from build config, not from the page URL. A relay named in a link is one anyone can name, and the phone would send its session to it.
+
 ### Optimistic updates
 
 With a `reducer`, `sendAction` applies the action locally before the host

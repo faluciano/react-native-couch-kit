@@ -717,6 +717,7 @@ function Controller({ roomId, onRejoin }) {
 - \`useRelayRoom()\` → \`{ roomId, setRoomId, clearRoomId }\`, seeded from \`?room=CODE\` and written back to the URL so reloads and shared links keep it.
 - \`normalizeRoomCode(input)\` canonicalises what people type (\`"ab 12"\`, \`"AB-12"\` → \`"AB12"\`); room codes are case-insensitive end to end.
 - \`describeRelayError(reason)\` turns a relay error code into player-facing text, or \`null\` for an ordinary drop.
+- \`createAutoTransport({ relayUrl, roomId?, url?, wsPort? })\` picks the transport for one controller build that works on both paths. A room code (given, or \`?room=\` in the page URL) selects the relay. A page served over http from a local-network address (the TV host) selects the LAN socket at port + 2. Otherwise you get \`kind: "none"\` (\`NEEDS_ROOM_CODE\` / \`NO_RELAY_URL\`). Returns \`{ kind, createTransport, connectionKey, roomId?/url? }\`; pass \`createTransport\` and \`connectionKey\` to \`useGameClient\`, and show \`kind\` to the player. Take \`relayUrl\` from build config, never from the page URL.
 - \`relayRoomUrl(url, roomId)\` builds the socket URL (\`<url>/r/<ROOM>\`); the transports call it for you.
 
 The display side is \`@couch-kit/display\`'s \`RelayDisplayHost\`, which owns the

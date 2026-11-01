@@ -150,6 +150,13 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
   private readonly joinedConnections = new Set<string>();
   private readonly pendingJoins = new Set<string>();
   private actionQueue: unknown[] = [];
+  /**
+   * Players who were connected, or waiting to be removed, when the runtime
+   * stopped. Their removal is scheduled again when a transport is attached, so
+   * a restart (React StrictMode, Fast Refresh, a provider remount) does not
+   * leave them in the game forever, and a final stop leaves no timers behind.
+   */
+  private orphanedPlayers: { playerId: string; secret: string }[] = [];
   private stateDirty = false;
   private nextConnectionGeneration = 1;
 
@@ -200,7 +207,9 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
   /** Replaces the active message transport without resetting game state. */
   setTransport(transport: GameRuntimeTransport | null): void {
     this.transport = transport;
-    if (transport && this.stateDirty) {
+    if (!transport) return;
+    this.rearmOrphanedRemovals();
+    if (this.stateDirty) {
       this.broadcastScheduler.schedule(this.broadcastState);
     }
   }
@@ -507,16 +516,7 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
           }
         : undefined,
     );
-    this.sessionManager.scheduleRemoval(
-      result.playerId,
-      result.secret,
-      (playerId) => {
-        this.applyAction({
-          type: InternalActionTypes.PLAYER_REMOVED,
-          payload: { playerId },
-        } as InternalAction<S>);
-      },
-    );
+    this.scheduleRemoval(result.playerId, result.secret);
   }
 
   /** Surfaces transport failures through the configured host callback. */
@@ -525,15 +525,52 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
     this.notifyError(error);
   }
 
-  /** Cancels runtime timers and releases transport-specific state. */
+  /**
+   * Cancels runtime timers and releases transport-specific state.
+   *
+   * Every connection is closed as far as the runtime is concerned: their
+   * players are marked disconnected now, since the old transport's disconnect
+   * events will be ignored. If a transport is attached again, those players and
+   * any already waiting to be removed get a fresh removal timeout, and each is
+   * kept if they rejoin before it expires.
+   */
   stop(): void {
+    for (const connectionId of [...this.activeConnections.keys()]) {
+      const result = this.sessionManager.handleDisconnect<S>(connectionId);
+      if (result.kind !== "left") continue;
+      this.applyAction(result.action);
+      this.orphanedPlayers.push({
+        playerId: result.playerId,
+        secret: result.secret,
+      });
+    }
+    this.orphanedPlayers.push(...this.sessionManager.clearRemovalTimers());
     this.broadcastScheduler.cancel();
-    this.sessionManager.clearRemovalTimers();
     this.rateLimiter.clear();
     this.activeConnections.clear();
     this.joinedConnections.clear();
     this.pendingJoins.clear();
     this.transport = null;
+  }
+
+  /** See {@link GameHostRuntime.orphanedPlayers}. */
+  private rearmOrphanedRemovals(): void {
+    const orphans = this.orphanedPlayers;
+    this.orphanedPlayers = [];
+    for (const { playerId, secret } of orphans) {
+      const player = this.state.players[playerId];
+      if (!player || player.connected) continue;
+      this.scheduleRemoval(playerId, secret);
+    }
+  }
+
+  private scheduleRemoval(playerId: string, secret: string): void {
+    this.sessionManager.scheduleRemoval(playerId, secret, (removedId) => {
+      this.applyAction({
+        type: InternalActionTypes.PLAYER_REMOVED,
+        payload: { playerId: removedId },
+      } as InternalAction<S>);
+    });
   }
 
   /**

@@ -284,6 +284,38 @@ describe("RelayDisplayHost", () => {
     expect((errors[0] as RelayError).code).toBe("ROOM_EXISTS");
   });
 
+  test("a refused create closes the display instead of leaving it connecting", () => {
+    const errors: Error[] = [];
+    const statuses: RelayDisplayStatus[] = [];
+    const host = new RelayDisplayHost<TestState, TestAction>({
+      url: "wss://relay.test",
+      reducer,
+      initialState,
+      onError: (e) => errors.push(e),
+      onStatusChange: (s) => statuses.push(s),
+    });
+    const ws = MockWebSocket.last!;
+    ws.open();
+    ws.fromServer({
+      type: RelayMessageTypes.ERROR,
+      code: RelayErrorCodes.SERVER_BUSY,
+      message: "Too many rooms",
+    });
+
+    expect(host.status).toBe("closed");
+    expect(statuses).toEqual(["closed"]);
+    expect(ws.closed).toBe(true);
+    expect(ws.closeCode).toBe(1000);
+    expect((errors[0] as RelayError).code).toBe(RelayErrorCodes.SERVER_BUSY);
+
+    // The close event that follows is not reported a second time, and nothing
+    // reconnects.
+    const sockets = MockWebSocket.all.length;
+    ws.serverClose(1000);
+    expect(errors).toHaveLength(1);
+    expect(MockWebSocket.all.length).toBe(sockets);
+  });
+
   test("a socket error surfaces to onError", () => {
     const errors: Error[] = [];
     const { ws } = makeHost((e) => errors.push(e));
