@@ -174,7 +174,10 @@ export function GameHostProvider<S extends IGameState, A extends IAction>({
           }
         });
     };
-  }, []);
+    // Restart when what the server listens with changes, or a new HTTP port
+    // would break the WS = HTTP + 2 convention phones rely on. shutdownRef
+    // makes each start wait for the previous server to stop.
+  }, [httpPort, config.wsPort, config.maxMessageBytes]);
 
   const dispatch = useCallback(
     (action: A) => {

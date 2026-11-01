@@ -80,6 +80,12 @@ export class FakeConfigServer {
   static instances: FakeConfigServer[] = [];
   /** When set, the next `start()` rejects with it (then it is cleared). */
   static nextStartError: unknown = null;
+  /**
+   * When set, the next `start()` resolves with this port (then it is
+   * cleared). The real native server reports a failed bind by resolving with a
+   * port <= 0 rather than rejecting.
+   */
+  static nextStartPort: number | null = null;
 
   readonly wsHandlers = new Map<string, WebSocketHandler>();
   startArgs: {
@@ -111,7 +117,9 @@ export class FakeConfigServer {
     FakeConfigServer.nextStartError = null;
     if (error !== null) throw error;
     this.startArgs = { port, handler, config, host };
-    return port;
+    const forced = FakeConfigServer.nextStartPort;
+    FakeConfigServer.nextStartPort = null;
+    return forced ?? port;
   }
 
   async stop(): Promise<void> {
@@ -158,6 +166,14 @@ export class FakeStaticServer {
   static instances: FakeStaticServer[] = [];
   /** When set, the next `start()` rejects with it (then it is cleared). */
   static nextStartError: unknown = null;
+  /** See {@link FakeConfigServer.nextStartPort}. */
+  static nextStartPort: number | null = null;
+  /**
+   * The one native static server. As on the device, it is process-wide: a
+   * start while another instance holds it fails to bind (resolves 0), and a
+   * running instance's `stop()` stops whatever is in the slot.
+   */
+  static native: FakeStaticServer | null = null;
   /**
    * When true, `start()` stays pending until the test calls
    * {@link FakeStaticServer.finishStart} — to model a slow native start.
@@ -166,6 +182,8 @@ export class FakeStaticServer {
 
   startArgs: { port: number; rootDir: string; host?: string } | null = null;
   stopCalls = 0;
+  /** Whether this instance's start succeeded and it has not stopped since. */
+  running = false;
   private pending: Deferred | null = null;
 
   constructor() {
@@ -177,7 +195,7 @@ export class FakeStaticServer {
     const error = FakeStaticServer.nextStartError;
     FakeStaticServer.nextStartError = null;
     if (error !== null) return Promise.reject(error);
-    if (!FakeStaticServer.holdStart) return Promise.resolve(port);
+    if (!FakeStaticServer.holdStart) return Promise.resolve(this.bind(port));
     this.pending = deferred();
     return this.pending.promise;
   }
@@ -185,12 +203,27 @@ export class FakeStaticServer {
   /** Completes a start held by {@link FakeStaticServer.holdStart}. */
   finishStart(): void {
     if (!this.pending || !this.startArgs) throw new Error("No start pending");
-    this.pending.resolve(this.startArgs.port);
+    this.pending.resolve(this.bind(this.startArgs.port));
     this.pending = null;
+  }
+
+  private bind(port: number): number {
+    const forced = FakeStaticServer.nextStartPort;
+    FakeStaticServer.nextStartPort = null;
+    if (forced !== null) return forced;
+    if (FakeStaticServer.native !== null) return 0;
+    FakeStaticServer.native = this;
+    this.running = true;
+    return port;
   }
 
   async stop(): Promise<void> {
     this.stopCalls++;
+    // Like the library: a no-op unless this instance started, and then it
+    // stops the native server, whichever instance put it there.
+    if (!this.running) return;
+    this.running = false;
+    FakeStaticServer.native = null;
   }
 }
 
@@ -256,7 +289,27 @@ export class FakeDirectory {
     return fs.dirs.has(this.uri);
   }
 
-  create(): void {
+  /** Like expo-file-system: parents must exist unless `intermediates`. */
+  create(
+    options: { intermediates?: boolean; idempotent?: boolean } = {},
+  ): void {
+    const parentOf = (uri: string) => uri.slice(0, uri.lastIndexOf("/"));
+    const isRoot = (uri: string) => uri === Paths.document.uri;
+    const parent = parentOf(this.uri);
+    if (!options.intermediates && !isRoot(parent) && !fs.dirs.has(parent)) {
+      throw new Error(`Parent directory does not exist: ${parent}`);
+    }
+    if (options.intermediates) {
+      const missing: string[] = [];
+      for (let p = parent; !isRoot(p) && !fs.dirs.has(p); p = parentOf(p)) {
+        if (!p.includes("/")) break;
+        missing.unshift(p);
+      }
+      for (const dir of missing) {
+        fs.log.push(`mkdir ${dir}`);
+        fs.dirs.add(dir);
+      }
+    }
     fs.log.push(`mkdir ${this.uri}`);
     fs.dirs.add(this.uri);
   }
@@ -314,8 +367,11 @@ mock.module("expo-file-system", () => ({
 export function resetNativeFakes(): void {
   FakeConfigServer.instances = [];
   FakeConfigServer.nextStartError = null;
+  FakeConfigServer.nextStartPort = null;
   FakeStaticServer.instances = [];
   FakeStaticServer.nextStartError = null;
+  FakeStaticServer.nextStartPort = null;
+  FakeStaticServer.native = null;
   FakeStaticServer.holdStart = false;
   network.ip = "192.168.1.20";
   network.error = null;
