@@ -70,3 +70,54 @@ describe("bundle command error handling", () => {
     expect(errors.join("\n")).toContain("Build output not found");
   });
 });
+
+describe("bundle output guard", () => {
+  test("unsafeTargetReason refuses targets that would delete the project", async () => {
+    const { unsafeTargetReason } = await import("../src/commands/bundle");
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "couch-kit-guard-"));
+    const source = path.join(root, "web-controller");
+    fs.mkdirSync(source);
+    try {
+      expect(
+        unsafeTargetReason(path.parse(root).root, source, root, false),
+      ).toContain("root");
+      expect(unsafeTargetReason(root, source, root, false)).toContain(
+        "current directory",
+      );
+      expect(
+        unsafeTargetReason(path.dirname(root), source, root, false),
+      ).toContain("current directory");
+      expect(
+        unsafeTargetReason(source, source, path.join(root, "x"), false),
+      ).toContain("controller source");
+      expect(
+        unsafeTargetReason(path.join(source, "out"), source, root, false),
+      ).toContain("inside the controller source");
+      expect(
+        unsafeTargetReason(path.join(root, "fresh"), source, root, false),
+      ).toBeNull();
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a non-empty folder that is not a previous bundle needs --force", async () => {
+    const { unsafeTargetReason } = await import("../src/commands/bundle");
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "couch-kit-guard-"));
+    const source = path.join(root, "web-controller");
+    const assets = path.join(root, "android", "assets");
+    fs.mkdirSync(source);
+    fs.mkdirSync(assets, { recursive: true });
+    fs.writeFileSync(path.join(assets, "fonts.ttf"), "x");
+    try {
+      expect(unsafeTargetReason(assets, source, root, false)).toContain(
+        "--force",
+      );
+      expect(unsafeTargetReason(assets, source, root, true)).toBeNull();
+      fs.writeFileSync(path.join(assets, "www-manifest.json"), "{}");
+      expect(unsafeTargetReason(assets, source, root, false)).toBeNull();
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+});

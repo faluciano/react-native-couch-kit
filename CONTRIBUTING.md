@@ -7,7 +7,7 @@ you are expected to uphold it.
 
 ## Development Setup
 
-**Package manager:** Bun (v1.4.2)
+**Package manager:** Bun, at the version pinned in the root `package.json` `packageManager` field
 
 ```bash
 bun install        # install dependencies
