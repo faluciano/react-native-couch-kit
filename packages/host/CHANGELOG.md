@@ -1,5 +1,12 @@
 # @couch-kit/host
 
+## 2.1.5
+
+### Patch Changes
+
+- Updated dependencies [[`495dac0`](https://github.com/faluciano/react-native-couch-kit/commit/495dac0441684212f8caa049de85b7122f5fffd6)]:
+  - @couch-kit/runtime@0.9.0
+
 ## 2.1.4
 
 ### Patch Changes
