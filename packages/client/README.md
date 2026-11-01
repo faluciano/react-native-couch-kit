@@ -50,6 +50,7 @@ Returns:
 - `state`: current controller state (optimistic + hydrated)
 - `playerId`: stable public identifier derived from the session secret. Persists across page refreshes and reconnections (the same player always gets the same `playerId`).
 - `sendAction(action)`: optimistic dispatch + send to host. Returns `true` if sent, `false` when there is no open connection (nothing is applied or queued then). The host can still reject a sent action; that arrives through `onError`.
+- `sendActionWithResult(action)`: like `sendAction`, but returns a promise of the host's verdict on this action: `{ ok: true }`, or `{ ok: false, code, message }`. The code is either a refusal (`FORBIDDEN_ACTION` with the game's reason from `authorizeAction`, `ACTION_FAILED`, `RATE_LIMITED`) or `NOT_CONNECTED` / `DISCONNECTED` / `NO_RESULT` when the host never got to answer. It never rejects. Await it to keep a button disabled until the host answers, so a double tap sends one action. Waits at most `actionResultTimeoutMs` (default `5000`).
 - `disconnectReason`: why the last connection ended, when the transport knows (for the relay, a code such as `ROOM_NOT_FOUND` or `HOST_LEFT`); `null` once connected again
 - `getServerTime()`: NTP-ish server time based on periodic ping/pong
 - `rtt`: round-trip time (ms) to the server, updated periodically via PING/PONG

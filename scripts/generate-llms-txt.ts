@@ -652,6 +652,7 @@ function useGameClient<S extends IGameState, A extends IAction>(
   playerId: string | null;
   disconnectReason: string | null;  // relay error code (ROOM_NOT_FOUND, ...) on terminal failures
   sendAction: (action: A) => boolean;  // false when not connected (nothing applied)
+  sendActionWithResult: (action: A) => Promise<ActionResult>; // { ok: true } | { ok: false, code, message }
   getServerTime: () => number;
   rtt: number;
   disconnect: () => void;
@@ -842,8 +843,11 @@ function GameHostProvider<S extends IGameState, A extends IAction>(props: {
 - Starts static file server on \`config.port\` (default 8080)
 - Starts WebSocket server on \`config.wsPort\` (default: HTTP port + 2)
 - Wraps the user reducer with \`createGameReducer\` automatically
-- Handles JOIN with secret-based player ID derivation (SHA-256 with legacy fallback)
+- Handles JOIN with secret-based player ID derivation (SHA-256 of the secret, no fallback)
 - Rejects internal action types dispatched by clients (\`FORBIDDEN_ACTION\` error)
+- \`authorizeAction(action, playerId, state)\` config: return the action (optionally rewritten) or \`{ reject: reason }\`; fails closed; the sender gets \`FORBIDDEN_ACTION\` with the reason
+- \`project(state, playerId)\` config: each player receives only their own view (use it for hidden information)
+- An \`ACTION\` sent with an \`id\` is answered with \`ACTION_RESULT { id, ok, code?, message? }\`
 - Rate-limits client actions (60 per second per socket)
 - Automatically manages player lifecycle (join, disconnect, reconnect, timeout removal)
 - Broadcasts state updates throttled to ~30fps
