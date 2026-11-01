@@ -42,6 +42,49 @@ function detectPackageManager(dir: string): "bun" | "npm" | "yarn" | "pnpm" {
   return "npm";
 }
 
+/** Whether `child` is `parent` or inside it. */
+function isWithin(child: string, parent: string): boolean {
+  const relative = path.relative(parent, child);
+  return (
+    relative === "" ||
+    (!relative.startsWith("..") && !path.isAbsolute(relative))
+  );
+}
+
+/**
+ * Why clearing `targetDir` would be unsafe, or `null` if it is fine. The
+ * target is deleted recursively, so a mistyped `--output` (`-o .`, or the
+ * Android assets folder without `/www`) must not take a project with it.
+ */
+export function unsafeTargetReason(
+  targetDir: string,
+  sourceDir: string,
+  cwd: string,
+  force: boolean,
+): string | null {
+  if (path.parse(targetDir).root === targetDir) {
+    return "it is the filesystem root";
+  }
+  if (isWithin(cwd, targetDir)) {
+    return "it is the current directory or one of its parents";
+  }
+  if (isWithin(sourceDir, targetDir)) {
+    return "it contains the controller source";
+  }
+  if (isWithin(targetDir, sourceDir)) {
+    return "it is inside the controller source";
+  }
+  if (force || !fs.existsSync(targetDir)) return null;
+  const entries = fs.readdirSync(targetDir);
+  if (entries.length > 0 && !entries.includes("www-manifest.json")) {
+    return (
+      "it is not empty and holds no www-manifest.json, so it is not a " +
+      "previous bundle (pass --force to clear it anyway)"
+    );
+  }
+  return null;
+}
+
 export const bundleCommand = new Command("bundle")
   .description("Bundles the web controller into the Android assets directory")
   .option(
@@ -56,6 +99,11 @@ export const bundleCommand = new Command("bundle")
   )
   .option("--no-build", "Skip build step (just copy)")
   .option(
+    "--force",
+    "Clear the output directory even if it does not look like a previous bundle",
+    false,
+  )
+  .option(
     "-m, --manifest <path>",
     "Also write manifest to this path for import in app source",
   )
@@ -66,6 +114,16 @@ export const bundleCommand = new Command("bundle")
       const sourceDir = path.resolve(process.cwd(), options.source);
       const distDir = path.join(sourceDir, "dist");
       const targetDir = path.resolve(process.cwd(), options.output);
+
+      const unsafe = unsafeTargetReason(
+        targetDir,
+        sourceDir,
+        process.cwd(),
+        options.force,
+      );
+      if (unsafe) {
+        throw new Error(`Refusing to clear ${targetDir}: ${unsafe}`);
+      }
 
       // 1. Build
       if (options.build) {

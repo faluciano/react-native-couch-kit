@@ -26,10 +26,12 @@ Then install the required peer dependencies:
 
 ```bash
 npx expo install expo-file-system expo-network
-bun add react-native-nitro-modules
+bun add react-native-nitro-modules@~0.35.0
 ```
 
-> **Note:** This library requires Expo modules (`expo-file-system`, `expo-network`) and `react-native-nitro-modules` as peer dependencies. These must be installed in your consumer app. React Native's autolinking will handle native setup automatically.
+> **Note:** Keep `react-native-nitro-modules` on 0.35.x. The native HTTP server is generated against it, and Nitro minor versions change the generated C++ ABI.
+>
+> This library requires Expo modules (`expo-file-system`, `expo-network`) and `react-native-nitro-modules` as peer dependencies. These must be installed in your consumer app. React Native's autolinking will handle native setup automatically.
 
 ## Compatibility
 
@@ -37,7 +39,7 @@ bun add react-native-nitro-modules
 | ---------------------------- | --------------- |
 | `react`                      | `>= 18.2.0`     |
 | `react-native`               | `>= 0.72.0`     |
-| `react-native-nitro-modules` | `>= 0.33.0`     |
+| `react-native-nitro-modules` | `~0.35.0`       |
 | `expo`                       | `>= 51.0.0`     |
 | `expo-file-system`           | `>= 19.0.0`    |
 | `expo-network`               | `>= 7.0.0`      |

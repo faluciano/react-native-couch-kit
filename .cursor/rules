@@ -1,6 +1,6 @@
 You are working on couch-kit, a TypeScript framework for local multiplayer TV party games.
 
-Package manager: Bun (1.4.2). Never use npm/yarn/pnpm.
+Package manager: Bun (version pinned by packageManager in package.json). Never use npm/yarn/pnpm.
 Build: bun run build (core must build first)
 Test: bun run test
 Lint: bun run lint (Prettier formatting check + changeset header lint; there is no ESLint)
