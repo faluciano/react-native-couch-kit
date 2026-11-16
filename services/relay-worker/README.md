@@ -35,6 +35,19 @@ bun install
 bunx wrangler dev --local    # http://localhost:8787
 ```
 
+## Tests
+
+```bash
+bun test
+```
+
+The routing rules are tested with the shared core, in `../relay/tests`. The
+tests here cover what only this deployment has — the router, one Durable Object
+per room, resuming a room, and what a room leaves in storage — by starting
+`wrangler dev --local` and talking to it over real WebSockets. They restart it
+partway through, because losing memory is the only way to see what was really
+persisted.
+
 ## Deployment
 
 Deploys run through **Workers Builds**, Cloudflare's native Git integration:
@@ -43,7 +56,8 @@ GitHub App. There is **no API token and no deploy secret in GitHub** — nothing
 long-lived to leak or rotate, and no credential in CI at all.
 
 CI still gates quality: the `relay` job in `.github/workflows/ci.yml` runs the
-routing-core tests and typechecks the Worker on every PR.
+routing-core tests, typechecks the Worker, and runs the Worker's own tests on
+every PR.
 
 ### One-time setup
 
