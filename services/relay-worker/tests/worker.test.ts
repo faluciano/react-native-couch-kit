@@ -380,3 +380,31 @@ describe("after the relay loses its memory", () => {
     await ghost.leave();
   }, 90_000);
 });
+
+// Very last: this spends the whole connection budget of the address the tests
+// come from.
+describe("the connection limit", () => {
+  test("stops one address from opening sockets without end", async () => {
+    // Matches `ratelimits` in wrangler.jsonc.
+    const limit = 60;
+    const open: Peer[] = [];
+    let refused = false;
+    for (let attempt = 0; attempt <= limit; attempt++) {
+      try {
+        open.push(await Peer.open(`/r/LIMIT${attempt}`));
+      } catch {
+        refused = true;
+        break;
+      }
+    }
+    expect(refused).toBe(true);
+    // Earlier tests since the restart count against the same budget, so the
+    // exact number varies — but most of it must still have been available.
+    expect(open.length).toBeGreaterThan(limit / 2);
+    expect(open.length).toBeLessThanOrEqual(limit);
+
+    // Only new sockets are refused; nothing else about the relay changes.
+    expect((await fetch(`${http}/healthz`)).status).toBe(200);
+    await Promise.all(open.map((peer) => peer.leave()));
+  }, 30_000);
+});

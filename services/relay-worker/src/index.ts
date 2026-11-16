@@ -15,17 +15,12 @@ import { ASSIGNED_CODE_HEADER } from "./room";
 
 export { RelayRoom } from "./room";
 
-/** Cloudflare's rate-limiting binding (see `unsafe.bindings` in wrangler.jsonc). */
-interface RateLimiter {
-  limit(options: { key: string }): Promise<{ success: boolean }>;
-}
-
 export interface Env {
   ROOMS: DurableObjectNamespace;
   /** Optional comma-separated origin allowlist. Empty/unset = open. */
   ALLOWED_ORIGINS?: string;
-  /** Caps new connections per IP. Absent in local dev. */
-  CONNECT_LIMITER?: RateLimiter;
+  /** Caps new connections per IP (see `ratelimits` in wrangler.jsonc). */
+  CONNECT_LIMITER: RateLimit;
 }
 
 /**
@@ -119,10 +114,9 @@ export default {
 
     // Cap how fast one address can open rooms/connections. This is the
     // replacement for the Bun relay's per-IP connection cap; Cloudflare's own
-    // DDoS protection sits in front of it. Absent locally, where the binding
-    // does not exist.
+    // DDoS protection sits in front of it.
     const ip = request.headers.get("CF-Connecting-IP");
-    if (env.CONNECT_LIMITER && ip) {
+    if (ip) {
       const { success } = await env.CONNECT_LIMITER.limit({ key: ip });
       if (!success) {
         return new Response("Too many connections", { status: 429 });
