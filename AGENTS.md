@@ -111,6 +111,7 @@ Key test files:
 - `packages/cli/tests/` — CLI commands, bundle manifest
 - `packages/devtools/tests/` — debug overlay
 - `services/relay/tests/` — relay routing core. Not covered by `bun run test`; these run in the separate `relay` CI job (`bun test` from `services/relay`).
+- `services/relay-worker/tests/` — the Worker end to end, against `wrangler dev --local`: router, one Durable Object per room, resume, and what a room leaves in storage. Same `relay` CI job (`bun test` from `services/relay-worker`).
 
 ## Release Flow
 
