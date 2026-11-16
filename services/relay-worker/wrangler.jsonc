@@ -4,6 +4,9 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-07-22",
   "observability": { "enabled": true },
+  // No per-version preview URLs: nothing uses them, and each one is another
+  // public address for the relay.
+  "preview_urls": false,
   "durable_objects": {
     "bindings": [{ "name": "ROOMS", "class_name": "RelayRoom" }]
   },

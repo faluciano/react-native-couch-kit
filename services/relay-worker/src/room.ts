@@ -112,7 +112,7 @@ export class RelayRoom implements DurableObject {
 
   /**
    * Brings storage in line with the core after anything that may have changed
-   * the room: persists its resume state (or deletes it once the room is over),
+   * the room: persists its resume state (or wipes storage once the room is over),
    * and points the alarm at the moment a display that dropped runs out of time
    * to come back. An alarm, unlike a timer, fires even if this object
    * hibernates in the meantime.
@@ -123,9 +123,14 @@ export class RelayRoom implements DurableObject {
       this.roomId === null ? undefined : core.resumeStateOf(this.roomId);
     const serialized = state ? JSON.stringify(state) : null;
     if (serialized !== this.persisted) {
-      if (state) this.ctx.storage.kv.put(RESUME_STATE_KEY, state);
-      else this.ctx.storage.kv.delete(RESUME_STATE_KEY);
+      // Recorded before the await below, so an overlapping sync() does not
+      // repeat the write.
       this.persisted = serialized;
+      if (state) this.ctx.storage.kv.put(RESUME_STATE_KEY, state);
+      // Deleting the key alone would leave this object's (empty) database
+      // behind forever, one per room code ever used. deleteAll is what hands
+      // the storage back, so an ended room costs nothing.
+      else await this.ctx.storage.deleteAll();
     }
 
     const expiry = core.nextExpiryAt();
