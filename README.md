@@ -208,7 +208,7 @@ bun add @couch-kit/host @couch-kit/core
 
 # Install required peer dependencies
 npx expo install expo-file-system expo-network
-bun add react-native-nitro-modules
+bun add react-native-nitro-modules@~0.35.0
 ```
 
 If you are setting up the Web Controller manually (instead of using the CLI in Step 4):

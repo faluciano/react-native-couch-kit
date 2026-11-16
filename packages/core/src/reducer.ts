@@ -87,16 +87,24 @@ export function createGameReducer<S extends IGameState, A extends IAction>(
       }
 
       case InternalActionTypes.PLAYER_RECONNECTED: {
-        const { playerId } = (
+        const { playerId, name, avatar } = (
           action as InternalAction<S> & { type: "__PLAYER_RECONNECTED__" }
         ).payload;
         const player = state.players[playerId];
         if (!player) return state;
+        // Name and avatar come from the rejoining JOIN, so a player who changed
+        // their name and rejoined is renamed. Absent (older recordings), the
+        // stored values stand.
         return {
           ...state,
           players: {
             ...state.players,
-            [playerId]: { ...player, connected: true },
+            [playerId]: {
+              ...player,
+              connected: true,
+              ...(name !== undefined ? { name } : {}),
+              ...(avatar !== undefined ? { avatar } : {}),
+            },
           },
         };
       }

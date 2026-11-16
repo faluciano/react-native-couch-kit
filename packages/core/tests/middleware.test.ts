@@ -410,6 +410,24 @@ describe("actionValidator", () => {
     expect(warnSpy.mock.calls[0][0]).toContain("failed validation");
   });
 
+  test("a validator that throws drops the action instead of passing it on", () => {
+    const schema: ActionSchema<TestAction> = {
+      INCREMENT: (action) => {
+        // A malformed payload makes a typical validator throw.
+        return (action as unknown as { payload: { n: number } }).payload.n > 0;
+      },
+    };
+
+    const enhanced = applyMiddleware<TestState, TestAction>(
+      actionValidator<TestState, TestAction>(schema),
+    )(wrappedReducer);
+
+    const result = enhanced(initialState, { type: "INCREMENT" });
+    expect(result.count).toBe(0);
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls[0][0]).toContain("failed validation");
+  });
+
   test("action with no matching validator passes through", () => {
     const schema: ActionSchema<TestAction> = {};
 

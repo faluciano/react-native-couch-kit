@@ -1,9 +1,10 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import path from "node:path";
 import {
   DEFAULT_HTTP_PORT,
   DEFAULT_WS_PORT_OFFSET,
   DEFAULT_WS_PATH,
+  MessageTypes,
 } from "@couch-kit/core";
 import { DEFAULT_SIMULATE_URL } from "../src/defaults";
 
@@ -81,5 +82,152 @@ describe("simulate default URL", () => {
     expect(stdout).toContain(
       "Spawning 0 bots connecting to ws://192.168.1.99:9000/ws...",
     );
+  });
+});
+
+describe("simulate bots", () => {
+  test("join, send actions, report host messages, and stop on SIGINT", async () => {
+    const received: { type: string; payload: Record<string, unknown> }[] = [];
+    const server = Bun.serve({
+      port: 0,
+      fetch(req, srv) {
+        return srv.upgrade(req)
+          ? undefined
+          : new Response(null, { status: 400 });
+      },
+      websocket: {
+        message(ws, raw) {
+          const msg = JSON.parse(String(raw));
+          received.push(msg);
+          if (msg.type === MessageTypes.JOIN) {
+            ws.send(
+              JSON.stringify({
+                type: MessageTypes.WELCOME,
+                payload: { playerId: "bot-player" },
+              }),
+            );
+            ws.send(
+              JSON.stringify({
+                type: MessageTypes.ERROR,
+                payload: { code: "FORBIDDEN_ACTION", message: "nope" },
+              }),
+            );
+            ws.send("not json");
+          }
+        },
+      },
+    });
+
+    const logs: string[] = [];
+    const errors: string[] = [];
+    const logSpy = spyOn(console, "log").mockImplementation((...args) => {
+      logs.push(args.map(String).join(" "));
+    });
+    const errSpy = spyOn(console, "error").mockImplementation((...args) => {
+      errors.push(args.map(String).join(" "));
+    });
+    const resumeSpy = spyOn(process.stdin, "resume").mockImplementation(
+      () => process.stdin,
+    );
+    let onSigint: (() => void) | undefined;
+    const onSpy = spyOn(process, "on").mockImplementation(((
+      event: string,
+      handler: () => void,
+    ) => {
+      if (event === "SIGINT") onSigint = handler;
+      return process;
+    }) as typeof process.on);
+    const exitSpy = spyOn(process, "exit").mockImplementation(
+      (() => undefined) as typeof process.exit,
+    );
+
+    try {
+      const { simulateCommand } = await import("../src/commands/simulate");
+      await simulateCommand.parseAsync(
+        [
+          "--count",
+          "1",
+          "--interval",
+          "0",
+          "--url",
+          `ws://localhost:${server.port}`,
+        ],
+        { from: "user" },
+      );
+
+      const deadline = Date.now() + 5_000;
+      while (
+        Date.now() < deadline &&
+        !(
+          received.some((m) => m.type === MessageTypes.ACTION) &&
+          logs.some((l) => l.includes("Joined as bot-player"))
+        )
+      ) {
+        await Bun.sleep(20);
+      }
+
+      const join = received.find((m) => m.type === MessageTypes.JOIN);
+      expect(join?.payload).toMatchObject({ name: "Bot 0", avatar: "bot" });
+      expect(typeof join?.payload.secret).toBe("string");
+      expect(
+        received.find((m) => m.type === MessageTypes.ACTION)?.payload,
+      ).toMatchObject({ type: "RANDOM_ACTION" });
+      expect(logs).toContain("[Bot 0] Connected");
+      expect(logs).toContain("[Bot 0] Joined as bot-player");
+      expect(errors).toContain("[Bot 0] Server error: nope");
+
+      expect(onSigint).toBeDefined();
+      onSigint?.();
+      expect(exitSpy).toHaveBeenCalled();
+
+      const closeDeadline = Date.now() + 5_000;
+      while (
+        Date.now() < closeDeadline &&
+        !logs.includes("[Bot 0] Disconnected")
+      ) {
+        await Bun.sleep(20);
+      }
+      expect(logs).toContain("[Bot 0] Disconnected");
+    } finally {
+      for (const spy of [logSpy, errSpy, resumeSpy, onSpy, exitSpy]) {
+        spy.mockRestore();
+      }
+      server.stop(true);
+    }
+  });
+
+  test("logs socket errors when the host is unreachable", async () => {
+    const errors: string[] = [];
+    const logSpy = spyOn(console, "log").mockImplementation(() => {});
+    const errSpy = spyOn(console, "error").mockImplementation((...args) => {
+      errors.push(args.map(String).join(" "));
+    });
+    const resumeSpy = spyOn(process.stdin, "resume").mockImplementation(
+      () => process.stdin,
+    );
+    const onSpy = spyOn(process, "on").mockImplementation(
+      (() => process) as typeof process.on,
+    );
+
+    // Reserve a port, then free it so nothing is listening there.
+    const probe = Bun.serve({ port: 0, fetch: () => new Response() });
+    const port = probe.port;
+    probe.stop(true);
+
+    try {
+      const { simulateCommand } = await import("../src/commands/simulate");
+      await simulateCommand.parseAsync(
+        ["--count", "1", "--url", `ws://localhost:${port}`],
+        { from: "user" },
+      );
+
+      const deadline = Date.now() + 5_000;
+      while (Date.now() < deadline && errors.length === 0) {
+        await Bun.sleep(20);
+      }
+      expect(errors.some((e) => e.startsWith("[Bot 0] Error:"))).toBe(true);
+    } finally {
+      for (const spy of [logSpy, errSpy, resumeSpy, onSpy]) spy.mockRestore();
+    }
   });
 });

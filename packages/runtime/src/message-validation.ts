@@ -1,4 +1,8 @@
-import { MessageTypes, type ClientMessage } from "@couch-kit/core";
+import {
+  MAX_ACTION_ID_LENGTH,
+  MessageTypes,
+  type ClientMessage,
+} from "@couch-kit/core";
 
 /**
  * Default maximum size (in bytes) of an inbound client message. Frames larger
@@ -122,7 +126,11 @@ export function isValidClientMessage(
       return (
         typeof m.payload === "object" &&
         m.payload !== null &&
-        typeof (m.payload as Record<string, unknown>).type === "string"
+        typeof (m.payload as Record<string, unknown>).type === "string" &&
+        (m.id === undefined ||
+          (typeof m.id === "string" &&
+            m.id.length > 0 &&
+            m.id.length <= MAX_ACTION_ID_LENGTH))
       );
     case MessageTypes.PING:
       return (

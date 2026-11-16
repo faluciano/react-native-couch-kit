@@ -151,6 +151,16 @@ export function normalizeRoomId(roomId: string): string {
 }
 
 /**
+ * Longest room code the relay accepts in a message. Minted codes are far
+ * shorter; this matches the Worker router's `/r/CODE` limit, and keeps a
+ * caller-named code from becoming an arbitrarily long map key.
+ */
+export const MAX_ROOM_ID_LENGTH = 16;
+
+/** String fields a relay message may carry. Each must be a string when present. */
+const STRING_FIELDS = ["type", "roomId", "resumeToken", "to", "data"] as const;
+
+/**
  * Room-code alphabet: no O/0 or I/1, which people confuse when copying a code
  * off a TV across the room.
  */
@@ -271,7 +281,7 @@ export class RelayRooms {
   private readonly now: () => number;
 
   /** Supplies the code for a `CREATE_ROOM` that did not name one. */
-  private readonly mintRoomCode: () => string | null;
+  private readonly mintRoomCode: (conn: RelayConnection) => string | null;
 
   constructor(
     limits: Partial<RelayLimits> = {},
@@ -284,8 +294,13 @@ export class RelayRooms {
      * a Cloudflare Durable Object *is* a single room and has no view of the
      * others — so it claims the code before the socket ever reaches the core
      * and passes the result in here.
+     *
+     * Receives the connection asking, so a sharded relay can answer with the
+     * code claimed for *that* socket and no other. Whatever comes back is still
+     * checked against the room table: a code already in use is refused, never
+     * reopened.
      */
-    mintRoomCode?: () => string | null,
+    mintRoomCode?: (conn: RelayConnection) => string | null,
   ) {
     this.limits = { ...DEFAULT_LIMITS, ...limits };
     this.now = now;
@@ -394,18 +409,19 @@ export class RelayRooms {
       return null;
     }
 
-    let msg: {
-      type?: string;
-      roomId?: string;
-      resumeToken?: string;
-      to?: string;
-      data?: string;
-      payloads?: Record<string, string>;
-    };
+    let parsed: unknown;
     try {
-      msg = JSON.parse(raw);
+      parsed = JSON.parse(raw);
     } catch {
       this.sendError(conn, RelayErrorCodes.MALFORMED, "Invalid JSON");
+      return null;
+    }
+    // Valid JSON is not a valid message: `null`, a number, or `{"roomId": 1}`
+    // would otherwise throw further down, and on the single-process relay an
+    // uncaught throw takes every room with it.
+    const msg = parseRelayMessage(parsed);
+    if (msg === null) {
+      this.sendError(conn, RelayErrorCodes.MALFORMED, "Malformed message");
       return null;
     }
 
@@ -584,8 +600,19 @@ export class RelayRooms {
     // No code named: the relay picks one. This is the path displays use — a
     // client-chosen code cannot be checked for collisions before it is already
     // on screen, and lets a caller squat on a code someone else is using.
-    if (!rawRoomId) {
-      const minted = this.mintRoomCode();
+    if (rawRoomId && rawRoomId.length > MAX_ROOM_ID_LENGTH) {
+      this.sendError(conn, RelayErrorCodes.MALFORMED, "Room code too long");
+      return;
+    }
+    if (this.rooms.size >= this.limits.maxRooms) {
+      this.sendError(conn, RelayErrorCodes.SERVER_BUSY, "Too many rooms");
+      return;
+    }
+    let roomId: string;
+    if (rawRoomId) {
+      roomId = normalizeRoomId(rawRoomId);
+    } else {
+      const minted = this.mintRoomCode(conn);
       if (minted === null) {
         this.sendError(
           conn,
@@ -594,16 +621,14 @@ export class RelayRooms {
         );
         return;
       }
-      this.openRoom(conn, minted);
-      return;
+      roomId = minted;
     }
-    const roomId = normalizeRoomId(rawRoomId);
+    // Checked for minted codes too. Opening a room replaces whatever is
+    // stored under its code, so a minter that hands back a live code (a
+    // sharded relay answering a second CREATE_ROOM in an occupied room) would
+    // otherwise give the caller someone else's room and its phones.
     if (this.rooms.has(roomId)) {
       this.sendError(conn, RelayErrorCodes.ROOM_EXISTS, "Room already exists");
-      return;
-    }
-    if (this.rooms.size >= this.limits.maxRooms) {
-      this.sendError(conn, RelayErrorCodes.SERVER_BUSY, "Too many rooms");
       return;
     }
     this.openRoom(conn, roomId);
@@ -865,4 +890,38 @@ export class RelayRooms {
   ): void {
     this.send(conn, { type: RelayMessageTypes.ERROR, code, message });
   }
+}
+
+/** The fields {@link RelayRooms.handleMessage} reads from a client frame. */
+interface RelayClientMessage {
+  type?: string;
+  roomId?: string;
+  resumeToken?: string;
+  to?: string;
+  data?: string;
+  payloads?: Record<string, string>;
+}
+
+/**
+ * Narrows parsed JSON to a client message, or `null` if it is not an object or
+ * a field the relay reads has the wrong type. `payloads` is only checked for
+ * being an object here; its values are checked as they are routed.
+ */
+function parseRelayMessage(value: unknown): RelayClientMessage | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  for (const field of STRING_FIELDS) {
+    if (record[field] !== undefined && typeof record[field] !== "string") {
+      return null;
+    }
+  }
+  if (
+    record.payloads !== undefined &&
+    (record.payloads === null || typeof record.payloads !== "object")
+  ) {
+    return null;
+  }
+  return record as RelayClientMessage;
 }

@@ -86,7 +86,11 @@ export type RelayErrorCode =
  */
 export interface CreateRoomMessage {
   type: typeof RelayMessageTypes.CREATE_ROOM;
-  roomId: string;
+  /**
+   * Code to create. Omit it to have the relay pick one, which is what
+   * displays do; required when resuming.
+   */
+  roomId?: string;
   /**
    * The token from this room's {@link RoomCreatedMessage}. Present only when
    * resuming; the relay then answers {@link RoomResumedMessage}, or

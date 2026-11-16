@@ -1,5 +1,54 @@
 # @couch-kit/host
 
+## 2.1.7
+
+### Patch Changes
+
+- [#234](https://github.com/faluciano/react-native-couch-kit/pull/234) [`c021c8b`](https://github.com/faluciano/react-native-couch-kit/commit/c021c8b61b227dc913a4ede4a3745cd198365ac7) Thanks [@faluciano](https://github.com/faluciano)! - The `react-native-nitro-modules` peer range is now `~0.35.0` instead of `>=0.35.0`. `react-native-nitro-http-server` is generated against Nitro 0.35, and Nitro minor versions change the generated C++ ABI, so 0.36 satisfied the old range but would break the native server. The README's install command and version table now say 0.35.x as well (the table said `>= 0.33.0`).
+
+## 2.1.6
+
+### Patch Changes
+
+- [#233](https://github.com/faluciano/react-native-couch-kit/pull/233) [`e9adcef`](https://github.com/faluciano/react-native-couch-kit/commit/e9adcefc608f60bad04af3c06f1b4728f6fdb3d7) Thanks [@faluciano](https://github.com/faluciano)! - The TV host no longer trusts the native server more than it should.
+
+  - **A port that is already in use is reported as an error.** The native server signals a failed bind by returning port 0 rather than throwing. Before, the WebSocket server still emitted `listening`, and the static server published a URL (and QR code) with nothing behind it. Both now surface the failure through `onError` and `useStaticServer`'s `error`.
+  - **`maxMessageBytes` now also caps the native WebSocket transport.** Before, the native layer buffered messages up to its 64 MB default before the 256 KiB check in JS ran, so any device on the network could push large frames into a TV's memory.
+  - **Static-server starts and stops run one at a time.** The native static server is a single process-wide instance. A restart while a start was still in flight (StrictMode's double mount, a port or directory change) could stop the replacement, or make it fail to bind, leaving a URL on screen with no server behind it.
+  - **The WebSocket server restarts when `port`, `wsPort` or `maxMessageBytes` change.** It used to keep its first port, which broke the WS = HTTP + 2 convention after an HTTP port change.
+  - **Asset extraction creates nested directories.** A path like `images/cards/ace.png`, with no file directly in `images/`, used to fail. Extraction also yields between files, so a large bundle no longer freezes the TV's UI and an unmount stops it part way.
+
+## 2.1.5
+
+### Patch Changes
+
+- Updated dependencies [[`495dac0`](https://github.com/faluciano/react-native-couch-kit/commit/495dac0441684212f8caa049de85b7122f5fffd6)]:
+  - @couch-kit/runtime@0.9.0
+
+## 2.1.4
+
+### Patch Changes
+
+- Updated dependencies [[`a899a61`](https://github.com/faluciano/react-native-couch-kit/commit/a899a6146a1de19d6c81807e622a1719046fc8ea)]:
+  - @couch-kit/core@0.11.0
+  - @couch-kit/runtime@0.8.0
+
+## 2.1.3
+
+### Patch Changes
+
+- Updated dependencies [[`8ef31ad`](https://github.com/faluciano/react-native-couch-kit/commit/8ef31adc53dc7342f1d81f8ba2e4acb6c8c1433e)]:
+  - @couch-kit/core@0.10.3
+  - @couch-kit/runtime@0.7.1
+
+## 2.1.2
+
+### Patch Changes
+
+- Updated dependencies [[`072bc40`](https://github.com/faluciano/react-native-couch-kit/commit/072bc40f923dd9169f2bcb344deb733223402323), [`072bc40`](https://github.com/faluciano/react-native-couch-kit/commit/072bc40f923dd9169f2bcb344deb733223402323)]:
+  - @couch-kit/core@0.10.2
+  - @couch-kit/runtime@0.7.0
+
 ## 2.1.1
 
 ### Patch Changes

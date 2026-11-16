@@ -84,12 +84,22 @@ export function generateId(): string {
   return a + b;
 }
 
+/** Longest secret, in hex characters, the host accepts. A UUID is 32. */
+export const MAX_SECRET_HEX_LENGTH = 128;
+
 /**
- * Validates that a string looks like a UUID (with or without dashes, 32+ hex chars).
+ * Validates that a string looks like a UUID (with or without dashes, 32 to
+ * {@link MAX_SECRET_HEX_LENGTH} hex chars). The upper bound keeps a client from
+ * making the host hash and store an arbitrarily long string.
  */
 export function isValidSecret(secret: string): boolean {
+  if (secret.length > MAX_SECRET_HEX_LENGTH * 2) return false;
   const hex = secret.replace(/-/g, "");
-  return hex.length >= 32 && /^[0-9a-f]+$/i.test(hex);
+  return (
+    hex.length >= 32 &&
+    hex.length <= MAX_SECRET_HEX_LENGTH &&
+    /^[0-9a-f]+$/i.test(hex)
+  );
 }
 
 /**

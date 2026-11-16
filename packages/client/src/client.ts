@@ -6,6 +6,7 @@ import {
   DEFAULT_BASE_DELAY,
   DEFAULT_MAX_DELAY,
   createGameReducer,
+  type ActionResult,
   type HostMessage,
   type IGameState,
   type IAction,
@@ -16,6 +17,7 @@ import {
   resolveWebSocketUrl,
   computeBackoffDelay,
   shouldReconnect,
+  isRecoverableClose,
   resolveSessionSecret,
   interpretHostMessage,
   DEFAULT_OPTIMISTIC_TIMEOUT,
@@ -27,6 +29,10 @@ import {
   type ClientTransport,
   type CreateClientTransport,
 } from "./transport";
+
+/** Connection status reported by {@link useGameClient}. */
+export type ClientStatus =
+  "connecting" | "connected" | "disconnected" | "error";
 
 export interface ClientConfig<S extends IGameState, A extends IAction> {
   url?: string; // Full WebSocket URL (overrides auto-detection)
@@ -83,7 +89,53 @@ export interface ClientConfig<S extends IGameState, A extends IAction> {
    * already-connecting transport each time.
    */
   createTransport?: CreateClientTransport;
+  /**
+   * Identifies what `createTransport` connects to. Changing it closes the
+   * current connection and opens a fresh one, with the retry budget reset.
+   *
+   * `createTransport` itself is read on each connect but is usually a new
+   * function every render, so it cannot signal a change. With a relay, pass
+   * the room code: a phone that typed a wrong code (`ROOM_NOT_FOUND`, which is
+   * final) then connects as soon as the player enters the right one. To retry
+   * the *same* code, call `reconnect()`.
+   */
+  connectionKey?: string | number | null;
+  /**
+   * Reconnect at once when the page becomes visible again, is restored from
+   * the back/forward cache, or the browser comes back online (default:
+   * `true`). A phone that slept through the reconnect attempts would otherwise
+   * stay disconnected until the page was reloaded. Final closes (a room that
+   * does not exist, a rejected secret) and `disconnect()` are not undone.
+   */
+  reconnectOnResume?: boolean;
+  /**
+   * Scope for the session secret when the transport does not set its own (see
+   * `ClientTransport.sessionScope`). Players keep one identity per scope.
+   */
+  sessionScope?: string;
+  /**
+   * How long (ms) `sendActionWithResult` waits for the host's answer before
+   * settling with `NO_RESULT` (default: 5000). Hosts older than this version
+   * never answer.
+   */
+  actionResultTimeoutMs?: number;
 }
+
+/** Default for {@link ClientConfig.actionResultTimeoutMs}. */
+export const DEFAULT_ACTION_RESULT_TIMEOUT = 5000;
+
+/**
+ * Codes `sendActionWithResult` settles with when the host never got to
+ * answer, alongside the host's own `ErrorCodes`.
+ */
+export const ClientActionErrorCodes = {
+  /** There was no open connection; the action was not sent. */
+  NOT_CONNECTED: "NOT_CONNECTED",
+  /** The connection closed before the host answered. */
+  DISCONNECTED: "DISCONNECTED",
+  /** No answer within `actionResultTimeoutMs`. The action may have applied. */
+  NO_RESULT: "NO_RESULT",
+} as const;
 
 /**
  * React hook that connects the web controller to the TV host via WebSocket.
@@ -93,7 +145,7 @@ export interface ClientConfig<S extends IGameState, A extends IAction> {
  * reconnection with exponential backoff.
  *
  * @param config - Client configuration including reducer, initial state, and connection options.
- * @returns An object with `status`, `state`, `playerId`, `sendAction`, `getServerTime`, `rtt`, `disconnect`, and `reconnect`.
+ * @returns An object with `status`, `state`, `playerId`, `disconnectReason`, `sendAction`, `getServerTime`, `rtt`, `disconnect`, and `reconnect`.
  *
  * @example
  * ```tsx
@@ -106,9 +158,7 @@ export interface ClientConfig<S extends IGameState, A extends IAction> {
 export function useGameClient<S extends IGameState, A extends IAction>(
   config: ClientConfig<S, A>,
 ) {
-  const [status, setStatus] = useState<
-    "connecting" | "connected" | "disconnected" | "error"
-  >("disconnected");
+  const [status, setStatus] = useState<ClientStatus>("disconnected");
   const [playerId, setPlayerId] = useState<string | null>(null);
   /**
    * Why the last connection ended, when the transport knows. For the relay this
@@ -136,8 +186,22 @@ export function useGameClient<S extends IGameState, A extends IAction>(
   const lastServerState = useRef<S | null>(null);
   const rollbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttempts = useRef(0);
+  // sendActionWithResult calls waiting on the host's ACTION_RESULT, by id.
+  const pendingResults = useRef(
+    new Map<
+      string,
+      {
+        settle: (result: ActionResult) => void;
+        timer: ReturnType<typeof setTimeout>;
+      }
+    >(),
+  );
+  const nextActionId = useRef(0);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const intentionalClose = useRef(false);
+  // The last close may be retried: not intentional, not a final close code.
+  // What resuming the page acts on once the backoff has given up.
+  const resumable = useRef(false);
 
   // Keep refs for values used inside connect() to avoid stale closures
   const configRef = useRef(config);
@@ -172,6 +236,26 @@ export function useGameClient<S extends IGameState, A extends IAction>(
       payload: serverState,
     } as InternalAction<S>);
   }, [cancelRollback]);
+
+  /** Settles one pending result, if it is still waiting. */
+  const settleResult = useCallback((id: string, result: ActionResult) => {
+    const pending = pendingResults.current.get(id);
+    if (!pending) return;
+    pendingResults.current.delete(id);
+    clearTimeout(pending.timer);
+    pending.settle(result);
+  }, []);
+
+  /** A connection ended: nothing still waiting will be answered on it. */
+  const settleAllPending = useCallback(() => {
+    for (const id of [...pendingResults.current.keys()]) {
+      settleResult(id, {
+        ok: false,
+        code: ClientActionErrorCodes.DISCONNECTED,
+        message: "The connection closed before the host answered",
+      });
+    }
+  }, [settleResult]);
 
   const maxRetries = config.maxRetries ?? DEFAULT_MAX_RETRIES;
   const baseDelay = config.baseDelay ?? DEFAULT_BASE_DELAY;
@@ -208,6 +292,7 @@ export function useGameClient<S extends IGameState, A extends IAction>(
 
     socketRef.current = transport;
     setStatus("connecting");
+    setDisconnectReason(null);
 
     // Every handler ignores a transport that is no longer the current one. A
     // socket closed by cleanup, `disconnect()` or a reconnect still fires its
@@ -227,6 +312,8 @@ export function useGameClient<S extends IGameState, A extends IAction>(
       // Session Recovery Logic -- use cryptographically random secrets
       const secret = resolveSessionSecret(
         typeof localStorage !== "undefined" ? localStorage : null,
+        undefined,
+        transport.sessionScope ?? currentCfg.sessionScope,
       );
 
       // Join with secret
@@ -283,12 +370,25 @@ export function useGameClient<S extends IGameState, A extends IAction>(
             rollbackToServerState();
             configRef.current.onError?.(effect.error);
             break;
+          case "actionResult":
+            if (!effect.result.ok) {
+              // A refusal is still an error for onError's purposes; only the
+              // channel it arrived on differs.
+              rollbackToServerState();
+              configRef.current.onError?.({
+                code: effect.result.code,
+                message: effect.result.message,
+              });
+            }
+            settleResult(effect.id, effect.result);
+            break;
         }
       }
     };
 
     transport.onclose = (code, reason) => {
       if (!isCurrent()) return;
+      settleAllPending();
       socketRef.current = null;
       setOpenTransport(null);
       setStatus("disconnected");
@@ -296,6 +396,7 @@ export function useGameClient<S extends IGameState, A extends IAction>(
       // ROOM_FULL, …). Surfacing it lets the UI explain the failure rather than
       // sit on "connecting" forever.
       setDisconnectReason(reason ? reason : null);
+      resumable.current = !intentionalClose.current && isRecoverableClose(code);
       configRef.current.onDisconnect?.();
 
       // Don't reconnect if the close was intentional or if the server
@@ -331,17 +432,20 @@ export function useGameClient<S extends IGameState, A extends IAction>(
       if (configRef.current.debug) console.error("[GameClient] Error", e);
       setStatus("error");
     };
-    // Only re-create the connect function when URL/port actually changes.
-    // Config values like name, avatar, callbacks, and createTransport are read
-    // from configRef.
+    // Only re-create the connect function when what it connects to changes:
+    // URL/port, or the caller's connectionKey. Config values like name,
+    // avatar, callbacks, and createTransport are read from configRef.
   }, [
     config.url,
     config.wsPort,
+    config.connectionKey,
     maxRetries,
     baseDelay,
     maxDelay,
     cancelRollback,
     rollbackToServerState,
+    settleResult,
+    settleAllPending,
   ]);
 
   /**
@@ -351,24 +455,63 @@ export function useGameClient<S extends IGameState, A extends IAction>(
    */
   const closeCurrent = useCallback(() => {
     intentionalClose.current = true;
+    resumable.current = false;
     if (reconnectTimer.current) {
       clearTimeout(reconnectTimer.current);
       reconnectTimer.current = null;
     }
     cancelRollback();
+    settleAllPending();
     const transport = socketRef.current;
     if (!transport) return;
     socketRef.current = null;
     setOpenTransport(null);
     transport.close();
     configRef.current.onDisconnect?.();
-  }, [cancelRollback]);
+  }, [cancelRollback, settleAllPending]);
 
-  // Initial Connection
+  // Initial connection, and a fresh one (with a fresh retry budget) whenever
+  // the target changes.
   useEffect(() => {
+    reconnectAttempts.current = 0;
     connect();
     return closeCurrent;
   }, [connect, closeCurrent]);
+
+  // Resume: a phone that slept, or lost its network, may have used up every
+  // retry while it could not connect. Try again the moment it is back.
+  useEffect(() => {
+    if (config.reconnectOnResume === false) return;
+    if (typeof window === "undefined") return;
+
+    const resume = () => {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState === "hidden"
+      ) {
+        return;
+      }
+      // A live or connecting transport needs nothing; a final close stays final.
+      if (socketRef.current || !resumable.current) return;
+      if (reconnectTimer.current) {
+        clearTimeout(reconnectTimer.current);
+        reconnectTimer.current = null;
+      }
+      if (configRef.current.debug)
+        console.log("[GameClient] Page resumed, reconnecting");
+      reconnectAttempts.current = 0;
+      connect();
+    };
+
+    document?.addEventListener("visibilitychange", resume);
+    window.addEventListener("online", resume);
+    window.addEventListener("pageshow", resume);
+    return () => {
+      document?.removeEventListener("visibilitychange", resume);
+      window.removeEventListener("online", resume);
+      window.removeEventListener("pageshow", resume);
+    };
+  }, [connect, config.reconnectOnResume]);
 
   /**
    * Manually disconnect from the host.
@@ -389,9 +532,24 @@ export function useGameClient<S extends IGameState, A extends IAction>(
     connect();
   }, [closeCurrent, connect]);
 
-  // Action Dispatcher
-  const sendAction = useCallback(
-    (action: A) => {
+  /**
+   * Sends an action to the host, applying it locally first when a `reducer`
+   * is configured.
+   *
+   * @returns `true` if the action was sent, `false` if there is no open
+   *   connection. Nothing is queued, and no optimistic update is applied, for
+   *   an action that was not sent. Sent actions can still be rejected by the
+   *   host; those arrive through `onError`.
+   */
+  const sendActionMessage = useCallback(
+    (action: A, id?: string): boolean => {
+      const transport = socketRef.current;
+      if (transport?.readyState !== TransportReadyState.OPEN) {
+        if (configRef.current.debug)
+          console.warn("[GameClient] Not connected, action dropped:", action);
+        return false;
+      }
+
       // 1. Optimistic Update
       dispatchLocal(action);
 
@@ -408,16 +566,67 @@ export function useGameClient<S extends IGameState, A extends IAction>(
       }
 
       // 2. Send to Host
-      if (socketRef.current?.readyState === TransportReadyState.OPEN) {
-        socketRef.current.send(
-          JSON.stringify({
-            type: MessageTypes.ACTION,
-            payload: action,
-          }),
+      try {
+        transport.send(
+          JSON.stringify(
+            id === undefined
+              ? { type: MessageTypes.ACTION, payload: action }
+              : { type: MessageTypes.ACTION, payload: action, id },
+          ),
         );
+      } catch (e) {
+        if (configRef.current.debug)
+          console.error("[GameClient] Failed to send action:", e);
+        rollbackToServerState();
+        return false;
       }
+      return true;
     },
     [rollbackToServerState],
+  );
+
+  const sendAction = useCallback(
+    (action: A): boolean => sendActionMessage(action),
+    [sendActionMessage],
+  );
+
+  /**
+   * Like `sendAction`, but resolves with the host's verdict on this action:
+   * `{ ok: true }` once applied, or `{ ok: false, code, message }` when the
+   * host refused it (the game's `authorizeAction`, a reducer that threw, rate
+   * limiting) or never got to answer (`NOT_CONNECTED`, `DISCONNECTED`,
+   * `NO_RESULT`). Never rejects.
+   *
+   * Await it to keep a button disabled until the host has answered, so a
+   * double tap sends one action, and to show a refusal where it happened.
+   * Refusals also reach `onError`.
+   */
+  const sendActionWithResult = useCallback(
+    (action: A): Promise<ActionResult> => {
+      const id = `a${++nextActionId.current}`;
+      return new Promise<ActionResult>((resolve) => {
+        const timeout =
+          configRef.current.actionResultTimeoutMs ??
+          DEFAULT_ACTION_RESULT_TIMEOUT;
+        const timer = setTimeout(() => {
+          settleResult(id, {
+            ok: false,
+            code: ClientActionErrorCodes.NO_RESULT,
+            message: "The host did not answer in time",
+          });
+        }, timeout);
+        pendingResults.current.set(id, { settle: resolve, timer });
+
+        if (!sendActionMessage(action, id)) {
+          settleResult(id, {
+            ok: false,
+            code: ClientActionErrorCodes.NOT_CONNECTED,
+            message: "Not connected to the host",
+          });
+        }
+      });
+    },
+    [sendActionMessage, settleResult],
   );
 
   return {
@@ -431,6 +640,7 @@ export function useGameClient<S extends IGameState, A extends IAction>(
      */
     disconnectReason,
     sendAction,
+    sendActionWithResult,
     getServerTime,
     /** Round-trip time (ms) to the server. Updated periodically via PING/PONG. */
     rtt,
@@ -440,3 +650,9 @@ export function useGameClient<S extends IGameState, A extends IAction>(
     reconnect,
   };
 }
+
+/** What {@link useGameClient} returns. */
+export type UseGameClientResult<
+  S extends IGameState,
+  A extends IAction,
+> = ReturnType<typeof useGameClient<S, A>>;

@@ -4,6 +4,7 @@ import {
   DEFAULT_WS_PATH,
   generateId,
   isValidSecret,
+  type ActionResult,
   type HostMessage,
 } from "@couch-kit/core";
 
@@ -19,6 +20,15 @@ import {
 
 /** localStorage key under which the session-recovery secret is persisted. */
 export const SESSION_SECRET_KEY = "ck_secret";
+
+/**
+ * The storage key for a session scope: {@link SESSION_SECRET_KEY} itself when
+ * unscoped (so existing LAN players keep their identity), otherwise suffixed
+ * with the scope.
+ */
+export function sessionSecretKey(scope?: string): string {
+  return scope ? `${SESSION_SECRET_KEY}:${scope}` : SESSION_SECRET_KEY;
+}
 
 /**
  * Default time (ms) an optimistic update may stand without the host confirming
@@ -98,6 +108,14 @@ export interface ReconnectDecision {
 }
 
 /**
+ * Whether a close with this code may be retried at all, regardless of how many
+ * attempts remain. Policy (1008) and internal-error (1011) closes are final.
+ */
+export function isRecoverableClose(closeCode: number): boolean {
+  return !NON_RECOVERABLE_CLOSE_CODES.has(closeCode);
+}
+
+/**
  * Decide whether the client should attempt an automatic reconnect.
  *
  * Returns `false` for intentional closes, for non-recoverable server close
@@ -106,7 +124,7 @@ export interface ReconnectDecision {
  */
 export function shouldReconnect(decision: ReconnectDecision): boolean {
   if (decision.intentionalClose) return false;
-  if (NON_RECOVERABLE_CLOSE_CODES.has(decision.closeCode)) return false;
+  if (!isRecoverableClose(decision.closeCode)) return false;
   return decision.attempts < decision.maxRetries;
 }
 
@@ -123,17 +141,22 @@ export type SecretStorage = Pick<Storage, "getItem" | "setItem">;
  * storage is unavailable or throws (e.g. Safari private browsing, restrictive
  * WebViews), a fresh secret is generated without persistence so a JOIN can
  * still proceed.
+ *
+ * `scope` keeps a separate secret per scope (see
+ * `ClientTransport.sessionScope`).
  */
 export function resolveSessionSecret(
   storage: SecretStorage | null | undefined,
   generate: () => string = generateId,
+  scope?: string,
 ): string {
+  const key = sessionSecretKey(scope);
   try {
     if (!storage) return generate();
-    const stored = storage.getItem(SESSION_SECRET_KEY);
+    const stored = storage.getItem(key);
     if (stored && isValidSecret(stored)) return stored;
     const secret = generate();
-    storage.setItem(SESSION_SECRET_KEY, secret);
+    storage.setItem(key, secret);
     return secret;
   } catch {
     return generate();
@@ -149,7 +172,8 @@ export type HostMessageEffect<S> =
   | { kind: "setPlayerId"; playerId: string }
   | { kind: "hydrate"; state: S }
   | { kind: "pong"; payload: PongPayload }
-  | { kind: "error"; error: HostError };
+  | { kind: "error"; error: HostError }
+  | { kind: "actionResult"; id: string; result: ActionResult };
 
 /**
  * A rejection reported by the host — e.g. `RATE_LIMITED`, `NOT_JOINED`,
@@ -184,6 +208,10 @@ export function interpretHostMessage<S>(
       ];
     case MessageTypes.ERROR:
       return [{ kind: "error", error: msg.payload }];
+    case MessageTypes.ACTION_RESULT: {
+      const { id, ...result } = msg.payload;
+      return [{ kind: "actionResult", id, result: result as ActionResult }];
+    }
     default:
       return [];
   }

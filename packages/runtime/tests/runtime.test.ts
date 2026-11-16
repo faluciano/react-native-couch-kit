@@ -145,9 +145,11 @@ describe("GameHostRuntime", () => {
     expect(update?.type).toBe(MessageTypes.STATE_UPDATE);
     if (update?.type === MessageTypes.STATE_UPDATE) {
       expect(update.payload.newState).toEqual(runtime.getState());
+      // The applied action, stamped with the sender's authoritative ID.
       expect(update.payload.action).toEqual({
         type: "INCREMENT",
         payload: 5,
+        playerId: welcome.payload.playerId,
       });
     }
   });
@@ -588,6 +590,108 @@ describe("GameHostRuntime hardening", () => {
     expect(errors[0]?.message).toContain("boom");
   });
 
+  test("a reducer that throws on a player action keeps state and reports", async () => {
+    const errors: Error[] = [];
+    const { runtime, transport } = createRuntime({
+      reducer: (state, action) => {
+        if (action.type === "INCREMENT" && typeof action.payload !== "number") {
+          throw new Error("bad payload");
+        }
+        return reducer(state, action);
+      },
+      onError: (error) => errors.push(error),
+    });
+    await joinPlayer(runtime, "connection-1");
+    const before = runtime.getState();
+
+    await runtime.handleMessage("connection-1", {
+      type: MessageTypes.ACTION,
+      payload: { type: "INCREMENT" },
+    });
+
+    expect(runtime.getState()).toBe(before);
+    expect(errors[0]?.message).toContain('Reducer failed on "INCREMENT"');
+    // The runtime keeps serving: a valid action still applies.
+    await runtime.handleMessage("connection-1", {
+      type: MessageTypes.ACTION,
+      payload: { type: "INCREMENT", payload: 2 },
+    });
+    await flushBroadcast();
+    expect(Object.values(runtime.getState().scores)).toEqual([2]);
+    expect(transport.broadcasts.length).toBeGreaterThan(0);
+    runtime.stop();
+  });
+
+  test("a throwing state subscriber does not stop broadcasts", async () => {
+    const errors: Error[] = [];
+    const { runtime, transport } = createRuntime({
+      onError: (error) => errors.push(error),
+    });
+    await joinPlayer(runtime, "connection-1");
+    await flushBroadcast();
+    runtime.subscribe(() => {
+      throw new Error("subscriber boom");
+    });
+    const before = transport.broadcasts.length;
+
+    runtime.dispatch({ type: "INCREMENT", payload: 1, playerId: "p" });
+    await flushBroadcast();
+
+    expect(transport.broadcasts.length).toBe(before + 1);
+    expect(errors[0]?.message).toContain("subscriber boom");
+    runtime.stop();
+  });
+
+  test("a projection that throws for one player still updates the others", async () => {
+    const errors: Error[] = [];
+    let failFor: string | null = null;
+    const { runtime, transport } = createRuntime({
+      project: (state, playerId) => {
+        if (playerId === failFor) throw new Error("project boom");
+        return { scores: state.scores, me: playerId };
+      },
+      onError: (error) => errors.push(error),
+    });
+    await joinPlayer(runtime, "connection-1");
+    await joinPlayer(runtime, "connection-2");
+    const welcome = transport.sent.get("connection-1")?.[0];
+    if (welcome?.type !== MessageTypes.WELCOME)
+      throw new Error("Expected WELCOME");
+    failFor = welcome.payload.playerId;
+    await flushBroadcast();
+    const sentTo2 = transport.sent.get("connection-2")?.length ?? 0;
+
+    runtime.dispatch({ type: "INCREMENT", payload: 1, playerId: "x" });
+    await flushBroadcast();
+
+    expect(transport.sent.get("connection-2")?.length).toBe(sentTo2 + 1);
+    expect(errors.some((e) => e.message.includes("project boom"))).toBe(true);
+    runtime.stop();
+  });
+
+  test("a JOIN whose secret embeds another player's ID joins as a new player", async () => {
+    const { runtime, transport } = createRuntime({
+      project: (state, playerId) => ({
+        me: playerId,
+        n: Object.keys(state.players).length,
+      }),
+    });
+    await joinPlayer(runtime, "victim");
+    const welcome = transport.lastSent("victim");
+    if (welcome?.type !== MessageTypes.WELCOME)
+      throw new Error("Expected WELCOME");
+    const victimId = welcome.payload.playerId;
+
+    await joinPlayer(runtime, "attacker", `${victimId}0000000000000000`);
+
+    const reply = transport.lastSent("attacker");
+    expect(reply?.type).toBe(MessageTypes.WELCOME);
+    if (reply?.type !== MessageTypes.WELCOME) return;
+    expect(reply.payload.playerId).not.toBe(victimId);
+    expect(Object.keys(runtime.getState().players)).toHaveLength(2);
+    runtime.stop();
+  });
+
   test("resendState re-sends unchanged state to joined players", async () => {
     const { runtime, transport } = createRuntime();
     await joinPlayer(runtime, "connection-1");
@@ -941,5 +1045,291 @@ describe("GameHostRuntime state projection", () => {
       expect(transport.sent.get("conn-1")).toHaveLength(1);
       expect(transport.sent.get("conn-2")).toHaveLength(1);
     });
+  });
+});
+
+describe("GameHostRuntime authorizeAction and action results", () => {
+  type GameAction =
+    | {
+        type: "MOVE";
+        payload: { as?: string; seed?: number };
+        playerId?: string;
+      }
+    | { type: "HOST_ONLY"; playerId?: string };
+  interface GameState extends IGameState {
+    moves: { by: string; as?: string; seed?: number }[];
+  }
+  const gameInitial: GameState = { status: "playing", players: {}, moves: [] };
+  const gameReducer = (state: GameState, action: GameAction): GameState => {
+    if (action.type === "MOVE") {
+      if (action.payload.seed === -1) throw new Error("reducer boom");
+      return {
+        ...state,
+        moves: [
+          ...state.moves,
+          {
+            by: action.playerId ?? "?",
+            as: action.payload.as,
+            seed: action.payload.seed,
+          },
+        ],
+      };
+    }
+    return state;
+  };
+
+  function createGame(
+    overrides: Partial<GameHostRuntimeConfig<GameState, GameAction>> = {},
+  ) {
+    const transport = new FakeTransport();
+    const runtime = new GameHostRuntime<GameState, GameAction>(
+      {
+        initialState: gameInitial,
+        reducer: gameReducer,
+        stateThrottleMs: 0,
+        ...overrides,
+      },
+      transport,
+    );
+    return { runtime, transport };
+  }
+
+  async function join(
+    runtime: GameHostRuntime<GameState, GameAction>,
+    transport: FakeTransport,
+    connectionId: string,
+  ): Promise<string> {
+    runtime.handleConnection(connectionId);
+    await runtime.handleMessage(connectionId, {
+      type: MessageTypes.JOIN,
+      payload: { name: "P", secret: generateId() },
+    });
+    const welcome = transport.lastSent(connectionId);
+    if (welcome?.type !== MessageTypes.WELCOME)
+      throw new Error("Expected WELCOME");
+    return welcome.payload.playerId;
+  }
+
+  test("a rejection reaches the sender as FORBIDDEN_ACTION with the reason", async () => {
+    const { runtime, transport } = createGame({
+      authorizeAction: (action) =>
+        action.type === "HOST_ONLY"
+          ? { reject: "Only the TV can do that" }
+          : action,
+    });
+    await join(runtime, transport, "c1");
+
+    await runtime.handleMessage("c1", {
+      type: MessageTypes.ACTION,
+      payload: { type: "HOST_ONLY" },
+    });
+
+    expect(transport.lastSent("c1")).toEqual({
+      type: MessageTypes.ERROR,
+      payload: { code: "FORBIDDEN_ACTION", message: "Only the TV can do that" },
+    });
+  });
+
+  test("a rewritten action is applied, and re-stamped with the sender", async () => {
+    let seenPlayerId: string | undefined;
+    const { runtime, transport } = createGame({
+      authorizeAction: (action, playerId) => {
+        seenPlayerId = playerId;
+        if (action.type !== "MOVE") return action;
+        // Overwrite a nested player ID, strip a field players may not set,
+        // and (wrongly) try to re-attribute the outer playerId.
+        return {
+          ...action,
+          playerId: "someone-else",
+          payload: { as: playerId },
+        };
+      },
+    });
+    const me = await join(runtime, transport, "c1");
+
+    await runtime.handleMessage("c1", {
+      type: MessageTypes.ACTION,
+      payload: { type: "MOVE", payload: { as: "victim", seed: 42 } },
+    });
+
+    expect(seenPlayerId).toBe(me);
+    expect(runtime.getState().moves).toEqual([
+      { by: me, as: me, seed: undefined },
+    ]);
+  });
+
+  test("host dispatches bypass authorizeAction", () => {
+    const { runtime } = createGame({
+      authorizeAction: () => ({ reject: "no" }),
+    });
+    runtime.dispatch({ type: "MOVE", payload: {}, playerId: "host" });
+    expect(runtime.getState().moves).toHaveLength(1);
+  });
+
+  test("fails closed when the hook throws or returns garbage", async () => {
+    const errors: Error[] = [];
+    let mode: "throw" | "garbage" | "internal" = "throw";
+    const { runtime, transport } = createGame({
+      onError: (error) => errors.push(error),
+      authorizeAction: () => {
+        if (mode === "throw") throw new Error("hook boom");
+        if (mode === "garbage") return null as unknown as GameAction;
+        return { type: "__HYDRATE__" } as unknown as GameAction;
+      },
+    });
+    await join(runtime, transport, "c1");
+
+    for (const next of ["throw", "garbage", "internal"] as const) {
+      mode = next;
+      await runtime.handleMessage("c1", {
+        type: MessageTypes.ACTION,
+        payload: { type: "MOVE", payload: {} },
+      });
+      const reply = transport.lastSent("c1");
+      expect(reply?.type).toBe(MessageTypes.ERROR);
+      if (reply?.type === MessageTypes.ERROR) {
+        expect(reply.payload.code).toBe("FORBIDDEN_ACTION");
+      }
+    }
+    expect(runtime.getState().moves).toHaveLength(0);
+    expect(errors.map((e) => e.message).join(" ")).toContain("hook boom");
+    expect(errors).toHaveLength(2);
+  });
+
+  test("an action with an id is answered with ACTION_RESULT", async () => {
+    const { runtime, transport } = createGame({
+      authorizeAction: (action) =>
+        action.type === "HOST_ONLY" ? { reject: "nope" } : action,
+      onError: () => {},
+    });
+    await join(runtime, transport, "c1");
+    const send = (payload: GameAction, id: string) =>
+      runtime.handleMessage("c1", { type: MessageTypes.ACTION, payload, id });
+
+    await send({ type: "MOVE", payload: {} }, "a1");
+    expect(transport.lastSent("c1")).toEqual({
+      type: MessageTypes.ACTION_RESULT,
+      payload: { id: "a1", ok: true },
+    });
+
+    await send({ type: "HOST_ONLY" }, "a2");
+    expect(transport.lastSent("c1")).toEqual({
+      type: MessageTypes.ACTION_RESULT,
+      payload: {
+        id: "a2",
+        ok: false,
+        code: "FORBIDDEN_ACTION",
+        message: "nope",
+      },
+    });
+
+    await send({ type: "MOVE", payload: { seed: -1 } }, "a3");
+    expect(transport.lastSent("c1")).toMatchObject({
+      type: MessageTypes.ACTION_RESULT,
+      payload: { id: "a3", ok: false, code: "ACTION_FAILED" },
+    });
+
+    // An internal type is refused before the game's hook ever runs.
+    await send({ type: "__HYDRATE__" } as unknown as GameAction, "a4");
+    expect(transport.lastSent("c1")).toMatchObject({
+      payload: { id: "a4", ok: false, code: "FORBIDDEN_ACTION" },
+    });
+  });
+
+  test("a reducer failure without an id is reported as ACTION_FAILED", async () => {
+    const { runtime, transport } = createGame({ onError: () => {} });
+    await join(runtime, transport, "c1");
+    await runtime.handleMessage("c1", {
+      type: MessageTypes.ACTION,
+      payload: { type: "MOVE", payload: { seed: -1 } },
+    });
+    expect(transport.lastSent("c1")).toMatchObject({
+      type: MessageTypes.ERROR,
+      payload: { code: "ACTION_FAILED" },
+    });
+  });
+
+  test("an action id that is not a short string is INVALID_MESSAGE", async () => {
+    const { runtime, transport } = createGame();
+    await join(runtime, transport, "c1");
+    for (const id of [5, "", "x".repeat(65)]) {
+      await runtime.handleMessage("c1", {
+        type: MessageTypes.ACTION,
+        payload: { type: "MOVE", payload: {} },
+        id,
+      });
+      expect(transport.lastSent("c1")).toMatchObject({
+        payload: { code: "INVALID_MESSAGE" },
+      });
+    }
+    expect(runtime.getState().moves).toHaveLength(0);
+  });
+});
+
+describe("GameHostRuntime stop and restart", () => {
+  test("stop marks live players disconnected", async () => {
+    const { runtime } = createRuntime();
+    await joinPlayer(runtime, "c1");
+    const [id] = Object.keys(runtime.getState().players);
+
+    runtime.stop();
+
+    expect(runtime.getState().players[id].connected).toBe(false);
+  });
+
+  test("after a restart, a player who never returns is removed", async () => {
+    const { runtime, transport } = createRuntime({ disconnectTimeout: 10 });
+    await joinPlayer(runtime, "c1");
+    const [id] = Object.keys(runtime.getState().players);
+
+    // What GameHostProvider does on a StrictMode or Fast Refresh remount.
+    runtime.setTransport(null);
+    runtime.stop();
+    runtime.setTransport(transport);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    expect(runtime.getState().players[id]).toBeUndefined();
+    runtime.stop();
+  });
+
+  test("a removal pending at stop is re-armed on restart", async () => {
+    const { runtime, transport } = createRuntime({ disconnectTimeout: 20 });
+    await joinPlayer(runtime, "c1");
+    const [id] = Object.keys(runtime.getState().players);
+    runtime.handleDisconnect("c1");
+
+    runtime.stop();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    // Stopped for good so far: nothing ran while stopped.
+    expect(runtime.getState().players[id]).toBeDefined();
+
+    runtime.setTransport(transport);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(runtime.getState().players[id]).toBeUndefined();
+    runtime.stop();
+  });
+
+  test("a player who rejoins after the restart is kept and reconnected", async () => {
+    const { runtime, transport } = createRuntime({ disconnectTimeout: 20 });
+    const secret = await joinPlayer(runtime, "c1");
+    const [id] = Object.keys(runtime.getState().players);
+    runtime.stop();
+    runtime.setTransport(transport);
+
+    await joinPlayer(runtime, "c2", secret);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+
+    expect(runtime.getState().players[id]?.connected).toBe(true);
+    expect(transport.lastSent("c2")?.type).toBe(MessageTypes.RECONNECTED);
+    runtime.stop();
+  });
+
+  test("a final stop leaves no removal timer running", async () => {
+    const { runtime } = createRuntime({ disconnectTimeout: 10 });
+    await joinPlayer(runtime, "c1");
+    const [id] = Object.keys(runtime.getState().players);
+    runtime.stop();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(runtime.getState().players[id]).toBeDefined();
   });
 });

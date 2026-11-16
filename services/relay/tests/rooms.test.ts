@@ -302,6 +302,84 @@ describe("RelayRooms", () => {
     expect(rooms.roomCount).toBe(1);
   });
 
+  test("maxRooms also caps rooms whose code the relay picks", () => {
+    const rooms = new RelayRooms({ maxRooms: 1 });
+    rooms.handleMessage(conn("h1"), JSON.stringify({ type: "CREATE_ROOM" }));
+    const h2 = conn("h2");
+    rooms.handleMessage(h2, JSON.stringify({ type: "CREATE_ROOM" }));
+    expect(h2.sent[0].code).toBe(RelayErrorCodes.SERVER_BUSY);
+    expect(rooms.roomCount).toBe(1);
+  });
+
+  test("a minter that hands back a live code cannot take over that room", () => {
+    // A sharded relay (one Durable Object per room) mints by returning the
+    // code its router claimed. A second CREATE_ROOM inside an occupied object
+    // must not reopen — and so replace — the live room.
+    const rooms = new RelayRooms({}, Date.now, () => "ROOM");
+    const host = conn("h");
+    const phone = conn("p");
+    const attacker = conn("x");
+    rooms.handleMessage(host, JSON.stringify({ type: "CREATE_ROOM" }));
+    rooms.handleMessage(
+      phone,
+      JSON.stringify({ type: "JOIN_ROOM", roomId: "ROOM" }),
+    );
+
+    rooms.handleMessage(attacker, JSON.stringify({ type: "CREATE_ROOM" }));
+
+    expect(attacker.sent[0].type).toBe(RelayMessageTypes.ERROR);
+    expect(attacker.sent[0].code).toBe(RelayErrorCodes.ROOM_EXISTS);
+    expect(rooms.membershipOf("x")).toBeUndefined();
+    host.sent.length = 0;
+    rooms.handleMessage(phone, JSON.stringify({ type: "DATA", data: "hi" }));
+    expect(host.sent[0]).toMatchObject({ from: "p", data: "hi" });
+    expect(attacker.sent).toHaveLength(1);
+  });
+
+  test("the minter is told which connection is asking", () => {
+    const asked: string[] = [];
+    const rooms = new RelayRooms({}, Date.now, (c) => {
+      asked.push(c.id);
+      return "ROOM";
+    });
+    rooms.handleMessage(conn("h"), JSON.stringify({ type: "CREATE_ROOM" }));
+    expect(asked).toEqual(["h"]);
+  });
+
+  test("valid JSON that is not a message object is MALFORMED, not a throw", () => {
+    const rooms = new RelayRooms();
+    for (const raw of [
+      "null",
+      "1",
+      '"CREATE_ROOM"',
+      "[]",
+      JSON.stringify({ type: "JOIN_ROOM", roomId: 1 }),
+      JSON.stringify({ type: "CREATE_ROOM", roomId: "A", resumeToken: 5 }),
+      JSON.stringify({ type: 7 }),
+      JSON.stringify({ type: "DATA", data: { nested: true } }),
+      JSON.stringify({ type: "DATA_MULTI", payloads: null }),
+    ]) {
+      const c = conn(`c-${raw}`);
+      expect(() => rooms.handleMessage(c, raw)).not.toThrow();
+      expect(c.sent[0]).toMatchObject({
+        type: RelayMessageTypes.ERROR,
+        code: RelayErrorCodes.MALFORMED,
+      });
+    }
+    expect(rooms.roomCount).toBe(0);
+  });
+
+  test("a caller-named room code longer than the limit is refused", () => {
+    const rooms = new RelayRooms();
+    const h = conn("h");
+    rooms.handleMessage(
+      h,
+      JSON.stringify({ type: "CREATE_ROOM", roomId: "A".repeat(17) }),
+    );
+    expect(h.sent[0].code).toBe(RelayErrorCodes.MALFORMED);
+    expect(rooms.roomCount).toBe(0);
+  });
+
   test("joining a full room is rejected with ROOM_FULL", () => {
     const rooms = new RelayRooms({ maxPlayersPerRoom: 1 });
     rooms.handleMessage(

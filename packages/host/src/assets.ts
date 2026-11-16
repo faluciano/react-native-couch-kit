@@ -56,7 +56,7 @@ export function useExtractAssets(manifest: AssetManifest): ExtractAssetsResult {
         }
 
         // Create the root target directory
-        targetDir.create();
+        targetDir.create({ intermediates: true, idempotent: true });
 
         // Copy each file from APK assets to filesystem
         for (const filePath of manifest.files) {
@@ -70,7 +70,9 @@ export function useExtractAssets(manifest: AssetManifest): ExtractAssetsResult {
               filePath.substring(0, lastSlash),
             );
             if (!subDir.exists) {
-              subDir.create();
+              // A nested path ("images/cards/ace.png") may have no file
+              // directly in its parent, so the parents must be created too.
+              subDir.create({ intermediates: true, idempotent: true });
             }
           }
 
@@ -83,6 +85,11 @@ export function useExtractAssets(manifest: AssetManifest): ExtractAssetsResult {
           const destFile = new File(targetDir, filePath);
           const content = sourceFile.bytesSync();
           destFile.write(content);
+
+          // The copy is synchronous; yield between files so a large bundle
+          // does not freeze the TV's UI for the whole extraction, and so an
+          // unmount can stop it part way.
+          await new Promise<void>((resolve) => setTimeout(resolve, 0));
         }
 
         if (cancelled) return;

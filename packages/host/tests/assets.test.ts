@@ -78,6 +78,32 @@ describe("useExtractAssets", () => {
     expect(fs.log.filter((op) => op === `mkdir ${WWW}/assets`)).toHaveLength(1);
   });
 
+  test("creates nested directories whose parent holds no files", async () => {
+    // Nothing sits directly in images/, so images/cards needs its parent made.
+    const manifest = bundle({ "images/cards/ace.png": "png" });
+    const { result } = renderHook(() => useExtractAssets(manifest));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.error).toBeNull();
+    expect(fs.files.has(`${WWW}/images/cards/ace.png`)).toBe(true);
+  });
+
+  test("an unmount part way through stops copying", async () => {
+    const files: Record<string, string> = {};
+    for (let i = 0; i < 20; i++) files[`f${i}.js`] = String(i);
+    const manifest = bundle(files);
+    const { unmount } = renderHook(() => useExtractAssets(manifest));
+
+    // Yielding between files lets the unmount land mid-extraction.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    unmount();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const written = [...fs.files.keys()].filter((k) => k.startsWith(WWW));
+    expect(written.length).toBeGreaterThan(0);
+    expect(written.length).toBeLessThan(20);
+  });
+
   test("replaces a previous extraction so app updates ship fresh assets", async () => {
     fs.dirs.add(WWW);
     fs.files.set(`${WWW}/stale.js`, bytes("old"));

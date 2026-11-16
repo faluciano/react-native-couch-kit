@@ -4,6 +4,26 @@ import { Paths } from "expo-file-system";
 import { getBestIpAddress } from "./network";
 import { DEFAULT_HTTP_PORT, toErrorMessage } from "@couch-kit/core";
 
+/**
+ * Static-server starts and stops, run one at a time.
+ *
+ * The native static server is a single process-wide instance: `stop()` on any
+ * `StaticServer` stops whatever is running. An effect torn down while its
+ * start was still in flight (StrictMode's double mount, a port change) would
+ * otherwise race the start that replaced it: the new start fails to bind the
+ * port the old one still holds, and the old one's late stop then takes down
+ * the only server. Queued, each stop finishes before the next start begins.
+ */
+let nativeQueue: Promise<void> = Promise.resolve();
+function enqueueNative<T>(task: () => Promise<T>): Promise<T> {
+  const run = nativeQueue.then(task, task);
+  nativeQueue = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
 export interface CouchKitHostConfig {
   port?: number;
   devMode?: boolean;
@@ -35,13 +55,6 @@ export const useStaticServer = (config: CouchKitHostConfig) => {
     let cancelled = false;
     setLoading(true);
     setError(null);
-
-    const stop = (target: StaticServer | null) => {
-      if (!target) return;
-      void Promise.resolve(target.stop()).catch(() => {
-        // Nothing useful to do if a server we no longer want fails to stop.
-      });
-    };
 
     const startServer = async () => {
       // In Dev Mode, we don't start the static server.
@@ -77,18 +90,26 @@ export const useStaticServer = (config: CouchKitHostConfig) => {
           path = `${bundleUri.replace(/^file:\/\//, "")}www`;
         }
         const port = config.port || DEFAULT_HTTP_PORT;
+        const rootDir = path;
 
-        const started = new StaticServer();
-        server = started;
-
-        // Use '0.0.0.0' to bind to all interfaces (local network)
-        await started.start(port, path, "0.0.0.0");
-        if (cancelled) {
-          // Cleanup ran while the server was still starting, when a stop may
-          // not have taken; stop it again now that it is actually up.
-          stop(started);
-          return;
-        }
+        const started = await enqueueNative(async () => {
+          // Torn down before its turn came: never start at all.
+          if (cancelled) return false;
+          const instance = new StaticServer();
+          // Use '0.0.0.0' to bind to all interfaces (local network)
+          const boundPort = await instance.start(port, rootDir, "0.0.0.0");
+          // The native server reports a failed bind (port in use, no
+          // permission) by returning a port <= 0, not by throwing.
+          if (!(boundPort > 0)) {
+            throw new Error(
+              `Could not start the controller server on port ${port}. ` +
+                "Is another app using it?",
+            );
+          }
+          server = instance;
+          return true;
+        });
+        if (!started || cancelled) return;
 
         // We prefer the actual IP over "localhost" returned by some libs
         const ip = await getBestIpAddress();
@@ -110,7 +131,15 @@ export const useStaticServer = (config: CouchKitHostConfig) => {
 
     return () => {
       cancelled = true;
-      stop(server);
+      // Queued behind this effect's own start, so it stops what that start
+      // produced (if anything) before any later start runs.
+      void enqueueNative(async () => {
+        const target = server;
+        server = null;
+        if (target) await target.stop();
+      }).catch(() => {
+        // Nothing useful to do if a server we no longer want fails to stop.
+      });
     };
   }, [config.port, config.devMode, config.devServerUrl, config.staticDir]);
 

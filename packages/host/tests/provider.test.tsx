@@ -358,6 +358,19 @@ describe("GameHostProvider", () => {
     }
   });
 
+  test("changing the HTTP port moves the WebSocket server to port + 2", async () => {
+    const { rerenderWith } = renderHost(baseConfig({ port: 8080 }));
+    const first = await listeningServer();
+    expect(first.startArgs?.port).toBe(8082);
+
+    rerenderWith(baseConfig({ port: 9000 }));
+
+    await waitFor(() => {
+      expect(FakeConfigServer.instances.at(-1)?.startArgs?.port).toBe(9002);
+    });
+    expect(first.stopCalls).toBe(1);
+  });
+
   test("under StrictMode the discarded first mount never starts a server", async () => {
     const { host } = renderHost(baseConfig(), { strict: true });
     const server = await listeningServer();
@@ -365,12 +378,11 @@ describe("GameHostProvider", () => {
     // StrictMode tears the first effect down before its start is reached, so
     // only the remount binds the port.
     expect(FakeConfigServer.instances).toEqual([server]);
-    // The discarded mount's static server is stopped (at cleanup, and again
-    // once its start completes).
+    // The discarded mount's static server never starts either: its turn in
+    // the native queue comes after its cleanup.
     await waitFor(() => expect(host().serverUrl).not.toBeNull());
-    const [discarded, kept] = FakeStaticServer.instances;
-    expect(discarded?.stopCalls).toBeGreaterThanOrEqual(1);
-    expect(kept?.stopCalls).toBe(0);
+    expect(FakeStaticServer.instances).toHaveLength(1);
+    expect(FakeStaticServer.native).toBe(FakeStaticServer.instances[0]!);
 
     // The surviving server is fully wired to the runtime.
     const { playerId } = await join(server);

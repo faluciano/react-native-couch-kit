@@ -35,8 +35,14 @@ describe("GameWebSocketServer start/stop", () => {
 
     expect(native.startArgs?.port).toBe(8082);
     expect(native.startArgs?.host).toBe("0.0.0.0");
+    // The native transport is capped at the same size the JS check enforces,
+    // so it never buffers a larger frame (its own default is 64 MB).
     expect(native.startArgs?.config.mounts).toEqual([
-      { type: "websocket", path: DEFAULT_WS_PATH },
+      {
+        type: "websocket",
+        path: DEFAULT_WS_PATH,
+        max_message_size: 256 * 1024,
+      },
     ]);
     expect(native.wsHandlers.has(DEFAULT_WS_PATH)).toBe(true);
     expect(events.listening).toEqual([8082]);
@@ -47,6 +53,22 @@ describe("GameWebSocketServer start/stop", () => {
     const { native } = await startServer();
     const response = await native.startArgs!.handler();
     expect(response.statusCode).toBe(404);
+  });
+
+  test("a port that fails to bind is an error, not listening", async () => {
+    // The native server reports a failed bind by resolving with port 0.
+    FakeConfigServer.nextStartPort = 0;
+    const { events } = await startServer();
+
+    expect(events.listening).toEqual([]);
+    expect(events.error[0]?.message).toContain("port 8082");
+  });
+
+  test("a custom maxMessageBytes caps the native transport too", async () => {
+    const { native } = await startServer({ maxMessageBytes: 4096 });
+    expect(native.startArgs?.config.mounts[0]).toMatchObject({
+      max_message_size: 4096,
+    });
   });
 
   test("reports a failed start as an error instead of throwing", async () => {

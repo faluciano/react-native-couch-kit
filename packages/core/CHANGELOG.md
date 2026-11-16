@@ -1,5 +1,37 @@
 # @couch-kit/core
 
+## 0.11.0
+
+### Minor Changes
+
+- [#229](https://github.com/faluciano/react-native-couch-kit/pull/229) [`a899a61`](https://github.com/faluciano/react-native-couch-kit/commit/a899a6146a1de19d6c81807e622a1719046fc8ea) Thanks [@faluciano](https://github.com/faluciano)! - **New features:** Games can decide which player actions the host accepts, and players learn what happened to their actions.
+
+  - **`authorizeAction(action, playerId, state)`** runtime option, available on `GameHostProvider` and `RelayDisplayHost`. It runs for every player action after the runtime's own checks, with the action already stamped with the sender's `playerId`.
+    - Return the action to apply, or a rewritten copy, for example to overwrite a player ID nested in the payload or strip a field players may not set.
+    - Return `{ reject: reason }` to refuse it. The sender gets `FORBIDDEN_ACTION` with that reason.
+    - It fails closed: a hook that throws or returns garbage refuses the action and reports through `onError`.
+    - The result is re-stamped with the sender's ID and may not be an internal action type.
+    - Host dispatches never pass through it.
+  - **Action results.** An `ACTION` may carry an `id`. The host then answers with the new `ACTION_RESULT { id, ok, code?, message? }` message instead of staying silent on success. On the client, `sendActionWithResult(action)` returns a promise of that verdict: `{ ok: true }`, a refusal, or `NOT_CONNECTED` / `DISCONNECTED` / `NO_RESULT`. Use it to keep a button disabled until the host has answered, so a double tap sends one action. Refusals also reach `onError`. Actions sent without an `id` behave as before.
+  - **Reducer failures are reported to the sender.** A player action whose reducer throws is now answered with the new `ACTION_FAILED` code.
+  - **New exports.**
+    - Core: `ErrorCodes`, the `ErrorCode` type, `ActionResult`, `MAX_ACTION_ID_LENGTH`, and `isInternalActionType()`. The runtime and middleware now share that one list of internal action types.
+    - Runtime: `AuthorizeAction`, `ActionRejection` and `isActionRejection`.
+    - Client: `ClientActionErrorCodes` and `DEFAULT_ACTION_RESULT_TIMEOUT`.
+  - **`STATE_UPDATE.payload.action` change.** For a player action it is now the action as applied, including the sender's `playerId`.
+
+## 0.10.3
+
+### Patch Changes
+
+- [#227](https://github.com/faluciano/react-native-couch-kit/pull/227) [`8ef31ad`](https://github.com/faluciano/react-native-couch-kit/commit/8ef31adc53dc7342f1d81f8ba2e4acb6c8c1433e) Thanks [@faluciano](https://github.com/faluciano)! - A player who rejoins under a new name or avatar is renamed. `__PLAYER_RECONNECTED__` now carries the rejoining JOIN's `name` and `avatar`, and the reducer applies them. Before, a reconnect kept the old name, so "change name" in a controller did nothing. Recordings without them replay as before.
+
+## 0.10.2
+
+### Patch Changes
+
+- [#225](https://github.com/faluciano/react-native-couch-kit/pull/225) [`072bc40`](https://github.com/faluciano/react-native-couch-kit/commit/072bc40f923dd9169f2bcb344deb733223402323) Thanks [@faluciano](https://github.com/faluciano)! - **Security:** `actionValidator` drops an action whose validator throws. Before, the middleware error boundary passed it on to the reducer, so a malformed payload (exactly what makes a validator like `(a) => a.payload.points > 0` throw) skipped validation. `isValidSecret` now also rejects secrets longer than 128 hex characters (`MAX_SECRET_HEX_LENGTH`), so a client cannot make the host hash and store an arbitrarily long string.
+
 ## 0.10.1
 
 ### Patch Changes

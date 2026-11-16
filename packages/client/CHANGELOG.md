@@ -1,5 +1,72 @@
 # @couch-kit/client
 
+## 0.19.0
+
+### Minor Changes
+
+- [#231](https://github.com/faluciano/react-native-couch-kit/pull/231) [`495dac0`](https://github.com/faluciano/react-native-couch-kit/commit/495dac0441684212f8caa049de85b7122f5fffd6) Thanks [@faluciano](https://github.com/faluciano)! - **New features:** `createAutoTransport({ relayUrl, roomId?, url?, wsPort? })` in `@couch-kit/client` lets one controller build work both on the TV's local network and through the relay.
+
+  - A room code, given or from `?room=` in the page URL, always selects the relay.
+  - A page served over `http:` from a local-network address (the TV host) selects the LAN socket at HTTP port + 2.
+  - Otherwise it returns `kind: "none"`, with reason `NEEDS_ROOM_CODE` or `NO_RELAY_URL`.
+
+  The result carries `kind` (to show "Local" vs "Room ABCD"), plus `createTransport` and `connectionKey` to pass to `useGameClient`. The relay URL is supplied by the app, typically from build config, so it never needs to come from the page URL. Also new: `isLocalNetworkHost(hostname)`. `CreateRoomMessage.roomId` is now optional, matching how displays ask the relay to pick a code.
+
+  `GameHostRuntime.stop()` no longer strands players. `GameHostProvider` stops and reuses the runtime on a StrictMode or Fast Refresh remount, and it used to leave every connected player marked `connected: true` forever. Players already waiting for removal were never removed. Now `stop()` marks live players disconnected. When a transport is attached again, those players and any pending removals get a fresh disconnect timeout, and a player who rejoins first is kept. A final `stop()` leaves no timers running. `HostSessionManager.clearRemovalTimers()` now returns the removals it cancelled.
+
+  `RelayDisplayHost` no longer sits at `connecting` forever when the relay refuses to create the room (`ROOM_EXISTS`, `SERVER_BUSY`). It closes the socket, moves to `closed`, and reports the `RelayError`. A room that ends is also no longer reported twice when its socket's close event follows.
+
+## 0.18.0
+
+### Minor Changes
+
+- [#229](https://github.com/faluciano/react-native-couch-kit/pull/229) [`a899a61`](https://github.com/faluciano/react-native-couch-kit/commit/a899a6146a1de19d6c81807e622a1719046fc8ea) Thanks [@faluciano](https://github.com/faluciano)! - **New features:** Games can decide which player actions the host accepts, and players learn what happened to their actions.
+
+  - **`authorizeAction(action, playerId, state)`** runtime option, available on `GameHostProvider` and `RelayDisplayHost`. It runs for every player action after the runtime's own checks, with the action already stamped with the sender's `playerId`.
+    - Return the action to apply, or a rewritten copy, for example to overwrite a player ID nested in the payload or strip a field players may not set.
+    - Return `{ reject: reason }` to refuse it. The sender gets `FORBIDDEN_ACTION` with that reason.
+    - It fails closed: a hook that throws or returns garbage refuses the action and reports through `onError`.
+    - The result is re-stamped with the sender's ID and may not be an internal action type.
+    - Host dispatches never pass through it.
+  - **Action results.** An `ACTION` may carry an `id`. The host then answers with the new `ACTION_RESULT { id, ok, code?, message? }` message instead of staying silent on success. On the client, `sendActionWithResult(action)` returns a promise of that verdict: `{ ok: true }`, a refusal, or `NOT_CONNECTED` / `DISCONNECTED` / `NO_RESULT`. Use it to keep a button disabled until the host has answered, so a double tap sends one action. Refusals also reach `onError`. Actions sent without an `id` behave as before.
+  - **Reducer failures are reported to the sender.** A player action whose reducer throws is now answered with the new `ACTION_FAILED` code.
+  - **New exports.**
+    - Core: `ErrorCodes`, the `ErrorCode` type, `ActionResult`, `MAX_ACTION_ID_LENGTH`, and `isInternalActionType()`. The runtime and middleware now share that one list of internal action types.
+    - Runtime: `AuthorizeAction`, `ActionRejection` and `isActionRejection`.
+    - Client: `ClientActionErrorCodes` and `DEFAULT_ACTION_RESULT_TIMEOUT`.
+  - **`STATE_UPDATE.payload.action` change.** For a player action it is now the action as applied, including the sender's `playerId`.
+
+### Patch Changes
+
+- Updated dependencies [[`a899a61`](https://github.com/faluciano/react-native-couch-kit/commit/a899a6146a1de19d6c81807e622a1719046fc8ea)]:
+  - @couch-kit/core@0.11.0
+
+## 0.17.0
+
+### Minor Changes
+
+- [#227](https://github.com/faluciano/react-native-couch-kit/pull/227) [`8ef31ad`](https://github.com/faluciano/react-native-couch-kit/commit/8ef31adc53dc7342f1d81f8ba2e4acb6c8c1433e) Thanks [@faluciano](https://github.com/faluciano)! - **New features:** A phone can get out of the dead ends that used to need a page reload.
+
+  - `connectionKey` option. Changing it opens a fresh connection with the retry budget reset. With a relay, pass the room code: a phone that typed a wrong code (`ROOM_NOT_FOUND`, which is final) now connects as soon as the right code is entered. Retry the same code with `reconnect()`.
+  - `reconnectOnResume` (default `true`): when the page becomes visible again, is restored from the back/forward cache, or the browser comes back online, the client reconnects at once with a fresh retry budget. A phone that slept through its five retries used to stay disconnected. Final closes and `disconnect()` are not undone.
+  - `disconnectReason` now clears when a new connection starts, not when it opens.
+  - `sendAction` returns `true` if the action was sent and `false` when there is no open connection. An action that was not sent is no longer applied optimistically.
+  - New exported types `ClientStatus` and `UseGameClientResult`, and helpers `isRecoverableClose` and `sessionSecretKey`.
+
+  **Security:** The relay transport keeps a separate session secret per relay and room (`ClientTransport.sessionScope`, also settable as the `sessionScope` option). Anyone can open a relay room and share its link; with one secret per site, that room's display could collect a phone's secret and rejoin the player's real room as them. The LAN default is unchanged, so existing players keep their identity.
+
+### Patch Changes
+
+- Updated dependencies [[`8ef31ad`](https://github.com/faluciano/react-native-couch-kit/commit/8ef31adc53dc7342f1d81f8ba2e4acb6c8c1433e)]:
+  - @couch-kit/core@0.10.3
+
+## 0.16.1
+
+### Patch Changes
+
+- Updated dependencies [[`072bc40`](https://github.com/faluciano/react-native-couch-kit/commit/072bc40f923dd9169f2bcb344deb733223402323)]:
+  - @couch-kit/core@0.10.2
+
 ## 0.16.0
 
 ### Minor Changes

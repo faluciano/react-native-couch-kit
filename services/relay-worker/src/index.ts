@@ -134,7 +134,13 @@ export default {
     // idFromName maps a room code to a stable object. The object exists
     // whether or not a display has created the room yet; an early joiner just
     // gets ROOM_NOT_FOUND from the empty room, exactly as before.
+    //
+    // The claim header is the router's to set, on the mint path only. One
+    // arriving from a client on `/r/CODE` is dropped, or the client could
+    // hand the object a code of its own choosing.
+    const headers = new Headers(request.headers);
+    headers.delete(ASSIGNED_CODE_HEADER);
     const stub = env.ROOMS.get(env.ROOMS.idFromName(code as string));
-    return stub.fetch(request);
+    return stub.fetch(new Request(request, { headers }));
   },
 };

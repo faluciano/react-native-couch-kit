@@ -491,7 +491,7 @@ function isValidSecret(secret: string): boolean;
 
 #### derivePlayerId
 
-Derives a stable, public player ID from a secret UUID using SHA-256. Takes the first 16 hex characters of the hash. Falls back to \`derivePlayerIdLegacy\` when Web Crypto is unavailable.
+Derives a stable, public player ID from a secret UUID using SHA-256. Takes the first 16 hex characters of the hash. Uses a pure-JS SHA-256 when Web Crypto is unavailable (Hermes).
 
 \`\`\`typescript
 async function derivePlayerId(secret: string): Promise<string>;
@@ -629,6 +629,10 @@ interface ClientConfig<S extends IGameState, A extends IAction> {
   maxRetries?: number;    // Max reconnection attempts (default: 5)
   baseDelay?: number;     // Base delay ms for exponential backoff (default: 1000)
   maxDelay?: number;      // Max delay ms cap for backoff (default: 10000)
+  createTransport?: CreateClientTransport; // e.g. createRelayTransport({ url, roomId })
+  connectionKey?: string | number | null;  // change it to reconnect (pass the relay room code)
+  reconnectOnResume?: boolean; // reconnect when visible/online again (default: true)
+  sessionScope?: string;  // separate secret per scope (relay transports set their own)
   onConnect?: () => void;
   onDisconnect?: () => void;
   debug?: boolean;
@@ -647,7 +651,8 @@ function useGameClient<S extends IGameState, A extends IAction>(
   state: S;
   playerId: string | null;
   disconnectReason: string | null;  // relay error code (ROOM_NOT_FOUND, ...) on terminal failures
-  sendAction: (action: A) => void;
+  sendAction: (action: A) => boolean;  // false when not connected (nothing applied)
+  sendActionWithResult: (action: A) => Promise<ActionResult>; // { ok: true } | { ok: false, code, message }
   getServerTime: () => number;
   rtt: number;
   disconnect: () => void;
@@ -662,7 +667,7 @@ function useGameClient<S extends IGameState, A extends IAction>(
 3. Receives \`WELCOME\` or \`RECONNECTED\`, hydrates local state from server
 4. On \`STATE_UPDATE\`, replaces local state with server's authoritative state
 5. \`sendAction()\` applies optimistic local update then sends to host
-6. On close, automatically reconnects with exponential backoff (up to \`maxRetries\`)
+6. On close, automatically reconnects with exponential backoff (up to \`maxRetries\`); when the page becomes visible or the browser comes back online, it reconnects at once with a fresh budget
 7. \`disconnect()\` prevents auto-reconnect; \`reconnect()\` resets attempts and reconnects
 
 ### Cross-network play (relay)
@@ -678,6 +683,7 @@ import {
   createRelayTransport,
   useRelayRoom,
   describeRelayError,
+  normalizeRoomCode,
 } from "@couch-kit/client";
 
 function App() {
@@ -690,14 +696,20 @@ function App() {
 }
 
 function Controller({ roomId, onRejoin }) {
-  const { state, sendAction, disconnectReason } = useGameClient({
+  const { state, sendAction, disconnectReason, reconnect } = useGameClient({
     reducer, initialState,
     createTransport: createRelayTransport({ url: RELAY_URL, roomId }),
+    connectionKey: roomId, // a new code reconnects
   });
 
   // Terminal room failures are worth explaining; ordinary drops are retried.
   const joinError = describeRelayError(disconnectReason);
-  if (joinError) return <JoinScreen onJoin={onRejoin} error={joinError} />;
+  if (joinError) {
+    // The same code again (the TV has opened the room since) needs reconnect().
+    const retry = (code) =>
+      normalizeRoomCode(code) === roomId ? reconnect() : onRejoin(code);
+    return <JoinScreen onJoin={retry} error={joinError} />;
+  }
   // ...
 }
 \`\`\`
@@ -705,6 +717,7 @@ function Controller({ roomId, onRejoin }) {
 - \`useRelayRoom()\` → \`{ roomId, setRoomId, clearRoomId }\`, seeded from \`?room=CODE\` and written back to the URL so reloads and shared links keep it.
 - \`normalizeRoomCode(input)\` canonicalises what people type (\`"ab 12"\`, \`"AB-12"\` → \`"AB12"\`); room codes are case-insensitive end to end.
 - \`describeRelayError(reason)\` turns a relay error code into player-facing text, or \`null\` for an ordinary drop.
+- \`createAutoTransport({ relayUrl, roomId?, url?, wsPort? })\` picks the transport for one controller build that works on both paths. A room code (given, or \`?room=\` in the page URL) selects the relay. A page served over http from a local-network address (the TV host) selects the LAN socket at port + 2. Otherwise you get \`kind: "none"\` (\`NEEDS_ROOM_CODE\` / \`NO_RELAY_URL\`). Returns \`{ kind, createTransport, connectionKey, roomId?/url? }\`; pass \`createTransport\` and \`connectionKey\` to \`useGameClient\`, and show \`kind\` to the player. Take \`relayUrl\` from build config, never from the page URL.
 - \`relayRoomUrl(url, roomId)\` builds the socket URL (\`<url>/r/<ROOM>\`); the transports call it for you.
 
 The display side is \`@couch-kit/display\`'s \`RelayDisplayHost\`, which owns the
@@ -831,8 +844,11 @@ function GameHostProvider<S extends IGameState, A extends IAction>(props: {
 - Starts static file server on \`config.port\` (default 8080)
 - Starts WebSocket server on \`config.wsPort\` (default: HTTP port + 2)
 - Wraps the user reducer with \`createGameReducer\` automatically
-- Handles JOIN with secret-based player ID derivation (SHA-256 with legacy fallback)
+- Handles JOIN with secret-based player ID derivation (SHA-256 of the secret, no fallback)
 - Rejects internal action types dispatched by clients (\`FORBIDDEN_ACTION\` error)
+- \`authorizeAction(action, playerId, state)\` config: return the action (optionally rewritten) or \`{ reject: reason }\`; fails closed; the sender gets \`FORBIDDEN_ACTION\` with the reason
+- \`project(state, playerId)\` config: each player receives only their own view (use it for hidden information)
+- An \`ACTION\` sent with an \`id\` is answered with \`ACTION_RESULT { id, ok, code?, message? }\`
 - Rate-limits client actions (60 per second per socket)
 - Automatically manages player lifecycle (join, disconnect, reconnect, timeout removal)
 - Broadcasts state updates throttled to ~30fps

@@ -3,7 +3,9 @@ import {
   resolveWebSocketUrl,
   computeBackoffDelay,
   shouldReconnect,
+  isRecoverableClose,
   resolveSessionSecret,
+  sessionSecretKey,
   interpretHostMessage,
   SESSION_SECRET_KEY,
   type SecretStorage,
@@ -167,6 +169,15 @@ describe("resolveSessionSecret", () => {
     expect(storage.store[SESSION_SECRET_KEY]).toBe("generated");
   });
 
+  test("keeps a separate secret per scope, leaving the unscoped one alone", () => {
+    const storage = makeStorage({ [SESSION_SECRET_KEY]: validSecret });
+    const scoped = resolveSessionSecret(storage, () => "scoped", "relay:x#R");
+    expect(scoped).toBe("scoped");
+    expect(storage.store[sessionSecretKey("relay:x#R")]).toBe("scoped");
+    expect(storage.store[SESSION_SECRET_KEY]).toBe(validSecret);
+    expect(sessionSecretKey()).toBe(SESSION_SECRET_KEY);
+  });
+
   test("generates a fresh secret without persisting when storage is null", () => {
     const secret = resolveSessionSecret(null, () => "generated");
     expect(secret).toBe("generated");
@@ -260,5 +271,14 @@ describe("interpretHostMessage", () => {
       payload: {},
     } as unknown as HostMessage;
     expect(interpretHostMessage(msg)).toEqual([]);
+  });
+});
+
+describe("isRecoverableClose", () => {
+  test("policy and internal-error closes are final; drops are not", () => {
+    expect(isRecoverableClose(1008)).toBe(false);
+    expect(isRecoverableClose(1011)).toBe(false);
+    expect(isRecoverableClose(1006)).toBe(true);
+    expect(isRecoverableClose(1000)).toBe(true);
   });
 });

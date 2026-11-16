@@ -31,7 +31,7 @@
   "devDependencies": {
     "@couch-kit/client": "workspace:*",
     "@couch-kit/core": "workspace:*",
-    "@happy-dom/global-registrator": "^20.10.6",
+    "@happy-dom/global-registrator": "^21.0.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
     "@types/react": "^19.2.17",

@@ -4,7 +4,7 @@ import type {
   InternalAction,
   GameReducer,
 } from "./types.js";
-import { InternalActionTypes } from "./types.js";
+import { isInternalActionType } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Middleware types
@@ -159,15 +159,6 @@ export function actionLogger<S extends IGameState, A extends IAction>(
 // actionValidator
 // ---------------------------------------------------------------------------
 
-/** Lazily-initialised set of internal action type strings for fast lookup. */
-let _internalTypes: Set<string> | undefined;
-function getInternalTypes(): Set<string> {
-  if (!_internalTypes) {
-    _internalTypes = new Set<string>(Object.values(InternalActionTypes));
-  }
-  return _internalTypes;
-}
-
 /**
  * A map from action type strings to validator functions. Each validator receives
  * the fully-typed action and returns `true` if the action is valid.
@@ -178,7 +169,8 @@ export type ActionSchema<A extends IAction> = {
 
 /**
  * Middleware that validates actions against a schema before they reach the
- * reducer. Invalid actions are silently dropped (with a console warning).
+ * reducer. Invalid actions are dropped with a console warning. A validator
+ * that throws counts as a failed validation.
  *
  * Internal actions are never validated — they always pass through.
  *
@@ -193,11 +185,24 @@ export function actionValidator<S extends IGameState, A extends IAction>(
 ): Middleware<S, A> {
   return (_api) => (next) => (action) => {
     // Internal actions always pass through — never validate them.
-    if (getInternalTypes().has(action.type)) return next(action);
+    if (isInternalActionType(action.type)) return next(action);
 
     const validate = schema[action.type as A["type"]];
+    if (!validate) return next(action);
 
-    if (validate && !validate(action as A & { type: A["type"] })) {
+    // A validator that throws has not said yes. Malformed client payloads are
+    // exactly what makes a validator like `(a) => a.payload.points > 0` throw,
+    // so a throw counts as a failed validation. Letting the middleware error
+    // boundary fall through to `next` would hand the reducer the very action
+    // the validator exists to stop.
+    let valid: boolean;
+    try {
+      valid = validate(action as A & { type: A["type"] });
+    } catch {
+      valid = false;
+    }
+
+    if (!valid) {
       console.warn(
         `[couch-kit] Action "${action.type}" failed validation, skipping`,
       );

@@ -39,6 +39,12 @@ const POLICY_CLOSE_CODE = 1008;
 export class RelayClientTransport implements ClientTransport {
   private readonly ws: WebSocket;
   private readonly roomId: string;
+  /**
+   * One session secret per relay and room. Anyone can open a relay room and
+   * share its link; a secret shared across rooms would let that room's display
+   * collect it and rejoin the player's real room as them.
+   */
+  readonly sessionScope: string;
   private state: number = TransportReadyState.CONNECTING;
   /** When set, the code reported to `onclose` instead of the raw socket code. */
   private pendingCloseCode: number | null = null;
@@ -56,6 +62,7 @@ export class RelayClientTransport implements ClientTransport {
 
   constructor(options: RelayTransportOptions) {
     this.roomId = options.roomId;
+    this.sessionScope = `relay:${options.url}#${options.roomId.toUpperCase()}`;
     this.ws = new WebSocket(relayRoomUrl(options.url, options.roomId));
 
     this.ws.onopen = () => {

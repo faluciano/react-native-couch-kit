@@ -77,10 +77,19 @@ const server = Bun.serve<SocketData, undefined>({
     },
     message(ws, message) {
       if (!ws.data.conn) return;
-      const close = rooms.handleMessage(
-        ws.data.conn,
-        typeof message === "string" ? message : message.toString(),
-      );
+      let close: ReturnType<typeof rooms.handleMessage>;
+      try {
+        close = rooms.handleMessage(
+          ws.data.conn,
+          typeof message === "string" ? message : message.toString(),
+        );
+      } catch (error) {
+        // One process holds every room: a bug reached by one client's frame
+        // must cost that client its socket, not end everyone's game.
+        console.error("[relay] message handler failed:", error);
+        ws.close(1011, "Internal error");
+        return;
+      }
       // Abusive load and dead-end joins are both shed by closing the socket;
       // the core already sent the matching ERROR frame.
       if (close) ws.close(close.code, close.reason);

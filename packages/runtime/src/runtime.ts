@@ -1,8 +1,10 @@
 import {
   DEFAULT_DISCONNECT_TIMEOUT,
+  ErrorCodes,
   InternalActionTypes,
   MessageTypes,
   createGameReducer,
+  isInternalActionType,
   isValidSecret,
   type GameReducer,
   type HostMessage,
@@ -10,7 +12,11 @@ import {
   type IGameState,
   type InternalAction,
 } from "@couch-kit/core";
-import { authorizeClientAction } from "./action-authorization.js";
+import {
+  authorizeClientAction,
+  isActionRejection,
+  type AuthorizeAction,
+} from "./action-authorization.js";
 import {
   BroadcastScheduler,
   DEFAULT_STATE_THROTTLE_MS,
@@ -26,6 +32,10 @@ import {
   HostSessionManager,
   type JoinSessionPayload,
 } from "./session-manager.js";
+
+function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
 
 /**
  * Most client actions kept for the next `STATE_UPDATE`. A transport that is
@@ -102,6 +112,15 @@ export interface GameHostRuntimeConfig<
    * @param playerId - Player the projection is for.
    */
   project?: (state: S, playerId: string) => unknown;
+  /**
+   * The game's rule for player actions: return the action to apply (possibly
+   * rewritten) or `{ reject: reason }`. See {@link AuthorizeAction}.
+   *
+   * Without it, any action type a player sends reaches the reducer, stamped
+   * with their `playerId` — so host-only actions and player IDs nested inside a
+   * payload are the reducer's to police.
+   */
+  authorizeAction?: AuthorizeAction<S, A>;
   debug?: boolean;
   /** Timeout before a disconnected player is permanently removed. */
   disconnectTimeout?: number;
@@ -131,6 +150,13 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
   private readonly joinedConnections = new Set<string>();
   private readonly pendingJoins = new Set<string>();
   private actionQueue: unknown[] = [];
+  /**
+   * Players who were connected, or waiting to be removed, when the runtime
+   * stopped. Their removal is scheduled again when a transport is attached, so
+   * a restart (React StrictMode, Fast Refresh, a provider remount) does not
+   * leave them in the game forever, and a final stop leaves no timers behind.
+   */
+  private orphanedPlayers: { playerId: string; secret: string }[] = [];
   private stateDirty = false;
   private nextConnectionGeneration = 1;
 
@@ -181,7 +207,9 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
   /** Replaces the active message transport without resetting game state. */
   setTransport(transport: GameRuntimeTransport | null): void {
     this.transport = transport;
-    if (transport && this.stateDirty) {
+    if (!transport) return;
+    this.rearmOrphanedRemovals();
+    if (this.stateDirty) {
       this.broadcastScheduler.schedule(this.broadcastState);
     }
   }
@@ -353,7 +381,10 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
             });
           }
         } catch (error) {
-          this.log("[GameRuntime] Failed to derive player ID:", error);
+          const cause = toError(error);
+          this.notifyError(
+            new Error(`Join failed: ${cause.message}`, { cause }),
+          );
           this.send(connectionId, {
             type: MessageTypes.ERROR,
             payload: {
@@ -369,38 +400,71 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
 
       case MessageTypes.ACTION: {
         const actionPayload = message.payload as A;
+        const actionId = message.id;
+        // Refusals go back as an ACTION_RESULT when the client asked for one
+        // (it sent an id), and as an ERROR otherwise, as they always have.
+        const refuse = (code: string, reason: string): void => {
+          this.log(
+            `[GameRuntime] Rejected action from ${connectionId} (${code}):`,
+            actionPayload.type,
+          );
+          this.send(
+            connectionId,
+            actionId === undefined
+              ? {
+                  type: MessageTypes.ERROR,
+                  payload: { code, message: reason },
+                }
+              : {
+                  type: MessageTypes.ACTION_RESULT,
+                  payload: { id: actionId, ok: false, code, message: reason },
+                },
+          );
+        };
+
         const playerId = this.sessionManager.getPlayerIdForSocket(connectionId);
         const authorization = authorizeClientAction(
           actionPayload.type,
           playerId,
         );
-
         if (authorization.kind === "reject") {
-          this.log(
-            `[GameRuntime] Rejected action from ${connectionId} ` +
-              `(${authorization.code}):`,
-            actionPayload.type,
-          );
-          this.send(connectionId, {
-            type: MessageTypes.ERROR,
-            payload: {
-              code: authorization.code,
-              message: authorization.message,
-            },
-          });
+          refuse(authorization.code, authorization.message);
           return;
         }
 
-        const changed = this.applyAction({
+        const stamped = {
           ...actionPayload,
           playerId: authorization.playerId,
-        } as A);
+        } as A;
+        const action = this.authorizeGameAction(
+          stamped,
+          authorization.playerId,
+        );
+        if (isActionRejection(action)) {
+          refuse(ErrorCodes.FORBIDDEN_ACTION, action.reject);
+          return;
+        }
+
+        const outcome = this.applyAction(action);
+        if (outcome === "failed") {
+          refuse(
+            ErrorCodes.ACTION_FAILED,
+            "The host could not apply this action",
+          );
+          return;
+        }
+        if (actionId !== undefined) {
+          this.send(connectionId, {
+            type: MessageTypes.ACTION_RESULT,
+            payload: { id: actionId, ok: true },
+          });
+        }
         // Only actions that changed state ride along with the next update: a
         // no-op schedules no broadcast, so queueing it would grow the queue
         // until some unrelated change flushed the lot. Projected games never
         // attach actions (see broadcastState), so nothing is queued for them.
-        if (changed && !this.config.project) {
-          this.actionQueue.push(actionPayload);
+        if (outcome === "changed" && !this.config.project) {
+          this.actionQueue.push(action);
           if (this.actionQueue.length > MAX_QUEUED_ACTIONS) {
             this.actionQueue.shift();
           }
@@ -452,16 +516,7 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
           }
         : undefined,
     );
-    this.sessionManager.scheduleRemoval(
-      result.playerId,
-      result.secret,
-      (playerId) => {
-        this.applyAction({
-          type: InternalActionTypes.PLAYER_REMOVED,
-          payload: { playerId },
-        } as InternalAction<S>);
-      },
-    );
+    this.scheduleRemoval(result.playerId, result.secret);
   }
 
   /** Surfaces transport failures through the configured host callback. */
@@ -470,10 +525,27 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
     this.notifyError(error);
   }
 
-  /** Cancels runtime timers and releases transport-specific state. */
+  /**
+   * Cancels runtime timers and releases transport-specific state.
+   *
+   * Every connection is closed as far as the runtime is concerned: their
+   * players are marked disconnected now, since the old transport's disconnect
+   * events will be ignored. If a transport is attached again, those players and
+   * any already waiting to be removed get a fresh removal timeout, and each is
+   * kept if they rejoin before it expires.
+   */
   stop(): void {
+    for (const connectionId of [...this.activeConnections.keys()]) {
+      const result = this.sessionManager.handleDisconnect<S>(connectionId);
+      if (result.kind !== "left") continue;
+      this.applyAction(result.action);
+      this.orphanedPlayers.push({
+        playerId: result.playerId,
+        secret: result.secret,
+      });
+    }
+    this.orphanedPlayers.push(...this.sessionManager.clearRemovalTimers());
     this.broadcastScheduler.cancel();
-    this.sessionManager.clearRemovalTimers();
     this.rateLimiter.clear();
     this.activeConnections.clear();
     this.joinedConnections.clear();
@@ -481,9 +553,95 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
     this.transport = null;
   }
 
-  /** @returns whether the action changed the canonical state. */
-  private applyAction(action: A | InternalAction<S>): boolean {
-    const nextState = this.reducer(this.state, action);
+  /** See {@link GameHostRuntime.orphanedPlayers}. */
+  private rearmOrphanedRemovals(): void {
+    const orphans = this.orphanedPlayers;
+    this.orphanedPlayers = [];
+    for (const { playerId, secret } of orphans) {
+      const player = this.state.players[playerId];
+      if (!player || player.connected) continue;
+      this.scheduleRemoval(playerId, secret);
+    }
+  }
+
+  private scheduleRemoval(playerId: string, secret: string): void {
+    this.sessionManager.scheduleRemoval(playerId, secret, (removedId) => {
+      this.applyAction({
+        type: InternalActionTypes.PLAYER_REMOVED,
+        payload: { playerId: removedId },
+      } as InternalAction<S>);
+    });
+  }
+
+  /**
+   * Runs the game's `authorizeAction`, failing closed. The result is
+   * re-stamped with the sender's ID, so a hook cannot (even by mistake) make
+   * one player's action count as another's.
+   */
+  private authorizeGameAction(
+    action: A,
+    playerId: string,
+  ): A | { reject: string } {
+    const authorize = this.config.authorizeAction;
+    if (!authorize) return action;
+
+    let result: unknown;
+    try {
+      result = authorize(action, playerId, this.state);
+    } catch (error) {
+      const cause = toError(error);
+      this.notifyError(
+        new Error(
+          `authorizeAction failed on "${action.type}": ${cause.message}`,
+          {
+            cause,
+          },
+        ),
+      );
+      return { reject: "Action rejected" };
+    }
+
+    if (isActionRejection(result)) return result;
+    if (
+      typeof result !== "object" ||
+      result === null ||
+      typeof (result as { type?: unknown }).type !== "string"
+    ) {
+      this.notifyError(
+        new Error(
+          `authorizeAction returned neither an action nor { reject } for "${action.type}"`,
+        ),
+      );
+      return { reject: "Action rejected" };
+    }
+    const authorized = result as A;
+    if (isInternalActionType(authorized.type)) {
+      return {
+        reject: "Internal action types cannot be dispatched by clients",
+      };
+    }
+    return { ...authorized, playerId } as A;
+  }
+
+  /** Reduces one action: whether it changed the state, or the reducer threw. */
+  private applyAction(
+    action: A | InternalAction<S>,
+  ): "changed" | "unchanged" | "failed" {
+    // A reducer that throws leaves the state as it was. Player actions are
+    // untrusted input; a malformed payload must cost that action, not the
+    // message handler (or, from a timer, an uncaught exception).
+    let nextState: S;
+    try {
+      nextState = this.reducer(this.state, action);
+    } catch (error) {
+      const cause = toError(error);
+      this.notifyError(
+        new Error(`Reducer failed on "${action.type}": ${cause.message}`, {
+          cause,
+        }),
+      );
+      return "failed";
+    }
     const changed = !Object.is(nextState, this.state);
     if (changed) this.state = nextState;
 
@@ -493,23 +651,32 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
       try {
         listener(action);
       } catch (error) {
-        const cause = error instanceof Error ? error : new Error(String(error));
+        const cause = toError(error);
         this.notifyError(
           new Error(`Action listener failed: ${cause.message}`, { cause }),
         );
       }
     }
 
-    if (!changed) return false;
+    if (!changed) return "unchanged";
 
     this.stateDirty = true;
+    // Scheduled before the listeners run, so a listener that throws cannot
+    // keep the change from reaching players.
+    this.broadcastScheduler.schedule(this.broadcastState);
 
     for (const listener of this.listeners) {
-      listener();
+      try {
+        listener();
+      } catch (error) {
+        const cause = toError(error);
+        this.notifyError(
+          new Error(`State listener failed: ${cause.message}`, { cause }),
+        );
+      }
     }
 
-    this.broadcastScheduler.schedule(this.broadcastState);
-    return true;
+    return "changed";
   }
 
   /**
@@ -549,9 +716,24 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
     for (const connectionId of this.joinedConnections) {
       const playerId = this.sessionManager.getPlayerIdForSocket(connectionId);
       if (!playerId) continue;
+      // A projection that throws for one player skips that player's update
+      // only. This runs from the throttle timer, so an escaped exception would
+      // be uncaught and lose the update for everyone.
+      let view: unknown;
+      try {
+        view = this.viewFor(playerId);
+      } catch (error) {
+        const cause = toError(error);
+        this.notifyError(
+          new Error(`project failed for player ${playerId}: ${cause.message}`, {
+            cause,
+          }),
+        );
+        continue;
+      }
       entries.push({
         connectionId,
-        message: createStateUpdateMessage(this.viewFor(playerId), []),
+        message: createStateUpdateMessage(view, []),
       });
     }
     if (entries.length === 0) return;
@@ -578,7 +760,7 @@ export class GameHostRuntime<S extends IGameState, A extends IAction> {
     try {
       callback();
     } catch (error) {
-      const cause = error instanceof Error ? error : new Error(String(error));
+      const cause = toError(error);
       this.notifyError(
         new Error(`${name} callback failed: ${cause.message}`, { cause }),
       );

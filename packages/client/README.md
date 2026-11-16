@@ -36,6 +36,10 @@ Config:
 - `maxDelay?`: maximum delay in ms cap for reconnection backoff (default: `10000`)
 - `optimisticTimeoutMs?`: how long an optimistic update may stand without the host confirming it (default: `2000`; `0` disables). See [Optimistic updates](#optimistic-updates).
 - `timeSync?`: exchange PING/PONG with the host to power `getServerTime()` and `rtt` (default: `true`). Turn it off if you use neither — on a relay every ping is a billed message.
+- `createTransport?`: custom transport factory, e.g. `createRelayTransport({ url, roomId })` for cross-network play
+- `connectionKey?`: identifies what `createTransport` connects to. Changing it opens a fresh connection with the retry budget reset. With a relay, pass the room code, so a phone that typed a wrong code connects as soon as the right one is entered. To retry the *same* code, call `reconnect()`.
+- `reconnectOnResume?`: reconnect at once when the page becomes visible again, is restored from the back/forward cache, or the browser comes back online (default: `true`). A phone that slept through its retries otherwise stays disconnected. Final closes and `disconnect()` are not undone.
+- `sessionScope?`: keep a separate session secret (and so a separate player identity) per scope. The relay transport scopes the secret to its relay and room automatically, so a secret sent to one room never reaches another.
 - `debug?`: enable console logs
 - `onConnect?`, `onDisconnect?`: lifecycle callbacks
 - `onError?`: called with `{ code, message }` when the host rejects something this client sent (`RATE_LIMITED`, `NOT_JOINED`, `FORBIDDEN_ACTION`, `INVALID_SECRET`, …)
@@ -45,12 +49,41 @@ Returns:
 - `status`: `'connecting' | 'connected' | 'disconnected' | 'error'`
 - `state`: current controller state (optimistic + hydrated)
 - `playerId`: stable public identifier derived from the session secret. Persists across page refreshes and reconnections (the same player always gets the same `playerId`).
-- `sendAction(action)`: optimistic dispatch + send to host
+- `sendAction(action)`: optimistic dispatch + send to host. Returns `true` if sent, `false` when there is no open connection (nothing is applied or queued then). The host can still reject a sent action; that arrives through `onError`.
+- `sendActionWithResult(action)`: like `sendAction`, but returns a promise of the host's verdict on this action: `{ ok: true }`, or `{ ok: false, code, message }`. The code is either a refusal (`FORBIDDEN_ACTION` with the game's reason from `authorizeAction`, `ACTION_FAILED`, `RATE_LIMITED`) or `NOT_CONNECTED` / `DISCONNECTED` / `NO_RESULT` when the host never got to answer. It never rejects. Await it to keep a button disabled until the host answers, so a double tap sends one action. Waits at most `actionResultTimeoutMs` (default `5000`).
 - `disconnectReason`: why the last connection ended, when the transport knows (for the relay, a code such as `ROOM_NOT_FOUND` or `HOST_LEFT`); `null` once connected again
 - `getServerTime()`: NTP-ish server time based on periodic ping/pong
 - `rtt`: round-trip time (ms) to the server, updated periodically via PING/PONG
 - `disconnect()`: manually disconnect from the host (prevents automatic reconnection)
 - `reconnect()`: manually reconnect to the host (resets the reconnection attempt counter)
+
+### One controller for LAN and relay: `createAutoTransport`
+
+```tsx
+const { roomId, setRoomId } = useRelayRoom();
+const transport = useMemo(
+  () => createAutoTransport({ relayUrl: import.meta.env.VITE_RELAY_URL, roomId }),
+  [roomId],
+);
+if (transport.kind === "none") return <JoinScreen onJoin={setRoomId} />;
+
+// In the controller component:
+useGameClient({
+  reducer,
+  initialState,
+  createTransport: transport.createTransport,
+  connectionKey: transport.connectionKey,
+});
+// transport.kind is "lan" or "relay": show "Local" or `Room ${transport.roomId}`.
+```
+
+It picks the transport like this:
+
+- A room code, given or from `?room=` in the page URL, always selects the relay. A hosted controller never tries a LAN socket.
+- Otherwise, a page served over `http:` from a local-network address (the TV host's static server) selects the LAN socket at HTTP port + 2. An explicit `url` does the same.
+- Otherwise it returns `kind: "none"`, with reason `NEEDS_ROOM_CODE` or `NO_RELAY_URL`.
+
+Take `relayUrl` from build config, not from the page URL. A relay named in a link is one anyone can name, and the phone would send its session to it.
 
 ### Optimistic updates
 
