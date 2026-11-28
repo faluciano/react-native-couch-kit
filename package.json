@@ -20,7 +20,7 @@
     "docs:llms": "bun run scripts/generate-llms-txt.ts"
   },
   "devDependencies": {
-    "@changesets/changelog-github": "^1.0.0",
+    "@changesets/changelog-github": "^2.0.0",
     "@changesets/cli": "^3.0.0",
     "@types/bun": "^1.3.14",
     "@types/react": "^19.2.17",
